@@ -32,6 +32,7 @@ GitHub CLIには `scripts/gh-repo.sh owner/repository ... --body-file work/pr-bo
 
 - `quality`はPRイベントの本文を検査する。見出しの欠落・重複、空欄、TODOだけの節、未記入表、コメント/コード内だけの見出しを拒否する。
 - 保護されたmainの`independent-review`も、最新PR本文と最新SHAのレビュー結果を両方検査する。本文編集でも再実行するため、CI後に必須節を削除したままmergeしない。
+- commit statusはPRではなくSHAに付くため、main向けの同じSHAを持つPRをまとめて判定する。一つでも本文・レビューが不合格なら全体を失敗にし、別baseのPRで成功へ上書きしない。PRの開閉・base変更も再判定の対象とする。
 - merge直前にはhead/base/最新レビュー/必須チェックに加えて最新本文を読み直す。GitHubイベントの反映は非同期なので、本文編集後は再検査結果を待つ。
 - 自動検査は書式の最低条件を確認するだけ。説明の正しさ・簡潔さ・読みやすさ・検証の十分さは独立レビューで確認する。
 

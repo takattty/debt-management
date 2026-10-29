@@ -31,6 +31,25 @@ test('template instructions, unfilled tables and code-block headings do not coun
   assert.equal(validateDescription(unfilled).length, 1);
 });
 
+test('short or annotated fence-like lines cannot reveal headings inside a fenced block', () => {
+  const tick = '\x60';
+  for (const [open, middle, close] of [
+    [tick.repeat(4) + 'md', tick.repeat(3), tick.repeat(4)],
+    [tick.repeat(3) + 'md', tick.repeat(3) + 'js', tick.repeat(3)],
+    ['~~~~md', '~~~', '~~~~'],
+  ]) {
+    assert.equal(validateDescription(`${open}\n${middle}\n${valid}\n${close}`).length, requiredSections.length);
+  }
+  assert.deepEqual(validateDescription(`${tick.repeat(4)}md\n${tick.repeat(5)}\n${valid}`), []);
+});
+
+test('tables without outer pipes still require filled values', () => {
+  const replaceTable = table => valid.replace('## 検証\n具体的な変更と根拠。', `## 検証\n${table}`);
+  assert.equal(validateDescription(replaceTable('検証 | 結果\n--- | ---\n単体 | ')).length, 1);
+  assert.equal(validateDescription(replaceTable('検証 | 結果\n--- | ---\n単体 | TODO')).length, 1);
+  assert.deepEqual(validateDescription(replaceTable('検証 | 結果\n--- | ---\n単体 | 6件成功')), []);
+});
+
 test('CLI validates a file or PR event, and fails closed without exposing failed input', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-description-'));
   try {

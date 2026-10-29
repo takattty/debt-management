@@ -12,10 +12,10 @@ function validateDescription(body) {
   let current;
   let fence;
   for (const line of text.split(/\r?\n/)) {
-    const delimiter = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    const delimiter = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
     if (delimiter) {
-      if (!fence) fence = delimiter[1][0];
-      else if (fence === delimiter[1][0]) fence = undefined;
+      if (!fence) fence = delimiter[1];
+      else if (fence[0] === delimiter[1][0] && delimiter[1].length >= fence.length && !delimiter[2].trim()) fence = undefined;
       continue;
     }
     if (fence) continue;
@@ -33,14 +33,24 @@ function validateDescription(body) {
     const entries = sections.get(name) ?? [];
     if (entries.length !== 1) return [`「${name}」の見出しを1つ記載してください。`];
     const lines = entries[0];
-    const content = lines.flatMap((line, index) => {
-      if (/^\s*\|/.test(line)) {
-        if (/^\s*\|?[\s:|-]+\|\s*$/.test(line) || /^\s*\|?[\s:|-]+\|\s*$/.test(lines[index + 1] ?? '')) return [];
-        // Row labels alone are not completed table values.
-        return line.trim().replace(/^\||\|$/g, '').split('|').slice(1);
+    const cells = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(value => value.trim());
+    const separator = line => line.includes('|') && cells(line).every(value => /^:?-+:?$/.test(value));
+    const values = [];
+    let inTable = false;
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
+      if (line.includes('|') && separator(lines[index + 1] ?? '')) {
+        inTable = true;
+        index++;
+      } else if (inTable && line.includes('|')) {
+        // Row labels alone are not completed table values, with or without outer pipes.
+        values.push(...cells(line).slice(1));
+      } else {
+        inTable = false;
+        values.push(line);
       }
-      return [line];
-    }).map(line => line.replace(/^\s*[-*+]\s*(?:\[[ xX]\]\s*)?/, '').replace(/<[^>]*>/g, '').replace(/[`*_#]/g, '').trim())
+    }
+    const content = values.map(line => line.replace(/^\s*[-*+]\s*(?:\[[ xX]\]\s*)?/, '').replace(/<[^>]*>/g, '').replace(/[`*_#]/g, '').trim())
       .filter(line => line && !/^(?:(?:TODO|TBD|未記入|未記載|ここに記載)(?:\s*[:：].*)?|\.\.\.|…)[。.!！]?$/i.test(line));
     return content.length ? [] : [`「${name}」の内容を記載してください。`];
   });

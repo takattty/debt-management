@@ -1,7 +1,7 @@
 name: Independent review
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    types: [opened, synchronize, reopened, ready_for_review, edited, closed]
   workflow_run:
     workflows: [Review event relay]
     types: [completed]
@@ -32,26 +32,5 @@ jobs:
           TRUSTED_POLICY_SHA: ${{ steps.policy.outputs.sha }}
         with:
           script: |
-            const { evaluate } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/review-gate.cjs`);
-            const { validateDescription } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/pr-description.cjs`);
-            const path = '.github/workflows/review-event-relay.yml';
-            const { data: trusted } = await github.rest.repos.getContent({ ...context.repo, path, ref: process.env.TRUSTED_POLICY_SHA });
-            const open = await github.paginate(github.rest.pulls.list, { ...context.repo, state: 'open', per_page: 100 });
-            for (const entry of open) {
-              const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: entry.number });
-              await github.rest.repos.createCommitStatus({ ...context.repo, sha: pr.head.sha, context: 'independent-review', state: 'pending', description: 'Rechecking current review and trusted relay.' });
-              let sameRelay = false;
-              try {
-                const { data: candidate } = await github.rest.repos.getContent({ owner: pr.head.repo.owner.login, repo: pr.head.repo.name, path, ref: pr.head.sha });
-                sameRelay = candidate.type === 'file' && candidate.sha === trusted.sha;
-              } catch (error) { if (error.status !== 404) throw error; }
-              const reviews = await github.paginate(github.rest.pulls.listReviews, { ...context.repo, pull_number: pr.number });
-              const descriptionValid = validateDescription(pr.body).length === 0;
-              const passed = sameRelay && descriptionValid && evaluate(reviews, pr.head.sha);
-              const { data: latest } = await github.rest.pulls.get({ ...context.repo, pull_number: pr.number });
-              if (latest.state !== 'open' || latest.head.sha !== pr.head.sha || latest.body !== pr.body) continue;
-              await github.rest.repos.createCommitStatus({ ...context.repo, sha: pr.head.sha, context: 'independent-review',
-                state: passed ? 'success' : 'failure',
-                description: passed ? 'Exact-head review and PR description passed.' : 'Missing/blocked review, incomplete PR body or modified relay.',
-                target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/pull/${pr.number}` });
-            }
+            const { sweep } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/review-sweep.cjs`);
+            await sweep(github, context.repo, context.payload.repository.default_branch, process.env.TRUSTED_POLICY_SHA);

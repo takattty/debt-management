@@ -100,6 +100,34 @@
       ]
     },
     {
+      "key": "markdown-structure-assumptions",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "pr-description-fence-visibility",
+          "summary": "異なる長さや注釈付きの閉じfenceを認めコード内見出しで本文検査が誤成功した",
+          "evidence": ".github/scripts/pr-description.test.cjs",
+          "recorded_at": "2026-10-29T23:31:10+00:00"
+        },
+        {
+          "event": "pr-description-optional-pipe-table",
+          "summary": "外側pipeを省いたMarkdown表の空欄を内容ありと判定した",
+          "evidence": ".github/scripts/pr-description.test.cjs",
+          "recorded_at": "2026-10-29T23:31:10+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "簡易文字列解析でMarkdownの表示境界とtableの任意外側pipeを十分に扱わなかった",
+          "prevention": "fence文字と長さと閉じ行末を検証しpipe省略表も値欄だけで判定する。独立reviewの境界例を回帰テストへ残す",
+          "verification": "旧版で誤成功したfence3例と空欄table2例を修正版が拒否。PR構造と集約gate計12tests成功",
+          "guard": ".github/scripts/pr-description.test.cjs",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T23:31:10+00:00"
+        }
+      ]
+    },
+    {
       "key": "nested-select-label",
       "status": "resolved",
       "events": [

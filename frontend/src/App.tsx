@@ -1,10 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type Customer, type Session } from './api';
+import InvitationPanel from './InvitationPanel';
+import AcceptInvitation from './AcceptInvitation';
+import type { InvitationEntry } from './invitation-entry';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '処理に失敗しました。もう一度お試しください。';
 const roleNames: Record<Session['role'], string> = { ADMIN: '管理者', ACCOUNTANT: '経理担当者' };
 
-export default function App() {
+export default function App({ invitationEntry }: { invitationEntry?: InvitationEntry } = {}) {
+  return invitationEntry ? <AcceptInvitation token={invitationEntry.token} /> : <Workspace />;
+}
+
+function Workspace() {
   const [session, setSession] = useState<Session | null>(null);
   const [restoring, setRestoring] = useState(true);
   const [email, setEmail] = useState('');
@@ -15,6 +22,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [page, setPage] = useState<'customers' | 'invitations'>('customers');
 
   useEffect(() => {
     let active = true;
@@ -34,7 +42,7 @@ export default function App() {
   }, []);
 
   function clearWorkspace() {
-    setSession(null); setCustomers([]); setCode(''); setName(''); setNotice(''); setPassword('');
+    setSession(null); setCustomers([]); setCode(''); setName(''); setNotice(''); setPassword(''); setPage('customers');
   }
 
   function reportWorkspaceFailure(failure: unknown) {
@@ -89,13 +97,14 @@ export default function App() {
     <aside className="sidebar">
       <a className="brand" href="/" aria-label="債権管理 ホーム"><span className="brand-mark">債</span><span>債権管理<small>RECEIVABLES WORKSPACE</small></span></a>
       <p className="nav-caption">WORKSPACE</p>
-      <div className="nav-current"><span aria-hidden="true">▦</span> 顧客管理</div>
+      <button className={page === 'customers' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => setPage('customers')}><span aria-hidden="true">▦</span> 顧客管理</button>
+      {session?.role === 'ADMIN' && <button className={page === 'invitations' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => setPage('invitations')}>メンバー招待</button>}
       <div className="sidebar-foot"><span className="status-dot" /> ローカル検証環境<p>架空データでご利用ください</p></div>
     </aside>
     <main>
-      <header className="topbar"><span>債権管理 / 顧客管理</span>{session && <div className="account"><span className="account-email" title={session.email}>{session.email}</span><span className="account-role">{roleNames[session.role]}</span><button className="text-button" disabled={busy} onClick={logout}>ログアウト</button></div>}</header>
+      <header className="topbar"><span>債権管理 / {page === 'invitations' ? 'メンバー招待' : '顧客管理'}</span>{session && <div className="account"><span className="account-email" title={session.email}>{session.email}</span><span className="account-role">{roleNames[session.role]}</span><button className="text-button" disabled={busy} onClick={logout}>ログアウト</button></div>}</header>
       <div className="content">
-        <div className="page-heading"><div><p className="eyebrow">CUSTOMERS</p><h1>顧客管理</h1><p className="subtitle">請求・入金管理の基礎となる取引先を登録します。</p></div>{session && <span className="count-badge">登録顧客 <strong>{customers.length}</strong> 件</span>}</div>
+        <div className="page-heading"><div><p className="eyebrow">{page === 'invitations' ? 'MEMBERS' : 'CUSTOMERS'}</p><h1>{page === 'invitations' ? 'メンバー招待' : '顧客管理'}</h1><p className="subtitle">{page === 'invitations' ? '同じ契約企業で利用するメンバーを招待します。' : '請求・入金管理の基礎となる取引先を登録します。'}</p></div>{session && page === 'customers' && <span className="count-badge">登録顧客 <strong>{customers.length}</strong> 件</span>}</div>
         {restoring ? <section className="panel login-panel"><p role="status">ログイン状態を確認しています…</p></section> : !session ? <section className="panel login-panel" aria-labelledby="login-title">
           <div className="panel-heading"><span className="step-number">01</span><div><h2 id="login-title">ワークスペースにログイン</h2><p>所属する契約企業の顧客情報を表示します。</p></div></div>
           <form onSubmit={login}>
@@ -105,7 +114,7 @@ export default function App() {
             <button className="primary-button" disabled={busy}>{busy ? '確認中…' : 'ログイン'}</button>
           </form>
           <p className="helper">登録されたメールアドレスでログインしてください。</p>
-        </section> : <>
+        </section> : page === 'invitations' && session.role === 'ADMIN' ? <InvitationPanel session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : <>
           <section className="panel" aria-labelledby="register-title">
             <div className="panel-heading"><span className="step-number">＋</span><div><h2 id="register-title">顧客を登録</h2><p>顧客コードは契約企業内で重複しない値を指定してください。</p></div></div>
             <form className="customer-form" onSubmit={register}>

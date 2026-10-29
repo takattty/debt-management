@@ -94,7 +94,7 @@ InvitationAccepted / MemberInvited / SessionStarted / SessionEnded は監査上�
 
 ## Local provisioning / fail closed
 
-架空adminを作る処理は明示 local/dev profile のみ。email/tenantは架空fixtureを固定し、LOCAL_SEED_PASSWORDを明示必須にしてpassword既定値を持たない。
+架空adminを作る処理は明示 local profile のみ。email/tenantは架空fixtureを固定し、LOCAL_SEED_PASSWORDを明示必須にしてpassword既定値を持たない。
 初回だけUserを作成し、再起動で既存passwordやroleを上書きしない。衝突時は失敗して診断する。
 非local profileではseedを実行しない。運用identity設定がない正式profileはAPIをdenyAllまたは起動失敗し、既定公開accountを作らない。
 テストprofileは明示fixtureを用意し、local seedや固定Basicに依存しない。DB永続化後の再起動も同じUserでログインできる。

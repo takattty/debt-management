@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.mockito.Mockito.when;
@@ -68,6 +69,8 @@ class CustomerImportApiTest {
             mvc.perform(get("/api/imports/" + id + suffix).session(beta).header("X-Tenant-Id", AuthFixtures.ALPHA))
                     .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
         }
+        mvc.perform(get("/api/imports/" + id + "/errors.csv").session(beta).header("Accept", "text/csv"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
         assertThat(count("customer")).isEqualTo(customers);
         when(clock.instant()).thenReturn(NOW.plusSeconds(86400));
         mvc.perform(get("/api/imports/" + id).session(alpha)).andExpect(status().isOk());
@@ -123,6 +126,17 @@ class CustomerImportApiTest {
     void templateHasExactFixedHeaderAndBomAndNoSampleBusinessRows() throws Exception {
         var response = mvc.perform(get("/api/imports/customers/template").session(alpha)).andExpect(status().isOk()).andReturn();
         assertThat(response.getResponse().getContentAsString(StandardCharsets.UTF_8)).isEqualTo("\ufeff" + CustomerCsv.HEADER);
+    }
+
+    @Test
+    void csvAcceptStillGetsStructuredJsonErrorsForUnknownIdAndMalformedId() throws Exception {
+        mvc.perform(get("/api/imports/" + UUID.randomUUID() + "/errors.csv").session(alpha).header("Accept", "text/csv"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
+        mvc.perform(get("/api/imports/not-a-uuid/errors.csv").session(alpha).header("Accept", "text/csv"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        mvc.perform(post("/api/imports/customers/preview").session(alpha).with(csrf().asHeader())
+                        .contentType("multipart/form-data").content("broken"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
 
     @Test

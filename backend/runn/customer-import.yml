@@ -66,6 +66,46 @@ steps:
           body: null
     test: current.res.status == 200 && current.res.rawBody == '\uFEFFcustomer_code,customer_name\r\n'
       && current.res.headers['Content-Disposition'][0] == 'attachment; filename="customers-template.csv"'
+  unknownCsvAccept:
+    api:
+      /api/imports/00000000-0000-0000-0000-000000000000/errors.csv:
+        get:
+          headers:
+            Accept: text/csv
+          body: null
+    test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'
+      && current.res.headers['Content-Type'][0] == 'application/json'
+  malformedIdCsvAccept:
+    invalid:
+      /api/imports/not-a-uuid/errors.csv:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            Accept: text/csv
+          body: null
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  missingMultipartBoundary:
+    invalid:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+            Content-Type: multipart/form-data
+          body:
+            text/plain: broken
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  truncatedMultipartBoundary:
+    invalid:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+            Content-Type: multipart/form-data; boundary=abc
+          body:
+            text/plain: "--abc\r\nContent-Disposition: form-data; name=\"file\"; filename=\"fictional.csv\"\r\n\r\nbroken"
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
   missingCsrf:
     invalid:
       /api/imports/customers/preview:

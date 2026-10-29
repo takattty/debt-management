@@ -3,6 +3,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/toolchain-env.sh
 mkdir -p work
+if [ -n "${E2E_BASE_URL:-}" ]; then
+  echo 'Unset E2E_BASE_URL: verify must test the frontend/backend started from this commit.' >&2
+  exit 1
+fi
+if [ -n "${API_PROXY_TARGET:-}" ] && [ "$API_PROXY_TARGET" != 'http://127.0.0.1:8080' ]; then
+  echo 'Unset API_PROXY_TARGET: verify must use its own backend on 127.0.0.1:8080.' >&2
+  exit 1
+fi
+export API_PROXY_TARGET=http://127.0.0.1:8080
 python3 scripts/failure-loop.py check
 python3 -m unittest discover -s tests
 node --test .github/scripts/review-gate.test.cjs

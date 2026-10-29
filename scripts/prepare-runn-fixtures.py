@@ -16,3 +16,17 @@ for name, data in (
         writer = csv.writer(target, lineterminator='\r\n' if name != 'reordered' else '\n')
         writer.writerow(['customer_code', 'customer_name'])
         writer.writerows(data)
+
+invoices = [
+    ['RUNN-INVOICE-CUSTOMER', f'INV-{uuid.uuid4()}', '2026-10-29', '2026-11-30', '100000'],
+    ['RUNN-INVOICE-CUSTOMER', f'INV-{uuid.uuid4()}', '2026-10-29', '2026-11-30', '200000'],
+]
+for name, data in (
+    ('valid', invoices),
+    ('invalid', [invoices[0], ['MISSING-CUSTOMER', *invoices[1][1:4], 'abc']]),
+    ('reordered', list(reversed(invoices))),
+):
+    with (root / f'runn-invoice-{name}.csv').open('w', encoding='utf-8-sig', newline='') as target:
+        writer = csv.writer(target, lineterminator='\r\n' if name != 'reordered' else '\n')
+        writer.writerow(['customer_code', 'invoice_number', 'issue_date', 'due_date', 'amount'])
+        writer.writerows(data)

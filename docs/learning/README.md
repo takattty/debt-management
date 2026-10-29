@@ -40,3 +40,5 @@ GitHub CLIもcwdによるrepository推測に依存しない。`scripts/gh-repo.s
 work証拠を相対pathで直接読む操作も再発したため、`python3 scripts/read-evidence.py work/name.log` で登録worktreeから所有先を自動解決する。同名が複数なら読み込まず拒否し、`--worktree /absolute/owner` を要求する。repo/証拠の所有先が異なる読込は別commandへ分ける。
 
 helperが未導入の古い証拠checkoutから相対pathでhelperを呼ぶ失敗も観測した。Coordinatorはactive code checkout内のhelper絶対pathを使用する。helperの所有先と証拠の所有先は別に解決し、Docker等の操作は証拠readerと別commandで実行する。
+
+source classのfilenameも推測しない。最初に`rg --files`で対象packageの実在pathを列挙し、出力を確認した次のcommandで列挙済みpathだけを読む。discoveryと未確認の`cat`を同じbatchに組み込まず、名前の近いclassや責務からfilenameを作らない。

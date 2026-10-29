@@ -3,7 +3,7 @@
 Status: 設計案。CSV codecは #23、受動ImportBatch metadata/DB制約は #25で統合済み。HTTP API・業務confirm・画面は未公開。Issue #1/#3、requirements R01〜05/R12/R18〜22、EX-I01〜08、ADR-0001/0002を根拠とする。
 前提: #2のemail session/role/tenant/auditが成立済み。全PRで既存BE/FE単体・統合・runn API・E2Eを含む必須CIと同SHA独立レビューを維持する。
 
-## 合意済みと回答待ちの区別
+## 合意済みの業務判断
 
 - 顧客CSV=`customer_code,customer_name`、請求CSV=`customer_code,invoice_number,issue_date,due_date,amount`。
 - UTF-8、BOM可、headerあり、日付`YYYY-MM-DD`、金額は税込JPY整数。顧客を先に登録する。
@@ -11,13 +11,13 @@ Status: 設計案。CSV codecは #23、受動ImportBatch metadata/DB制約は #2
 - preview→修正/再取込→明示confirm。不正行があれば正常行も一切登録しない。担当者は単独確定可。
 - 未消込請求のみ訂正/取消可。消込後は消込取消を先に行い、変更・取消履歴を残す。
 
-| 確認中の業務判断 | 具体例 | 推奨案・依存する実装 |
+| 合意済みの業務判断 | 具体例 | 2026-10-29のユーザー回答 |
 | --- | --- | --- |
-| B01 顧客CSVの既存code | C001「架空商事」へCSVで「架空商事 新名称」 | 新規専用でバッチ全拒否。更新は既存version付き画面で明示。customer confirmの分岐のみ回答依存 |
-| B02 請求番号訂正/取消後再使用 | INV001取消→新規INV001 | 番号は不変・取消後も予約。未消込なら顧客/日付/金額は理由付き訂正可。番号の変更可否と一意制約が回答依存 |
-| B03 金額/日付の業務範囲 | 0円/負額の返品、issue_dateより前のdue_date | 初期は正額かつ期日は発行日以降。credit noteは別判断。行検証条件のみ回答依存 |
+| B01 顧客CSVの既存code | C001「架空商事」へCSVで「架空商事 新名称」 | 新規専用でバッチ全拒否。更新は既存version付き個別画面で明示 |
+| B02 請求番号訂正/取消後再使用 | INV001取消→新規INV001 | 番号は登録後不変・取消後も予約。未消込なら顧客/日付/金額は理由付き訂正可 |
+| B03 金額/日付の業務範囲 | 0円/負額の返品、issue_dateより前のdue_date | 初期は税込の正の円整数、期日は発行日以降。0円・負額・返品/値引伝票は初期対象外 |
 
-3点はrootがユーザーに質問済み。回答前に推奨を合意済みとしない。解析・preview固定・tenant・原子性・version・履歴・検証の設計は継続できる。
+3点ともユーザーが「3点とも推奨案で進める」と回答済み。回答はIssue #3にも保存した。これらについて再確認を求めず、顧客CSVから実装を進める。
 
 ## ユースケースと不変条件
 
@@ -46,7 +46,7 @@ Status: 設計案。CSV codecは #23、受動ImportBatch metadata/DB制約は #2
 | audit_event | 既存のuser UUIDによる監査を再利用。import/Invoice更新と同一transaction |
 
 Customer既存code/name/versionを再利用し、(tenant_id,id)のUNIQUEとInvoiceからの複合FKで越境参照をDBでも拒否する。
-InvoiceNumberのUNIQUEはB02回答で確定。推奨は取消状態にかかわらずUNIQUE(tenant_id,invoice_number)。
+InvoiceNumberはB02に従い、取消状態にかかわらずUNIQUE(tenant_id,invoice_number)。
 DBはbigint、Javaはchecked integer。APIの各金額はJSで正確に扱える範囲を明示し、CSVをfloat経由で読まない。
 技術上の上限案は1件9,007,199,254,740,991円。集計はBigInteger/SQL numericでoverflowを防ぎ、数値JSONで精度を失う合計を返さない。
 請求番号100 code points、顧客code50/name200は既存制約に合わせる案。Unicode NFC/NFKCや大小文字の無断正規化をしない。

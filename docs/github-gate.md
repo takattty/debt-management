@@ -1,14 +1,14 @@
-# GitHub merge gate 設定案
+# GitHub merge gate
 
-Issue #1 / #7の実証待ち。metadataのadmin=trueと設定APIの実行権限は異なり、この連携はbranch protection readで403を返す。自動設定の試行は実行されていない。
+Issue #1 / #7に実証結果を記録する。Public/Free、auto-merge有効、main rulesetはactive・bypassなしを実APIで確認済み。metadataのadmin=trueと設定APIの実行権限は異なり、classic branch protection readの403を繰り返さずruleset APIで確認する。
 
-mainの提案設定（GitHub Settings → Branches / Rules）:
+mainの確認済み設定（ruleset26124161）:
 
 - Require a pull request before merging。
-- Require status checks to pass: `quality` と `independent-review`。
+- Require status checks to pass: `quality` と `independent-review`。発行元はGitHub Actionsに固定。
 - Require branches to be up to date。
 - 管理者を含めて適用し、force push / deletionを禁止。
-- 会話の解決を要求。
+- GitHub標準の必須承認人数は0、独立Cloudレビューの明示結果を下記statusで検証する。
 
 `independent-review`は保護default branchのGitHub Actionsが発行するrequired commit status。pull_request_target / read-only review relayのworkflow_run / issue_commentを入口とし、PRのコード・判定器・workflowは実行しない。PR reviewの明示レポートを読み、review.commit_idとレポートのhead_shaが最新PR headと一致すること、trusted association、最新判定pass・blocking_findings=0を検証する。commit status書込みAPIは403であるため反復せず、Actions tokenのstatuses:writeで発行する。reviewのsubmitted/edited/dismissedでread-only relayが起動し、default branchのconsumerが現在情報を再取得する。trusted consumer自身がhead relayのblobとprotected defaultのblob一致を確認する。status書込みは全イベント共通groupで直列化し、各runは全open PRを再評価する。relayの成果物や結論は信用しない。Reviewerへ実装会話を継承せず、Issue/仕様/ADR/SHAを渡す。blocking findingsを解消し、同じSHAでreview完了したときだけsuccessにする。レビュー後変更ではstatus未設定の新SHAになるため通過不可。無コメント・古いSHA・外部者のレポート・blocking判定を拒否する単体テストを含む。
 
@@ -39,3 +39,9 @@ Actionsはpublic repositoryの標準 `ubuntu-24.04` runnerのみ。workflowは�
 ## 初期導入の終了
 
 2026-10-29、ユーザーが独立レビュー済み固定SHA e7b6d06f439bdd5ec664a935a67445e2f91139a8 の初回実行を承認。bootstrap run40884695535が実statusを発行し、quality/independent-review成功とhead/base/最新reviewを確認してPR #9をmergeした。mainは737c01e40de013ab7d2fea8b567e52187fff9085へ進み、初期base条件は失効済み。本変更でbootstrap workflowを除去する。変数もユーザーが削除したと報告済み。以降このrepo内で初期経路を再導入しない。通常のreview relay/consumerとrequired checksを維持する。
+
+## 最新レビューの撤回
+
+同SHAの最新trusted review自体を判定する。最新レビューがmarkerなし、dismissed、pending、不正または複数markerなら失効し、過去のpassへ戻らない。無関係な補足はConversation commentで行い、reviewを追加した場合は最新reviewへ明示結果を記載する。
+
+marker削除とdismissで古いpassへ戻る不具合を2ケースで再現した。回帰テストは旧判定器で失敗し、修正版の3テストは成功。これはローカル判定器の検証であり、導入後のGitHub上の撤回→status failure→merge拒否はIssue #7へ別途記録する。

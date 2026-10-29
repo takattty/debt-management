@@ -106,6 +106,62 @@
       ]
     },
     {
+      "key": "partial-patch-context",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "readme-partial-context-20261029",
+          "summary": "長いREADME段落の一部を完全なcontext行と仮定してpatchが失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T16:56:54+00:00"
+        },
+        {
+          "event": "gate-doc-partial-context-20261029",
+          "summary": "gate文書でも部分行contextを渡し同じpatch不一致が起きた",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T16:56:54+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "行全体を確認せず文字列の部分一致でpatchできると誤認した",
+          "prevention": "編集前に全行を読み実在する短いheadingか完全なcontext行で最小差分を作る",
+          "verification": "gate文書とguardを再読し完全なcontextで適用成功、git diff check成功",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T16:56:54+00:00"
+        }
+      ]
+    },
+    {
+      "key": "review-result-fallback",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "latest-marker-removal",
+          "summary": "最新marker削除で同SHAの古いpassへ戻り誤成功した",
+          "evidence": "docs/github-gate.md",
+          "recorded_at": "2026-10-29T16:56:54+00:00"
+        },
+        {
+          "event": "latest-review-dismissal",
+          "summary": "最新reviewのdismissでも古いpassへ戻り誤成功した",
+          "evidence": "docs/github-gate.md",
+          "recorded_at": "2026-10-29T16:56:54+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "markerを持つreviewだけ先に抽出したため最新reviewの撤回を無視した",
+          "prevention": "最新trusted review自体を選び撤回や曖昧なmarkerを拒否し過去passへfallbackしない",
+          "verification": "旧判定器は回帰テスト1件失敗、修正版は3件成功。GitHub実動作はIssue7で別途確認する",
+          "guard": ".github/scripts/review-gate.test.cjs",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T16:56:54+00:00"
+        }
+      ]
+    },
+    {
       "key": "stale-main-tracking-ref",
       "status": "resolved",
       "events": [

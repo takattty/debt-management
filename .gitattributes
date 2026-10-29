@@ -1,0 +1,7 @@
+frontend/package-lock.json linguist-generated=true
+backend/gradle/dependency-locks/** linguist-generated=true
+backend/gradle.lockfile linguist-generated=true
+backend/gradlew linguist-generated=true
+backend/gradlew.bat linguist-generated=true
+frontend/src/generated/** linguist-generated=true
+backend/gradlew.bat text eol=crlf

@@ -1,0 +1,72 @@
+name: Quality
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.0@sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
+        env:
+          POSTGRES_DB: debt
+          POSTGRES_USER: debt
+          POSTGRES_PASSWORD: debt_local
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U debt -d debt"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      DB_PASSWORD: debt_local
+      SPRING_PROFILES_ACTIVE: dev
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        if: hashFiles('backend/build.gradle.kts') != ''
+        with:
+          distribution: temurin
+          java-version: '25.0.1+8.0.LTS'
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        if: hashFiles('frontend/package.json') != ''
+        with:
+          node-version: '24.19.0'
+      - name: Install pinned E2E browser
+        if: hashFiles('scripts/verify.sh') != ''
+        run: cd frontend && npm ci && npx playwright install --with-deps chromium
+      - name: Verify applicable bootstrap stage
+        run: |
+          if [ -x scripts/verify.sh ]; then
+            scripts/verify.sh
+          else
+            git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check HEAD^ HEAD
+            node --test .github/scripts/review-gate.test.cjs
+            if [ -f scripts/failure-loop.py ]; then
+              python3 scripts/failure-loop.py check
+              python3 -m unittest discover -s tests
+            fi
+            if [ -f backend/build.gradle.kts ]; then
+              (cd backend && ./gradlew --no-daemon check bootJar)
+            fi
+            if [ -f frontend/package.json ]; then
+              npm --prefix frontend ci
+              npm --prefix frontend run lint
+              npm --prefix frontend run typecheck
+              npm --prefix frontend run test:unit
+              npm --prefix frontend run build
+            fi
+            echo 'Partial bootstrap: screen-to-DB E2E becomes mandatory with the runtime PR.'
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: failure()
+        with:
+          name: verification-evidence
+          path: |
+            work/backend.log
+            backend/build/reports
+            frontend/playwright-report

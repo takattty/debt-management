@@ -1,0 +1,28 @@
+name: Independent review
+on:
+  pull_request:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  independent-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: node --test .github/scripts/review-gate.test.cjs
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
+            if (pr.head.sha !== context.payload.pull_request.head.sha) {
+              core.setFailed('The head changed; a current review run is required.');
+              return;
+            }
+            const reviews = await github.paginate(github.rest.pulls.listReviews, { ...context.repo, pull_number: pr.number });
+            const { evaluate } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/review-gate.cjs`);
+            if (!evaluate(reviews, pr.head.sha)) core.setFailed('Missing explicit independent review with zero blocking findings for the current head SHA.');

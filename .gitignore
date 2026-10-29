@@ -1,0 +1,13 @@
+work/
+**/work/
+**/node_modules/
+**/dist/
+**/target/
+**/playwright-report/
+**/test-results/
+.env
+.env.*
+!.env.example
+**/build/
+**/.gradle/
+**/__pycache__/

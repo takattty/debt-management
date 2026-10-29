@@ -1,6 +1,6 @@
 # IdentityAndAccess implementation plan — Issue #2
 
-Status: 設計案。基盤の成立・merge 後に機能ブランチへ移し、仕様レビューして実装する。
+Status: email/cookie sessionと管理者招待・匿名受諾のAPI/画面を実装・独立レビュー・CI後に統合済み（#19/#20/#21/#27/#28/#29）。試行制限も #30 で独立レビュー・全CI後に統合済み。
 根拠: Issue #1/#2、requirements R16〜R22、EX-A01〜04、ADR-0001/0003。
 範囲: 架空データ・ローカル Docker。商用インフラ、追加 API 課金、メール送信サービスなし。
 
@@ -14,8 +14,8 @@ Status: 設計案。基盤の成立・merge 後に機能ブランチへ移し、
 
 ## 現行からの移行
 
-現在は dev profile の固定 Basic principal と GET `/api/session`、POST `/api/logout`、CSRF で縦断確認している。
-Issue #2 では Basic 認証・固定 principal・FE の password 常時保持を廃止し、DB User と cookie session へ置換する。
+旧dev profileの固定Basic principalは廃止済み。POST `/api/auth/login`、GET `/api/session`、POST `/api/logout`、CSRFをDB Userとcookie sessionへ接続した。
+FEのpassword常時保持も廃止し、招待fragment/発行link/passwordはpagehideで同期破棄、BFCache復帰時はURL/cookieから新たに起動する。
 正本 `contracts/openapi.yaml` を先に更新し、Java interface/DTO と TypeScript 型を再生成する。
 既存 Customer API の tenant 分離・型拒否・競合・audit の検査を維持し、runn の login 部分だけ新方式へ移す。
 logout 後の旧 cookie 拒否と CSRF 保護を引き継ぐ。Basic header だけではログインできない否定例も追加する。
@@ -70,7 +70,7 @@ InvitationAccepted / MemberInvited / SessionStarted / SessionEnded は監査上�
 - CSRF は session に結び付け、login・招待照会/受諾・logoutを含む全POSTへ適用。login後は新 token を取得する。
 - CORS は同一 origin のみ。CSRF token や X-Requested-With だけを認証の代替にしない。
 - 認証失敗は未登録/誤passwordを区別しない401、dummy hash検証を行う。短時間の試行制限を設け429を検証する。
-  試行制限・429は初回のlocalhost専用sliceでは未実装であり、後続PRで追加する。現在のlogin契約は429を保証しない。
+  初回sliceで後続扱いにした試行制限は #30 で実装。emailの失敗＋in-flight10、IP60/60秒、容量1万key、Retry-After1〜60秒。成功時はemail失敗だけresetし、新cookie/XFFで回避できない。単一BEのmemory管理で、再起動時にcounterは失効する。
 - 招待invalid/expired/usedは同じ公開エラー。受諾時email競合も他Tenantの所属情報を返さない。
 - 共有リンクは `/accept-invitation#token=...`。FEがfragmentから読んでhistory.replaceStateで消し、tokenはPOST本文のみ送る。
   Referrer-Policy:no-referrer、第三者scriptなし、localStorage不使用。管理者は自分で共有先を確認する。
@@ -81,12 +81,12 @@ InvitationAccepted / MemberInvited / SessionStarted / SessionEnded は監査上�
 | Method / path | 入力と応答 | 主な拒否 |
 | --- | --- | --- |
 | GET /api/csrf | Anonymous可、csrfToken/headerName、session cookie | closed profile 403 |
-| POST /api/login | email,password + CSRF → 204、session cookie変更 | 400 / 401 / 403 / 429 |
+| POST /api/auth/login | email,password + CSRF → 204、session cookie変更 | 400 / 401 / 403 / 429 |
 | GET /api/session | userId,email,role,tenantId,csrfToken/headerName → 200 | 401 |
 | POST /api/logout | CSRF → 204 | 401 / 403 |
 | POST /api/invitations | admin、email,role + CSRF → 201、id,expiresAt,acceptanceUrl | 400 / 401 / 403 / 409 |
-| POST /api/invitations/inspect | Anonymous、token + CSRF → 200、tenantDisplayName,maskedEmail,role,expiresAt | 400 / 403 / 429 |
-| POST /api/invitations/accept | Anonymous、token,email,password + CSRF → 201、完了結果 | 400 / 403 / 409 / 429 |
+| POST /api/invitations/inspect | Anonymous、token + CSRF → 200、tenantDisplayName,maskedEmail,role,expiresAt | 400 / 403 |
+| POST /api/invitations/accept | Anonymous、token,email,password + CSRF → 201、完了結果 | 400 / 403 / 409 |
 
 受諾後は自動ログインせずlogin画面へ案内する。URLやログへpassword/tokenを含めない。OpenAPIにcookie authとCSRF headerを明示する。
 業務APIの未認証は401、認証済み権限不足は403、他Tenantの個体指定は404として存在を隠す。
@@ -94,7 +94,7 @@ InvitationAccepted / MemberInvited / SessionStarted / SessionEnded は監査上�
 
 ## Local provisioning / fail closed
 
-架空adminを作る処理は明示 local/dev profile のみ。email/tenant名/passwordは環境変数を必須とし、password既定値を持たない。
+架空adminを作る処理は明示 local/dev profile のみ。email/tenantは架空fixtureを固定し、LOCAL_SEED_PASSWORDを明示必須にしてpassword既定値を持たない。
 初回だけUserを作成し、再起動で既存passwordやroleを上書きしない。衝突時は失敗して診断する。
 非local profileではseedを実行しない。運用identity設定がない正式profileはAPIをdenyAllまたは起動失敗し、既定公開accountを作らない。
 テストprofileは明示fixtureを用意し、local seedや固定Basicに依存しない。DB永続化後の再起動も同じUserでログインできる。
@@ -138,6 +138,6 @@ Contract/生成ファイルは一人が所有し、BE/FE担当は直接並行編
 password reset、account recovery、email変更、メンバー失効/退会、最後のadmin保護は未合意。必須範囲へ黙って追加せず、必要性を質問して後続Issueへ分ける。
 単一BEのsessionは再起動で失効する。複数instance・永続session・外部identity providerは今回のローカル範囲に含めない。
 
-## 初回縦断の実装境界
+## 初回縦断の実装境界（履歴）
 
 最初のPRはDBユーザー、local明示seed、cookie session、匿名CSRFとlogin/logout、role/tenantのDB再読込、顧客操作の監査actor UUIDまで。招待・回復・role管理は後続PRで、未実装を完了扱いにしない。login入力は空でないことと上限を検査し、作成時の最小長をloginへ誤用しない。local以外はfail closed、auth-testはseedなしのDB fixture専用。

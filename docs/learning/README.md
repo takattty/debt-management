@@ -34,3 +34,9 @@ patch適用前に対象の行全体を読み、部分行を完全なcontext行�
 GitHub metadata取得は応答ごとの契約を確認する。PRのhead/baseはREST pulls/{number}のhead.sha/base.shaを用いる。combined statusはcreatorを省略するため、発行者確認はcommits/{sha}/statusesを用いる。gh pr viewのJSON選択肢はGraphQL全fieldと同じではなく、未対応field名を推測して反復しない。metadata不足ではmergeを止め、guard条件を緩めず正しいendpointへ直す。
 
 worktreeと検証物の所有先を明示する。新worktreeを作るcommandは既存cwdから実行し、作成成功とHEADを確認してからそのpathをcwdに使う。別treeのwork配下の証拠は所有treeの絶対pathで読み、相対pathが現在のtreeを指すことを仮定しない。
+
+GitHub CLIもcwdによるrepository推測に依存しない。`scripts/gh-repo.sh takattty/debt-management run view RUN_ID --json status,conclusion` のようにrepositoryを必須引数にする。省略時はCLIを起動せず拒否する。checkout外cwdと誤った継承GH_REPOでも選択先が固定される回帰テストをCIで実行する。
+
+work証拠を相対pathで直接読む操作も再発したため、`python3 scripts/read-evidence.py work/name.log` で登録worktreeから所有先を自動解決する。同名が複数なら読み込まず拒否し、`--worktree /absolute/owner` を要求する。repo/証拠の所有先が異なる読込は別commandへ分ける。
+
+helperが未導入の古い証拠checkoutから相対pathでhelperを呼ぶ失敗も観測した。Coordinatorはactive code checkout内のhelper絶対pathを使用する。helperの所有先と証拠の所有先は別に解決し、Docker等の操作は証拠readerと別commandで実行する。

@@ -1,6 +1,6 @@
 # Receivables implementation plan — Issue #3
 
-Status: 設計案。CSV codecのみPR #23で実装し、HTTP API・業務モデルは未公開。Issue #1/#3、requirements R01〜05/R12/R18〜22、EX-I01〜08、ADR-0001/0002を根拠とする。
+Status: 設計案。CSV codecは #23、受動ImportBatch metadata/DB制約は #25で統合済み。HTTP API・業務confirm・画面は未公開。Issue #1/#3、requirements R01〜05/R12/R18〜22、EX-I01〜08、ADR-0001/0002を根拠とする。
 前提: #2のemail session/role/tenant/auditが成立済み。全PRで既存BE/FE単体・統合・runn API・E2Eを含む必須CIと同SHA独立レビューを維持する。
 
 ## 合意済みと回答待ちの区別

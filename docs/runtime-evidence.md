@@ -50,12 +50,12 @@
 ## 再開手順
 
 1. Issue #1/#7と各PRの最新コメント、head SHA、CI、review対象SHAを確認。`docs/roadmap.md` に従う。
-2. 対象 `foundation/*` branchをfetch/checkoutし、未commitを上書きしない。原作業tree `/workspace/debt-management`、分割tree `/workspace/debt-stack`、独立review treeは別。GitHub branch/PRを復元元とする。
+2. `scripts/fetch-main.sh`でremote一致を確認し、Issueが指定する対象branchをcheckoutする。古い原作業treeの未commitを上書きせず、GitHub branch/PRを復元元とする。helperはactive code checkoutの絶対pathから呼び、証拠はread-evidence.pyで所有先を解決する。
 3. `source scripts/toolchain-env.sh`、Java25/Node/npm/Gradle wrapper、Cloud network policy/proxy/CAを確認。
-4. テスト専用PGを起動し `CHROMIUM_PATH=/usr/bin/chromium scripts/verify.sh`。テストはcustomer/auditを初期化するため実データDBで実行しない。必要ならDB_URLで専用DBへ。
-5. `CHROMIUM_PATH=/usr/bin/chromium scripts/docker-verify.sh`。Docker成果物を再buildしてから実E2E。
+4. テスト専用PGを起動し `CHROMIUM_PATH=/usr/bin/chromium scripts/verify.sh`。テストは対象テーブルを初期化するため実データDBで実行しない。必要ならDB_URLで専用DBへ。
+5. `LOCAL_SEED_PASSWORD=debt_local_demo_2026 CHROMIUM_PATH=/usr/bin/chromium scripts/docker-verify.sh`。専用の架空データ用Docker projectで成果物を再buildし実E2Eを行う。通常停止でvolumeを削除しない。
 6. 仕様/ADR/Issue/base/headを別context Reviewerへ渡す。修正後は新SHAで必要な再検証/再レビュー。
-7. bootstrap承認/固定pin/実イベント/否定検証を確認。最新SHAでquality・独立レビュー・blocking0・受入条件を揃えてからmerge。初期変数/例外を除去し、#2〜#6へ進む。
+7. 通常gateの最新SHAでquality・独立レビュー・blocking0・受入条件を揃えてからmerge。bootstrapは削除済みで再導入しない。#3〜#6の業務機能へ進む。
 
 生ログはignored work配下。重要結果/阻害/再開はIssueとtracked evidenceへ残し、Cloudの作業領域だけに依存しない。
 
@@ -66,3 +66,14 @@
 repo.allow_auto_merge=trueをread確認。#12はGitHub AutoMergeEnabledEvent(UTC15:17:19)を記録し、check待機中auto_merge設定と未mergeを実観測、その後必須成功でUTC15:18:34にGitHubがafd2d916へmergeした。rootが条件未達で強制mergeした事実はない。CodeRabbitはユーザーがuninstallし、新規PRのcheckから消えた。
 
 CIの最終mandatory化とrunnはPR #17、latest472b552のrun40895337491成功でBE13/FE5/runn3books39HTTP/E2E1/metadata-policy2/Python5/生成drift1を実ログ確認、同SHA独立review5699802391がpass。後続でSHAが変わればそのCI/再reviewを別途揃える。#1のCloud別task委譲/実停止再起動は引き続き未実証で、software gate成功と区別する。
+
+## 認証・招待の統合検証（2026-10-29）
+
+- #19/#20でDB email/password・Argon2id・HttpOnly cookie・CSRF・tenant/role再読込を統合。#21/#27/#28でhash-only招待、24h単回、管理者/経理権限、並行受諾と監査rollbackを検証した。
+- #29の最新head `4bd35a733abfc2ca0ea19f61d129f8948ca30112` は独立review5702365585、[CI40923806927](https://github.com/takattty/debt-management/actions/runs/40923806927)成功。実ログでJava67、FE31、runn6シナリオ、実E2E5、native BFCache2を確認。履歴復元のリンク再表示は独立probeで発見→同期破棄へ修正→同probeとCI guardで解消した。
+- #30の最新head `8f8b2ba597ee60034f82c0987a6d83bca74cbf13` は独立review5702504818、[CI40924778627](https://github.com/takattty/debt-management/actions/runs/40924778627)成功。実ログでJava74、FE31、runn7シナリオ（132HTTP）、実E2E5、native BFCache2、Python7、review-policy3、生成drift1、audit0/生成/Lint/型/buildを確認。独立検査でも74 Java/132HTTPとClock・並行予約・cookie/XFF・IP上限・監査失敗を実証。
+- Docker対象main `336971283bf0434cb6698f3110bd4448fc1a06c9` を専用projectでbuildし、実E2E5＋native BFCache2成功。stop→upで顧客6件・User6件・受諾済み招待3件を保持し、再ログインも成功。実行中backend jarのSHA256は今回build成果物と一致した。
+- #24/#26の追加review撤回→required failure→実merge405・main不変は[Issue #7](https://github.com/takattty/debt-management/issues/7#issuecomment-6503430700)。probeは未mergeでclose、必須2checksを維持した。
+- 自己改善は同原因の再発を新eventとして再openし、原因・対策・検証・guardを更新。cwd起因の取得誤りには明示repo wrapper/証拠owner resolverと回帰テストを追加した。新しいdev guardのPython検証は12件成功、CIも通常verifyのunittest discoveryへ含める。
+
+売掛金の顧客CSV/請求preview・確定・訂正取消、入金・消込・滞留・督促、貸付元本は未完成。CSV codec #23と受動保存core #25は業務縦断の完成ではない。Issue #3のB01〜03（既存顧客CSV、請求番号、金額/期日）の回答待ちを保存し、回答後に同Issueから実装を再開する。Cloud taskの停止後再起動・別task委譲・/goalはアプリのstop/upやsubagentと同一視せず未検証のまま残す。

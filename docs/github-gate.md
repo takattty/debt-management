@@ -45,3 +45,5 @@ Actionsはpublic repositoryの標準 `ubuntu-24.04` runnerのみ。workflowは�
 同SHAの最新trusted review自体を判定する。最新レビューがmarkerなし、dismissed、pending、不正または複数markerなら失効し、過去のpassへ戻らない。無関係な補足はConversation commentで行い、reviewを追加した場合は最新reviewへ明示結果を記載する。
 
 marker削除とdismissで古いpassへ戻る不具合を2ケースで再現した。回帰テストは旧判定器で失敗し、修正版の3テストは成功。これはローカル判定器の検証であり、導入後のGitHub上の撤回→status failure→merge拒否はIssue #7へ別途記録する。
+
+追加実証は[Issue #7](https://github.com/takattty/debt-management/issues/7#issuecomment-6503430700)に記録済み。PR #26はquality/旧passを残したまま最新markerを削除し、review editedイベントからrequired status failure、実merge HTTP405、main不変を確認して未mergeで閉じた。dismissed/pending/複数markerは単体で、GitHub実イベントはmarker削除の範囲を実証した。

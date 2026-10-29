@@ -100,6 +100,54 @@
       ]
     },
     {
+      "key": "markdown-structure-assumptions",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "pr-description-fence-visibility",
+          "summary": "異なる長さや注釈付きの閉じfenceを認めコード内見出しで本文検査が誤成功した",
+          "evidence": ".github/scripts/pr-description.test.cjs",
+          "recorded_at": "2026-10-29T23:31:10+00:00"
+        },
+        {
+          "event": "pr-description-optional-pipe-table",
+          "summary": "外側pipeを省いたMarkdown表の空欄を内容ありと判定した",
+          "evidence": ".github/scripts/pr-description.test.cjs",
+          "recorded_at": "2026-10-29T23:31:10+00:00"
+        },
+        {
+          "event": "pr-description-unclosed-html-comment",
+          "summary": "修正後も未閉じHTMLコメント内の見出しで検査が誤成功し独自解析の限界が再発した",
+          "evidence": ".github/scripts/pr-description.test.cjs",
+          "recorded_at": "2026-10-29T23:38:24+00:00"
+        },
+        {
+          "event": "pr-description-raw-html-pre",
+          "summary": "raw HTML pre内の見出しを表示された見出しと誤判定した",
+          "evidence": ".github/scripts/pr-description.test.cjs",
+          "recorded_at": "2026-10-29T23:38:24+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "簡易文字列解析でMarkdownの表示境界とtableの任意外側pipeを十分に扱わなかった",
+          "prevention": "fence文字と長さと閉じ行末を検証しpipe省略表も値欄だけで判定する。独立reviewの境界例を回帰テストへ残す",
+          "verification": "旧版で誤成功したfence3例と空欄table2例を修正版が拒否。PR構造と集約gate計12tests成功",
+          "guard": ".github/scripts/pr-description.test.cjs",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T23:31:10+00:00"
+        },
+        {
+          "cause": "個別修正を重ねた独自Markdown解析ではコメントとraw HTMLの構文境界を正しく扱えなかった",
+          "prevention": "独自lexerを廃止して固定marked18.1.2の構文木を使用する。コードHTMLと未閉じコメントを除外し回帰例を維持する",
+          "verification": "独立reviewで発見したfence/table/unclosedcomment/preの全例を拒否しNode13tests成功。inlinecode内のコメント文字は許容、固定依存audit0件",
+          "guard": ".github/scripts/pr-description.test.cjs",
+          "event_count": 4,
+          "resolved_at": "2026-10-29T23:38:24+00:00"
+        }
+      ]
+    },
+    {
       "key": "nested-select-label",
       "status": "resolved",
       "events": [
@@ -186,6 +234,34 @@
           "guard": "docs/learning/README.md",
           "event_count": 2,
           "resolved_at": "2026-10-29T16:56:54+00:00"
+        }
+      ]
+    },
+    {
+      "key": "patch-file-boundaries",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "pr-template-delete-add-same-path",
+          "summary": "同じpathへのDeleteとAddを一つのpatchへ含めtoolが原子的に拒否した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:24:18+00:00"
+        },
+        {
+          "event": "customer-ui-missing-second-file-header",
+          "summary": "複数file patchの2つ目のUpdate File指定が欠け別fileのcontextを探索し拒否された",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:24:18+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "複数file patchのfile指定境界を検査せず同一pathの重複操作やUpdate指定の欠落を含めた",
+          "prevention": "fileごとに一つの正しいUpdate Fileを置き既存fileの置換はDelete/AddでなくUpdateとする",
+          "verification": "file境界を直したPRテンプレートとUI修正は適用成功。新規PR構造/CLI/既存review計7testsとgit diff check成功",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T23:24:19+00:00"
         }
       ]
     },
@@ -278,6 +354,12 @@
           "summary": "新helper未導入の古い証拠checkoutからhelper相対pathを呼び起動前に失敗した",
           "evidence": "scripts/read-evidence.py",
           "recorded_at": "2026-10-29T18:08:18+00:00"
+        },
+        {
+          "event": "frontend-package-cwd-enoent-20261030",
+          "summary": "FEのpackageコマンドをrepository rootから実行しpackage.json不在で失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:21:14+00:00"
         }
       ],
       "resolutions": [
@@ -312,6 +394,14 @@
           "guard": "docs/learning/README.md",
           "event_count": 5,
           "resolved_at": "2026-10-29T18:08:19+00:00"
+        },
+        {
+          "cause": "checkout所有先を明示していてもnpmがrepository rootのpackage.jsonを読むと仮定した",
+          "prevention": "複数worktreeのFE packageコマンドはnpm --prefixと絶対frontend pathで実行し編集と分離する",
+          "verification": "repository rootをcwdにしてnpm --prefix /workspace/debt-customer-ui/frontend run lintを実行し成功した",
+          "guard": "frontend/AGENTS.md",
+          "event_count": 6,
+          "resolved_at": "2026-10-29T23:21:27+00:00"
         }
       ]
     }

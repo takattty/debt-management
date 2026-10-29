@@ -12,11 +12,13 @@ if [ -n "${API_PROXY_TARGET:-}" ] && [ "$API_PROXY_TARGET" != 'http://127.0.0.1:
   exit 1
 fi
 export API_PROXY_TARGET=http://127.0.0.1:8080
+export npm_config_cache="${npm_config_cache:-$PWD/work/npm-cache}"
 python3 scripts/failure-loop.py check
 python3 -m unittest discover -s tests
-node --test .github/scripts/review-gate.test.cjs
+npm --prefix .github/scripts ci --ignore-scripts
+npm --prefix .github/scripts audit --audit-level=high
+node --test .github/scripts/*.test.cjs
 python3 scripts/assert-ports-free.py 8080 5173
-export npm_config_cache="${npm_config_cache:-$PWD/work/npm-cache}"
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$PWD/work/gradle-home}"
 export DB_URL="${DB_URL:-jdbc:postgresql://localhost:5432/debt}"
 export DB_USERNAME="${DB_USERNAME:-debt}"

@@ -40,3 +40,7 @@ GitHub CLIもcwdによるrepository推測に依存しない。`scripts/gh-repo.s
 work証拠を相対pathで直接読む操作も再発したため、`python3 scripts/read-evidence.py work/name.log` で登録worktreeから所有先を自動解決する。同名が複数なら読み込まず拒否し、`--worktree /absolute/owner` を要求する。repo/証拠の所有先が異なる読込は別commandへ分ける。
 
 helperが未導入の古い証拠checkoutから相対pathでhelperを呼ぶ失敗も観測した。Coordinatorはactive code checkout内のhelper絶対pathを使用する。helperの所有先と証拠の所有先は別に解決し、Docker等の操作は証拠readerと別commandで実行する。
+
+FE packageコマンドをrepository rootから実行してpackage.json不在となる再発も観測した。複数worktreeのCoordinatorは `npm --prefix /absolute/checkout/frontend ...` でpackage所有先を固定し、source編集とpackage実行を別commandへ分ける。cwdとpackage rootが一致するという仮定を持ち越さない。
+
+複数fileのpatchでは、各fileの前に正しい `Update File` を一つ置く。同一pathへのDeleteとAddを一つのpatchへ重ねず、既存fileの置換はUpdateを使う。適用前に全file headerと実際のcontextを確認し、toolの拒否後は変更有無を確認してからpatchを作り直す。

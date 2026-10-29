@@ -43,6 +43,7 @@ public class SessionAccess {
             CsrfTokenRepository csrf, SecurityContextRepository contexts) throws Exception {
         return http.authorizeHttpRequests(requests -> requests
                         .requestMatchers("/api/csrf", "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/invitations/inspect", "/api/invitations/accept").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/invitations").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .securityContext(context -> context.securityContextRepository(contexts).requireExplicitSave(true))

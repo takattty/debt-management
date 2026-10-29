@@ -37,6 +37,7 @@
 - PRは目的を一つに絞り、設計・契約・BE・FE・実行基盤を依存関係付きの小さなPRへ分ける。生成物は明示し、巨大な差分へ手書きの変更を埋めない。
 - FE/BEの契約源は `contracts/openapi.yaml`。型とAPI interfaceを生成し、生成物の手編集や別々のtransport型の定義を避ける。契約変更と生成整合をCIで検証する。
 - BEはGradle Kotlin DSL/Java25。Mavenへ戻さない。
+- HTTP APIの受入テストはrunnで記述し、OpenAPIレスポンス検証を維持する。不正リクエストのケースだけrequest検証を外してserverの拒否を確認する。JUnitはdomain/DB/transaction/競合の統合検証として併用する。
 
 ## 再開と証拠
 

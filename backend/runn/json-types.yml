@@ -1,0 +1,124 @@
+desc: Real HTTP rejects JSON coercion and preserves persisted customer values
+concurrency: debt-api-acceptance
+labels: [api, schema, regression]
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+    # Deliberately invalid JSON field types must reach the server; response validation remains enabled.
+    skipValidateRequest: true
+vars:
+  alphaAuth: ${RUNN_ALPHA_AUTHORIZATION:-Basic YWxwaGEtYWRtaW46ZGVidF9sb2NhbA==}
+  invalidCreate:
+    - {code: 42, name: Numeric code rejected}
+    - {code: false, name: Boolean code rejected}
+    - {code: invalid-number-name, name: 42}
+    - {code: invalid-float-name, name: 0.5}
+  invalidVersion: [0.5, '0', '2', true]
+secrets: [vars.alphaAuth, token]
+steps:
+  unique:
+    bind:
+      customerCode: "'T-' + faker.UUID()"
+  session:
+    api:
+      /api/session:
+        get:
+          useCookie: false
+          headers:
+            Authorization: '{{ vars.alphaAuth }}'
+          body: null
+    bind:
+      token: current.res.body.csrfToken
+    test: current.res.status == 200 && len(token) > 0
+  before:
+    api:
+      /api/customers:
+        get:
+          headers:
+            Authorization: '{{ vars.alphaAuth }}'
+          body: null
+    bind:
+      countBefore: len(current.res.body)
+    test: current.res.status == 200
+  invalidCreate:
+    loop: 4
+    api:
+      /api/customers:
+        post:
+          headers:
+            Authorization: '{{ vars.alphaAuth }}'
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json: '{{ vars.invalidCreate[i] }}'
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  noCoercedCustomers:
+    api:
+      /api/customers:
+        get:
+          headers:
+            Authorization: '{{ vars.alphaAuth }}'
+          body: null
+    test: current.res.status == 200 && len(current.res.body) == countBefore
+  create:
+    api:
+      /api/customers:
+        post:
+          headers:
+            Authorization: '{{ vars.alphaAuth }}'
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              code: '{{ customerCode }}'
+              name: Before rejected updates
+    bind:
+      customerId: current.res.body.id
+    test: current.res.status == 201 && current.res.body.version == 0
+  invalidVersions:
+    loop: 4
+    api:
+      /api/customers/{{ customerId }}:
+        put:
+          headers:
+            Authorization: '{{ vars.alphaAuth }}'
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              code: '{{ customerCode }}'
+              name: Must not persist
+              version: '{{ vars.invalidVersion[i] }}'
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  invalidUuid:
+    api:
+      /api/customers/not-a-uuid:
+        put:
+          headers:
+            Authorization: '{{ vars.alphaAuth }}'
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              code: '{{ customerCode }}'
+              name: Invalid path rejected
+              version: 0
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  unchanged:
+    api:
+      /api/customers:
+        get:
+          headers:
+            Authorization: '{{ vars.alphaAuth }}'
+          body: null
+    test: |
+      current.res.status == 200 && len(current.res.body) == countBefore + 1
+      && len(filter(current.res.body, {#.id == customerId && #.name == 'Before rejected updates' && #.version == 0})) == 1
+  logout:
+    api:
+      /api/logout:
+        post:
+          headers:
+            Authorization: '{{ vars.alphaAuth }}'
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json: {}
+    test: current.res.status == 204

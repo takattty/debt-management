@@ -1,0 +1,172 @@
+desc: Administrator issues manual links for both roles; accountant, CSRF and tenant override are rejected
+concurrency: debt-api-acceptance
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+  invalid:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+    skipValidateRequest: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+secrets:
+- vars.password
+- csrfHeaders
+- steps.issueAdmin.res.body.acceptanceUrl
+- steps.issueAccountant.res.body.acceptanceUrl
+steps:
+  unique:
+    bind:
+      adminEmail: '''issue-admin-'' + faker.UUID() + ''@example.test'''
+      accountantEmail: '''issue-accountant-'' + faker.UUID() + ''@example.test'''
+  adminCsrf:
+    api:
+      /api/csrf:
+        get:
+          body: null
+          useCookie: false
+    bind: &id001
+      csrfHeaders: '{''X-CSRF-TOKEN'': current.res.body.csrfToken}'
+    test: current.res.status == 200
+  adminLogin:
+    api:
+      /api/auth/login:
+        post:
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: '{{ vars.password }}'
+          headers: '{{ csrfHeaders }}'
+    test: current.res.status == 204
+  adminSession:
+    api:
+      /api/session:
+        get:
+          body: null
+    bind: *id001
+    test: current.res.status == 200 && current.res.body.role == 'ADMIN'
+  issueAdmin:
+    api:
+      /api/invitations:
+        post:
+          body:
+            application/json:
+              email: '{{ adminEmail }}'
+              role: ADMIN
+          headers: '{{ csrfHeaders }}'
+    bind:
+      firstInvitationId: current.res.body.id
+    test: current.res.status == 201 && split(current.res.body.acceptanceUrl, '#token=')[0] == '/accept-invitation'
+      && current.res.headers['Cache-Control'][0] == 'no-store'
+  issueAccountant:
+    api:
+      /api/invitations:
+        post:
+          body:
+            application/json:
+              email: '{{ accountantEmail }}'
+              role: ACCOUNTANT
+          headers: '{{ csrfHeaders }}'
+    test: current.res.status == 201 && current.res.body.id != firstInvitationId && split(current.res.body.acceptanceUrl,
+      '#token=')[0] == '/accept-invitation'
+  existingGlobalEmail:
+    api:
+      /api/invitations:
+        post:
+          body:
+            application/json:
+              email: beta-admin@example.test
+              role: ADMIN
+          headers: '{{ csrfHeaders }}'
+    test: current.res.status == 409 && current.res.body.code == 'INVITATION_UNAVAILABLE' && !(current.res.rawBody
+      contains 'beta-admin@example.test')
+  csrfRequired:
+    invalid:
+      /api/invitations:
+        post:
+          body:
+            application/json:
+              email: unused@example.test
+              role: ADMIN
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
+  tenantOverrideRejected:
+    invalid:
+      /api/invitations:
+        post:
+          body:
+            application/json:
+              email: unused@example.test
+              role: ADMIN
+              tenantId: 22222222-2222-2222-2222-222222222222
+          headers: '{{ csrfHeaders }}'
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  unknownRoleRejected:
+    invalid:
+      /api/invitations:
+        post:
+          body:
+            application/json:
+              email: unused@example.test
+              role: OWNER
+          headers: '{{ csrfHeaders }}'
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  adminLogout:
+    api:
+      /api/logout:
+        post:
+          body:
+            application/json: {}
+          headers: '{{ csrfHeaders }}'
+    test: current.res.status == 204
+  accountantCsrf:
+    api:
+      /api/csrf:
+        get:
+          body: null
+          useCookie: false
+    bind: *id001
+    test: current.res.status == 200
+  accountantLogin:
+    api:
+      /api/auth/login:
+        post:
+          body:
+            application/json:
+              email: alpha-accountant@example.test
+              password: '{{ vars.password }}'
+          headers: '{{ csrfHeaders }}'
+    test: current.res.status == 204
+  accountantSession:
+    api:
+      /api/session:
+        get:
+          body: null
+    bind: *id001
+    test: current.res.status == 200 && current.res.body.role == 'ACCOUNTANT'
+  accountantCannotInvite:
+    api:
+      /api/invitations:
+        post:
+          body:
+            application/json:
+              email: forbidden@example.test
+              role: ADMIN
+          headers: '{{ csrfHeaders }}'
+    test: current.res.status == 403 && current.res.body.code == 'ACCESS_DENIED'
+  accountantSessionPreserved:
+    api:
+      /api/session:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.body.role == 'ACCOUNTANT'
+  accountantLogout:
+    api:
+      /api/logout:
+        post:
+          body:
+            application/json: {}
+          headers: '{{ csrfHeaders }}'
+    test: current.res.status == 204

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Debt Management API
-  version: 0.2.0
+  version: 0.3.0
   description: 'ローカル用の DB User と cookie session による債権管理 API。
 
     Tenant と role は認証済み User の DB 所属から毎回確認し、入力で選択しない。
@@ -25,6 +25,8 @@ tags:
   description: Tenant-scoped customer registration and optimistic updates
 - name: Authentication
   description: Anonymous CSRF and email/password session login
+- name: Invitations
+  description: Administrator-issued one-use manual invitation links
 paths:
   /api/session:
     get:
@@ -212,6 +214,117 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/invitations:
+    post:
+      tags:
+      - Invitations
+      operationId: issueInvitation
+      summary: Issue a one-use manual link for a member in the current tenant
+      description: ADMIN only. Tenant is fixed from the current DB membership. The fragment URL is returned once;
+        no email is sent. It expires after24hours. Existing global email conflicts return a generic409 without identifying
+        another tenant. This incremental API exposes issuance only; anonymous inspection and acceptance are added
+        by the next PR.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationIssueRequest'
+      responses:
+        '201':
+          description: One-time secret fragment URL; Cache-Control:no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationIssuedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Invitation cannot be issued (INVITATION_UNAVAILABLE); no tenant membership details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/invitations/inspect:
+    post:
+      tags:
+      - Invitations
+      operationId: inspectInvitation
+      summary: Inspect minimal invitation information using a bearer token
+      description: Anonymous accessible with CSRF session cookie/header. Token is sent only in the POST body; no
+        token in request URL or audit. Invalid/expired/used tokens share a generic error.
+      security:
+      - csrfSession: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationInspectRequest'
+      responses:
+        '200':
+          description: Invitation information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationInspectionResponse'
+        '400':
+          description: Malformed input (VALIDATION_ERROR/INVALID_REQUEST) or invalid, expired, consumed, mismatched
+            invitation (INVITATION_INVALID); token-state errors have the same public response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/invitations/accept:
+    post:
+      tags:
+      - Invitations
+      operationId: acceptInvitation
+      summary: Accept an invitation and create a user atomically
+      description: Anonymous accessible with CSRF session cookie/header. Token is sent only in the POST body; no
+        token in request URL or audit. Invalid/expired/used tokens share a generic error.
+      security:
+      - csrfSession: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationAcceptRequest'
+      responses:
+        '201':
+          description: User created; invitation consumed; not automatically logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationAcceptedResponse'
+        '400':
+          description: Malformed input (VALIDATION_ERROR/INVALID_REQUEST) or invalid, expired, consumed, mismatched
+            invitation (INVITATION_INVALID); token-state errors have the same public response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Cannot accept invitation (INVITATION_UNAVAILABLE); includes global email conflict without
+            identifying another tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
 components:
   securitySchemes:
     csrfToken:
@@ -403,3 +516,113 @@ components:
           maxLength: 128
           writeOnly: true
           description: No trim/normalization; maximum512UTF-8bytes. Creation policy is separate from login verification.
+    InvitationIssueRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - email
+      - role
+      properties:
+        email:
+          type: string
+          minLength: 1
+          maxLength: 254
+          description: ASCII email; surrounding whitespace stripped and lowercased by the domain
+        role:
+          type: string
+          enum:
+          - ADMIN
+          - ACCOUNTANT
+    InvitationIssuedResponse:
+      type: object
+      required:
+      - id
+      - expiresAt
+      - acceptanceUrl
+      properties:
+        id:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+        acceptanceUrl:
+          type: string
+          format: password
+          minLength: 1
+          description: Sensitive relative fragment URL /accept-invitation#token=...; returned once. Password format
+            redacts generated DTO diagnostics; response value remains readable for manual sharing.
+    InvitationInspectRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - token
+      properties:
+        token: &id001
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          maxLength: 512
+          description: Secret canonical32-byte base64url bearer token, unpadded43characters. Never log or put in
+            a request URL.
+    InvitationInspectionResponse:
+      type: object
+      required:
+      - tenantDisplayName
+      - maskedEmail
+      - role
+      - expiresAt
+      properties:
+        tenantDisplayName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        maskedEmail:
+          type: string
+          minLength: 1
+          description: Entire local part hidden; full invited email is not returned
+        role: &id002
+          type: string
+          enum:
+          - ADMIN
+          - ACCOUNTANT
+        expiresAt:
+          type: string
+          format: date-time
+    InvitationAcceptRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - token
+      - email
+      - password
+      properties:
+        token: *id001
+        email:
+          type: string
+          minLength: 1
+          maxLength: 254
+          description: ASCII email; surrounding whitespace stripped and lowercased by the domain
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 12
+          maxLength: 128
+          description: 12..128 Unicode code points, at most512UTF-8bytes; no trim/normalization
+    InvitationAcceptedResponse:
+      type: object
+      required:
+      - userId
+      - email
+      - role
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        role: *id002

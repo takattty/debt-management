@@ -30,7 +30,7 @@ public class CustomerController implements CustomersApi {
     @Override
     public ResponseEntity<CustomerResponse> createCustomer(CustomerCreateRequest request) {
         var user = currentUser.require();
-        Customer customer = service.create(user.tenantId(), user.getUsername(),
+        Customer customer = service.create(user.tenantId(), user.userId(),
                 new CustomerValues(request.getCode(), request.getName()));
         return ResponseEntity.created(URI.create("/api/customers/" + customer.id())).body(response(customer));
     }
@@ -38,7 +38,7 @@ public class CustomerController implements CustomersApi {
     @Override
     public ResponseEntity<CustomerResponse> updateCustomer(UUID id, CustomerUpdateRequest request) {
         var user = currentUser.require();
-        Customer customer = service.update(user.tenantId(), user.getUsername(), id,
+        Customer customer = service.update(user.tenantId(), user.userId(), id,
                 new CustomerValues(request.getCode(), request.getName()), request.getVersion());
         return ResponseEntity.ok(response(customer));
     }

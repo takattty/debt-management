@@ -23,7 +23,7 @@ public class CustomerService {
     }
 
     @Transactional
-    public Customer create(UUID tenantId, String actor, CustomerValues values) {
+    public Customer create(UUID tenantId, UUID actor, CustomerValues values) {
         UUID id = UUID.randomUUID();
         jdbc.sql("INSERT INTO customer (id, tenant_id, code, name) VALUES (:id, :tenant, :code, :name)")
                 .param("id", id).param("tenant", tenantId).param("code", values.code())
@@ -33,7 +33,7 @@ public class CustomerService {
     }
 
     @Transactional
-    public Customer update(UUID tenantId, String actor, UUID id, CustomerValues values, long version) {
+    public Customer update(UUID tenantId, UUID actor, UUID id, CustomerValues values, long version) {
         int count = jdbc.sql("""
                 UPDATE customer SET code = :code, name = :name, version = version + 1,
                   updated_at = CURRENT_TIMESTAMP
@@ -53,13 +53,13 @@ public class CustomerService {
         return new Customer(id, values.code(), values.name(), version + 1);
     }
 
-    private void audit(UUID tenantId, String actor, String action, UUID id, CustomerValues values) {
+    private void audit(UUID tenantId, UUID actor, String action, UUID id, CustomerValues values) {
         String details = json.writeValueAsString(Map.of("code", values.code(), "name", values.name()));
         jdbc.sql("""
-                INSERT INTO audit_event (id, tenant_id, actor, action, entity_id, details)
-                VALUES (:id, :tenant, :actor, :action, :entity, CAST(:details AS jsonb))
+                INSERT INTO audit_event (id, tenant_id, actor, actor_user_id, action, entity_id, details)
+                VALUES (:id, :tenant, :actor, :user, :action, :entity, CAST(:details AS jsonb))
                 """)
-                .param("id", UUID.randomUUID()).param("tenant", tenantId).param("actor", actor)
+                .param("id", UUID.randomUUID()).param("tenant", tenantId).param("actor", "user:" + actor).param("user", actor)
                 .param("action", action).param("entity", id).param("details", details).update();
     }
 }

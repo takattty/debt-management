@@ -1,6 +1,7 @@
 package com.example.debt.customer;
 
 import com.example.debt.generated.model.ApiError;
+import com.example.debt.access.LoginRejected;
 import com.example.debt.generated.model.FieldError;
 import java.util.List;
 import org.springframework.dao.DuplicateKeyException;
@@ -39,6 +40,11 @@ public class ApiErrors {
     @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
     ResponseEntity<ApiError> malformed(Exception exception) {
         return error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "入力形式を確認してください。");
+    }
+
+    @ExceptionHandler(LoginRejected.class)
+    ResponseEntity<ApiError> authenticationFailed(LoginRejected exception) {
+        return error(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "メールアドレスまたはパスワードを確認してください。");
     }
 
     @ExceptionHandler(DuplicateKeyException.class)

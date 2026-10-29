@@ -1,32 +1,38 @@
 openapi: 3.0.3
 info:
   title: Debt Management API
-  version: 0.1.0
-  description: |
-    開発基盤の顧客管理 API。現段階の Basic 認証は明示した dev profile の架空アカウント専用。
-    Tenant は認証済みの server-side membership から決め、入力による Tenant 指定を認めない。
-    dev 以外は API を拒否する。本番認証・メンバー招待は後続 Issue の対象。
-    同一オリジンで Basic credentials を毎回送り、GET /api/session で取得した CSRF token と
-    JSESSIONID cookie を変更系リクエストに付ける。CSRF session cookie 自体は認証資格ではない。
+  version: 0.2.0
+  description: 'ローカル用の DB User と cookie session による債権管理 API。
+
+    Tenant と role は認証済み User の DB 所属から毎回確認し、入力で選択しない。
+
+    GET /api/csrf で匿名 session と CSRF token を取得し、POST /api/auth/login へ email/password と
+
+    cookie/header を送る。成功時に session ID と CSRF token を更新するため GET /api/session を再取得する。
+
+    Basic 認証は利用できない。明示 local profile の架空 User は環境変数で初期化し、既定 profile は API を拒否する。
+
+    商用環境・メンバー招待・password recovery はこの最初の認証 slice に含めない。'
 servers:
-  - url: /
-    description: Same-origin API
+- url: /
+  description: Same-origin API
 security:
-  - basicAuth: []
+- sessionAuth: []
 tags:
-  - name: Session
-    description: Authentication context and CSRF session lifecycle
-  - name: Customers
-    description: Tenant-scoped customer registration and optimistic updates
+- name: Session
+  description: Authentication context and CSRF session lifecycle
+- name: Customers
+  description: Tenant-scoped customer registration and optimistic updates
+- name: Authentication
+  description: Anonymous CSRF and email/password session login
 paths:
   /api/session:
     get:
-      tags: [Session]
+      tags:
+      - Session
       operationId: getSession
       summary: Read the authenticated user and issue a CSRF token
-      description: |
-        CSRF token は現在の session に結び付く。レスポンスの csrfHeaderName と csrfToken を使い、
-        ブラウザーは同時に発行される JSESSIONID cookie を保持する。
+      description: 認証済み User の DB 所属、role、現在の CSRF token を返す。session に古い所属情報だけを保持しても、その値は権限根拠にしない。
       responses:
         '200':
           description: Authenticated user and CSRF token
@@ -40,16 +46,14 @@ paths:
           $ref: '#/components/responses/Forbidden'
   /api/logout:
     post:
-      tags: [Session]
+      tags:
+      - Session
       operationId: logout
       summary: Invalidate the CSRF session
-      description: |
-        CSRF 検証と認証後に session を無効化する。クライアントも保持する Basic credentials と
-        CSRF token を破棄する。有効な Basic credentials を再送すれば再認証できる。
+      description: CSRF 検証後に session と SecurityContext を失効する。旧 cookie と token は再利用できない。
       security:
-        - basicAuth: []
-          csrfToken: []
-          csrfSession: []
+      - sessionAuth: []
+        csrfToken: []
       responses:
         '204':
           description: Session invalidated; no response body
@@ -59,7 +63,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
   /api/customers:
     get:
-      tags: [Customers]
+      tags:
+      - Customers
       operationId: listCustomers
       summary: List customers in the authenticated tenant
       description: 顧客コードの昇順。Tenant header/body によるスコープ変更はできない。
@@ -77,13 +82,13 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
     post:
-      tags: [Customers]
+      tags:
+      - Customers
       operationId: createCustomer
       summary: Register a customer and its audit event atomically
       security:
-        - basicAuth: []
-          csrfToken: []
-          csrfSession: []
+      - sessionAuth: []
+        csrfToken: []
       requestBody:
         required: true
         content:
@@ -116,23 +121,25 @@ paths:
                 $ref: '#/components/schemas/ApiError'
   /api/customers/{id}:
     put:
-      tags: [Customers]
+      tags:
+      - Customers
       operationId: updateCustomer
       summary: Update a customer with its expected version
-      description: |
-        id は同じ Tenant に属する必要がある。他 Tenant の id も存在しない id と同じ 404。
+      description: 'id は同じ Tenant に属する必要がある。他 Tenant の id も存在しない id と同じ 404。
+
         更新・version 加算・操作履歴を同じ transaction で確定する。
+
+        '
       security:
-        - basicAuth: []
-          csrfToken: []
-          csrfSession: []
+      - sessionAuth: []
+        csrfToken: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
       requestBody:
         required: true
         content:
@@ -164,12 +171,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+  /api/csrf:
+    get:
+      tags:
+      - Authentication
+      operationId: getCsrf
+      summary: Issue an anonymous CSRF session token
+      security: []
+      responses:
+        '200':
+          description: CSRF token and HttpOnly session cookie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/auth/login:
+    post:
+      tags:
+      - Authentication
+      operationId: login
+      summary: Authenticate persisted user and rotate the session
+      description: 成功時は204。以前の session ID と CSRF token を再利用せず、GET /api/session から新しい token を取得する。失敗は未登録emailと誤passwordで区別しない。
+      security:
+      - csrfToken: []
+        csrfSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthLoginRequest'
+      responses:
+        '204':
+          description: Authenticated; session cookie rotated; no response body
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 components:
   securitySchemes:
-    basicAuth:
-      type: http
-      scheme: basic
-      description: Dev profile fictional accounts only; send credentials on every API call
     csrfToken:
       type: apiKey
       in: header
@@ -179,7 +223,13 @@ components:
       type: apiKey
       in: cookie
       name: JSESSIONID
-      description: CSRF session cookie; not an authentication credential
+      description: Anonymous CSRF session cookie, replaced by authenticated session cookie at login
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+      description: Authenticated server-side servlet session; HttpOnly, SameSite=Lax, Path=/; local HTTP only permits
+        Secure=false
   responses:
     BadRequest:
       description: Invalid fields or malformed JSON (VALIDATION_ERROR or INVALID_REQUEST)
@@ -188,13 +238,15 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
     Unauthorized:
-      description: Missing or invalid credentials (UNAUTHENTICATED)
+      description: Missing/expired session or invalid login credentials (UNAUTHENTICATED); login never distinguishes
+        unknown email from wrong password
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
     Forbidden:
-      description: Missing/invalid CSRF token or API access denied (ACCESS_DENIED)
+      description: CSRF token/session mismatch (CSRF_INVALID) or authenticated permission/API access denial (ACCESS_DENIED).
+        These codes distinguish stale session handling from role restrictions.
       content:
         application/json:
           schema:
@@ -202,11 +254,29 @@ components:
   schemas:
     SessionResponse:
       type: object
-      required: [username, csrfToken, csrfHeaderName]
+      required:
+      - userId
+      - email
+      - role
+      - tenantId
+      - csrfToken
+      - csrfHeaderName
       properties:
-        username:
+        userId:
           type: string
-          minLength: 1
+          format: uuid
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        role:
+          type: string
+          enum:
+          - ADMIN
+          - ACCOUNTANT
+        tenantId:
+          type: string
+          format: uuid
         csrfToken:
           type: string
           minLength: 1
@@ -216,7 +286,11 @@ components:
           example: X-CSRF-TOKEN
     CustomerResponse:
       type: object
-      required: [id, code, name, version]
+      required:
+      - id
+      - code
+      - name
+      - version
       properties:
         id:
           type: string
@@ -235,7 +309,9 @@ components:
           minimum: 0
     CustomerCreateRequest:
       type: object
-      required: [code, name]
+      required:
+      - code
+      - name
       description: Surrounding whitespace is stripped; blank/control characters are rejected
       properties:
         code:
@@ -246,9 +322,13 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+      additionalProperties: false
     CustomerUpdateRequest:
       type: object
-      required: [code, name, version]
+      required:
+      - code
+      - name
+      - version
       properties:
         code:
           type: string
@@ -262,9 +342,13 @@ components:
           type: integer
           format: int64
           minimum: 0
+      additionalProperties: false
     ApiError:
       type: object
-      required: [code, message, errors]
+      required:
+      - code
+      - message
+      - errors
       properties:
         code:
           type: string
@@ -278,9 +362,44 @@ components:
             $ref: '#/components/schemas/FieldError'
     FieldError:
       type: object
-      required: [field, message]
+      required:
+      - field
+      - message
       properties:
         field:
           type: string
         message:
           type: string
+    CsrfResponse:
+      type: object
+      required:
+      - csrfToken
+      - csrfHeaderName
+      properties:
+        csrfToken:
+          type: string
+          minLength: 1
+        csrfHeaderName:
+          type: string
+          minLength: 1
+          example: X-CSRF-TOKEN
+    AuthLoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - email
+      - password
+      properties:
+        email:
+          type: string
+          minLength: 1
+          maxLength: 254
+          description: ASCII email; surrounding whitespace stripped and lowercased for lookup
+          pattern: ^[\x20-\x7E]+$
+        password:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 128
+          writeOnly: true
+          description: No trim/normalization; maximum512UTF-8bytes. Creation policy is separate from login verification.

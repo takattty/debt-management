@@ -1,11 +1,13 @@
-import { useState, type FormEvent } from 'react';
-import { api, type Credentials, type Customer } from './api';
+import { useEffect, useState, type FormEvent } from 'react';
+import { api, ApiError, type Customer, type Session } from './api';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '処理に失敗しました。もう一度お試しください。';
+const roleNames: Record<Session['role'], string> = { ADMIN: '管理者', ACCOUNTANT: '経理担当者' };
 
 export default function App() {
-  const [credentials, setCredentials] = useState<Credentials | null>(null);
-  const [username, setUsername] = useState('');
+  const [session, setSession] = useState<Session | null>(null);
+  const [restoring, setRestoring] = useState(true);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [code, setCode] = useState('');
@@ -14,22 +16,51 @@ export default function App() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  useEffect(() => {
+    let active = true;
+    async function restoreSession() {
+      try {
+        const current = await api.getSession();
+        const records = await api.listCustomers();
+        if (active) { setSession(current); setCustomers(records); }
+      } catch (failure) {
+        if (active && !(failure instanceof ApiError && failure.status === 401)) setError(errorMessage(failure));
+      } finally {
+        if (active) setRestoring(false);
+      }
+    }
+    void restoreSession();
+    return () => { active = false; };
+  }, []);
+
+  function clearWorkspace() {
+    setSession(null); setCustomers([]); setCode(''); setName(''); setNotice(''); setPassword('');
+  }
+
+  function reportWorkspaceFailure(failure: unknown) {
+    if (failure instanceof ApiError && (failure.status === 401 || failure.code === 'CSRF_INVALID')) {
+      clearWorkspace(); setError(failure.message); return;
+    }
+    setError(errorMessage(failure));
+  }
+
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setError('');
-    const candidate = { username, password };
     try {
-      const session = await api.getSession(candidate);
-      const authenticated = { ...candidate, csrfToken: session.csrfToken, csrfHeaderName: session.csrfHeaderName };
-      const records = await api.listCustomers(authenticated);
-      setCustomers(records); setCredentials(authenticated); setPassword('');
+      const csrf = await api.getCsrf();
+      await api.login({ email: email.trim(), password }, csrf);
+      setPassword('');
+      const current = await api.getSession();
+      const records = await api.listCustomers();
+      setCustomers(records); setSession(current);
     } catch (failure) { setError(errorMessage(failure)); }
     finally { setBusy(false); }
   }
 
   async function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!credentials) return;
+    if (!session) return;
     setError(''); setNotice('');
     if (!code.trim() || !name.trim()) {
       setError('顧客コードと顧客名を入力してください。空白だけでは登録できません。');
@@ -37,21 +68,20 @@ export default function App() {
     }
     setBusy(true);
     try {
-      const created = await api.createCustomer(credentials, { code: code.trim(), name: name.trim() });
+      const created = await api.createCustomer(session, { code: code.trim(), name: name.trim() });
       setCustomers((records) => [...records, created]);
       setCode(''); setName(''); setNotice(`${created.name}を登録しました。`);
-    } catch (failure) { setError(errorMessage(failure)); }
+    } catch (failure) { reportWorkspaceFailure(failure); }
     finally { setBusy(false); }
   }
 
   async function logout() {
-    if (!credentials) return;
+    if (!session) return;
     setBusy(true); setError('');
     try {
-      await api.logout(credentials);
-      setCredentials(null); setCustomers([]); setUsername(''); setPassword('');
-      setCode(''); setName(''); setError(''); setNotice('');
-    } catch (failure) { setError(errorMessage(failure)); }
+      await api.logout(session);
+      clearWorkspace(); setEmail(''); setError('');
+    } catch (failure) { reportWorkspaceFailure(failure); }
     finally { setBusy(false); }
   }
 
@@ -63,18 +93,18 @@ export default function App() {
       <div className="sidebar-foot"><span className="status-dot" /> ローカル検証環境<p>架空データでご利用ください</p></div>
     </aside>
     <main>
-      <header className="topbar"><span>債権管理 / 顧客管理</span>{credentials && <div className="account"><span>{credentials.username}</span><button className="text-button" disabled={busy} onClick={logout}>ログアウト</button></div>}</header>
+      <header className="topbar"><span>債権管理 / 顧客管理</span>{session && <div className="account"><span className="account-email" title={session.email}>{session.email}</span><span className="account-role">{roleNames[session.role]}</span><button className="text-button" disabled={busy} onClick={logout}>ログアウト</button></div>}</header>
       <div className="content">
-        <div className="page-heading"><div><p className="eyebrow">CUSTOMERS</p><h1>顧客管理</h1><p className="subtitle">請求・入金管理の基礎となる取引先を登録します。</p></div>{credentials && <span className="count-badge">登録顧客 <strong>{customers.length}</strong> 件</span>}</div>
-        {!credentials ? <section className="panel login-panel" aria-labelledby="login-title">
+        <div className="page-heading"><div><p className="eyebrow">CUSTOMERS</p><h1>顧客管理</h1><p className="subtitle">請求・入金管理の基礎となる取引先を登録します。</p></div>{session && <span className="count-badge">登録顧客 <strong>{customers.length}</strong> 件</span>}</div>
+        {restoring ? <section className="panel login-panel"><p role="status">ログイン状態を確認しています…</p></section> : !session ? <section className="panel login-panel" aria-labelledby="login-title">
           <div className="panel-heading"><span className="step-number">01</span><div><h2 id="login-title">ワークスペースにログイン</h2><p>所属する契約企業の顧客情報を表示します。</p></div></div>
           <form onSubmit={login}>
-            <label htmlFor="username">ユーザー名<input id="username" autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} disabled={busy} /></label>
+            <label htmlFor="email">メールアドレス<input id="email" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} disabled={busy} /></label>
             <label htmlFor="password">パスワード<input id="password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} /></label>
             {error && <p className="error" role="alert">{error}</p>}
             <button className="primary-button" disabled={busy}>{busy ? '確認中…' : 'ログイン'}</button>
           </form>
-          <p className="helper">開発用アカウントはREADMEの起動手順をご確認ください。ログイン情報はこの画面を閉じると破棄されます。</p>
+          <p className="helper">登録されたメールアドレスでログインしてください。</p>
         </section> : <>
           <section className="panel" aria-labelledby="register-title">
             <div className="panel-heading"><span className="step-number">＋</span><div><h2 id="register-title">顧客を登録</h2><p>顧客コードは契約企業内で重複しない値を指定してください。</p></div></div>

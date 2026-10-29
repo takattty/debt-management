@@ -13,6 +13,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -20,7 +21,8 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
-@ActiveProfiles("dev")
+@ActiveProfiles("auth-test")
+@Import(AuthFixtures.class)
 class UserAccountsCoreTest {
     @Autowired JdbcClient jdbc;
     @Autowired UserAccounts accounts;
@@ -44,11 +46,11 @@ class UserAccountsCoreTest {
         String email = uniqueEmail();
         String password = "𠮷".repeat(30) + " exact suffix";
         String hash = passwords.encode(password);
-        insert(id, DevelopmentAccess.ALPHA, email, hash, "ACCOUNTANT");
+        insert(id, AuthFixtures.ALPHA, email, hash, "ACCOUNTANT");
         UserAccount user = accounts.byEmail(new EmailAddress(" " + email.toUpperCase(java.util.Locale.ROOT) + " ").canonical())
                 .orElseThrow();
         assertThat(user.id()).isEqualTo(id);
-        assertThat(user.tenantId()).isEqualTo(DevelopmentAccess.ALPHA);
+        assertThat(user.tenantId()).isEqualTo(AuthFixtures.ALPHA);
         assertThat(user.role()).isEqualTo(UserRole.ACCOUNTANT);
         assertThat(user.enabled()).isTrue();
         assertThat(user.passwordHash()).isEqualTo(hash).startsWith("$argon2id$");
@@ -63,9 +65,9 @@ class UserAccountsCoreTest {
         String email = new EmailAddress(" Shared-" + UUID.randomUUID() + "@EXAMPLE.TEST ").canonical();
         String hash = passwords.encode("fictional_core_password");
         UUID first = fixtureId();
-        insert(first, DevelopmentAccess.ALPHA, email, hash, "ADMIN");
+        insert(first, AuthFixtures.ALPHA, email, hash, "ADMIN");
         UUID second = fixtureId();
-        assertThatThrownBy(() -> insert(second, DevelopmentAccess.BETA, email, hash, "ACCOUNTANT"))
+        assertThatThrownBy(() -> insert(second, AuthFixtures.BETA, email, hash, "ACCOUNTANT"))
                 .isInstanceOf(DuplicateKeyException.class);
         assertThat(accounts.byEmail(email).orElseThrow().id()).isEqualTo(first);
         assertThat(accounts.byId(second)).isEmpty();
@@ -80,8 +82,8 @@ class UserAccountsCoreTest {
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> concurrentInsert(firstId, DevelopmentAccess.ALPHA, email, hash, ready, start));
-            var second = executor.submit(() -> concurrentInsert(secondId, DevelopmentAccess.BETA, email, hash, ready, start));
+            var first = executor.submit(() -> concurrentInsert(firstId, AuthFixtures.ALPHA, email, hash, ready, start));
+            var second = executor.submit(() -> concurrentInsert(secondId, AuthFixtures.BETA, email, hash, ready, start));
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
             start.countDown();
             assertThat(List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS)))
@@ -89,7 +91,7 @@ class UserAccountsCoreTest {
         }
         assertThat(jdbc.sql("SELECT count(*) FROM app_user WHERE email_canonical=?").param(email).query(Long.class).single())
                 .isEqualTo(1);
-        assertThat(accounts.byEmail(email).orElseThrow().tenantId()).isIn(DevelopmentAccess.ALPHA, DevelopmentAccess.BETA);
+        assertThat(accounts.byEmail(email).orElseThrow().tenantId()).isIn(AuthFixtures.ALPHA, AuthFixtures.BETA);
     }
 
     @Test
@@ -97,34 +99,34 @@ class UserAccountsCoreTest {
         String hash = passwords.encode("fictional_core_password");
         assertThatThrownBy(() -> insert(fixtureId(), UUID.randomUUID(), uniqueEmail(), hash, "ADMIN"))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        assertThatThrownBy(() -> insert(fixtureId(), DevelopmentAccess.ALPHA, uniqueEmail(), hash, "OTHER"))
+        assertThatThrownBy(() -> insert(fixtureId(), AuthFixtures.ALPHA, uniqueEmail(), hash, "OTHER"))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        assertThatThrownBy(() -> insert(fixtureId(), DevelopmentAccess.ALPHA, uniqueEmail(), "plaintext rejected", "ADMIN"))
+        assertThatThrownBy(() -> insert(fixtureId(), AuthFixtures.ALPHA, uniqueEmail(), "plaintext rejected", "ADMIN"))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        assertThatThrownBy(() -> insert(fixtureId(), DevelopmentAccess.ALPHA, "Uppercase@EXAMPLE.TEST", hash, "ADMIN"))
+        assertThatThrownBy(() -> insert(fixtureId(), AuthFixtures.ALPHA, "Uppercase@EXAMPLE.TEST", hash, "ADMIN"))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
     void auditUserMustBelongToEventTenantWhileLegacyActorsRemainValid() {
         UUID user = fixtureId();
-        insert(user, DevelopmentAccess.ALPHA, uniqueEmail(), passwords.encode("fictional_core_password"), "ADMIN");
+        insert(user, AuthFixtures.ALPHA, uniqueEmail(), passwords.encode("fictional_core_password"), "ADMIN");
         UUID ownEvent = auditId();
         jdbc.sql("""
                 INSERT INTO audit_event(id,tenant_id,actor,actor_user_id,action,entity_id,details)
                 VALUES (?,?,?,?,?,?, '{}'::jsonb)
-                """).params(ownEvent, DevelopmentAccess.ALPHA, "user:" + user, user, "CORE_FIXTURE", user).update();
+                """).params(ownEvent, AuthFixtures.ALPHA, "user:" + user, user, "CORE_FIXTURE", user).update();
         UUID crossedEvent = auditId();
         assertThatThrownBy(() -> jdbc.sql("""
                 INSERT INTO audit_event(id,tenant_id,actor,actor_user_id,action,entity_id,details)
                 VALUES (?,?,?,?,?,?, '{}'::jsonb)
-                """).params(crossedEvent, DevelopmentAccess.BETA, "user:" + user, user, "CORE_FIXTURE", user).update())
+                """).params(crossedEvent, AuthFixtures.BETA, "user:" + user, user, "CORE_FIXTURE", user).update())
                 .isInstanceOf(DataIntegrityViolationException.class);
         UUID legacyEvent = auditId();
         jdbc.sql("""
                 INSERT INTO audit_event(id,tenant_id,actor,action,entity_id,details)
                 VALUES (?,?,?,?,?, '{}'::jsonb)
-                """).params(legacyEvent, DevelopmentAccess.ALPHA, "legacy-dev-actor", "CORE_FIXTURE", user).update();
+                """).params(legacyEvent, AuthFixtures.ALPHA, "legacy-dev-actor", "CORE_FIXTURE", user).update();
         assertThat(jdbc.sql("SELECT actor_user_id IS NULL FROM audit_event WHERE id=?")
                 .param(legacyEvent).query(Boolean.class).single()).isTrue();
         assertThat(jdbc.sql("SELECT actor_user_id FROM audit_event WHERE id=?")

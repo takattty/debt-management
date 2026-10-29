@@ -14,6 +14,7 @@ public class StrictJsonTypes {
     @Bean
     JsonMapperBuilderCustomizer schemaTypes() {
         return builder -> builder
+                .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
                 .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
                 .withCoercionConfig(LogicalType.Textual, coercion -> coercion

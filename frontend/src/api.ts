@@ -1,7 +1,9 @@
 import type { components, operations, paths } from './generated/schema';
 
 export type Customer = components['schemas']['CustomerResponse'];
-export type Credentials = { username: string; password: string; csrfToken?: string; csrfHeaderName?: string };
+export type Session = components['schemas']['SessionResponse'];
+type Csrf = components['schemas']['CsrfResponse'];
+type LoginInput = operations['login']['requestBody']['content']['application/json'];
 type CustomerCreateInput = operations['createCustomer']['requestBody']['content']['application/json'];
 
 type Endpoint = {
@@ -22,43 +24,51 @@ type RequestBody<E extends Endpoint> = OperationOf<E> extends { requestBody: { c
 
 // Only operation-specific functions are exposed to UI code; DTOs come from the contract.
 export const api = {
-  getSession: (credentials: Credentials) => request({ path: '/api/session', method: 'GET' }, credentials),
-  listCustomers: (credentials: Credentials) => request({ path: '/api/customers', method: 'GET' }, credentials),
-  createCustomer: (credentials: Credentials, body: CustomerCreateInput) => request(
-    { path: '/api/customers', method: 'POST' }, credentials, body,
+  getCsrf: () => request({ path: '/api/csrf', method: 'GET' }, undefined),
+  login: (body: LoginInput, csrf: Csrf) => request({ path: '/api/auth/login', method: 'POST' }, csrf, body),
+  getSession: () => request({ path: '/api/session', method: 'GET' }, undefined),
+  listCustomers: () => request({ path: '/api/customers', method: 'GET' }, undefined),
+  createCustomer: (csrf: Csrf, body: CustomerCreateInput) => request(
+    { path: '/api/customers', method: 'POST' }, csrf, body,
   ),
-  logout: (credentials: Credentials) => request({ path: '/api/logout', method: 'POST' }, credentials),
+  logout: (csrf: Csrf) => request({ path: '/api/logout', method: 'POST' }, csrf),
 };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public code?: components['schemas']['ApiError']['code']) { super(message); }
 }
 
-async function request<E extends Endpoint>(endpoint: E, credentials: Credentials, ...body: RequestBody<E>): Promise<SuccessOf<OperationOf<E>>> {
+async function request<E extends Endpoint>(endpoint: E, csrf: Csrf | undefined, ...body: RequestBody<E>): Promise<SuccessOf<OperationOf<E>>> {
   let response: Response;
   try {
     response = await fetch(endpoint.path, {
       method: endpoint.method,
       body: body.length ? JSON.stringify(body[0]) : undefined,
       credentials: 'same-origin',
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
-        Authorization: `Basic ${btoa(`${credentials.username}:${credentials.password}`)}`,
-        ...(credentials.csrfToken && credentials.csrfHeaderName ? { [credentials.csrfHeaderName]: credentials.csrfToken } : {}),
+        ...(csrf ? { [csrf.csrfHeaderName]: csrf.csrfToken } : {}),
       },
     });
   } catch {
     throw new ApiError(0, 'サーバーに接続できません。接続を確認して、もう一度お試しください。');
   }
   if (!response.ok) {
+    const failure: unknown = await response.json().catch(() => undefined);
+    const code = typeof failure === 'object' && failure !== null && 'code' in failure && typeof failure.code === 'string'
+      ? failure.code : undefined;
     const messages: Record<number, string> = {
-      400: '入力内容を確認してください。顧客コードと顧客名は必須です。',
-      401: 'ユーザー名またはパスワードを確認してください。',
-      403: 'この操作を行う権限がありません。管理者にご確認ください。',
+      400: endpoint.path === '/api/auth/login' ? 'メールアドレスとパスワードの入力内容を確認してください。' : '顧客コード・顧客名の形式や文字数を確認してください。',
+      401: endpoint.path === '/api/auth/login' ? 'メールアドレスまたはパスワードを確認してください。' : 'ログインの有効期限が切れました。もう一度ログインしてください。',
+      403: code === 'ACCESS_DENIED' ? 'この操作を行う権限がありません。管理者にご確認ください。'
+        : code === 'CSRF_INVALID' ? 'ログインの有効期限が切れました。もう一度ログインしてください。'
+          : '操作を続けられません。画面を再読み込みして、もう一度お試しください。',
       409: 'この顧客コードは登録済みです。別のコードを入力してください。',
+      429: 'ログイン試行が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。',
     };
-    throw new ApiError(response.status, messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。');
+    throw new ApiError(response.status, messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code);
   }
   if (response.status === 204) return undefined as SuccessOf<OperationOf<E>>;
   return response.json() as Promise<SuccessOf<OperationOf<E>>>;

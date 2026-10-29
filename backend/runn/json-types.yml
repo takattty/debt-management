@@ -1,6 +1,9 @@
 desc: Real HTTP rejects JSON coercion and preserves persisted customer values
 concurrency: debt-api-acceptance
-labels: [api, schema, regression]
+labels:
+- api
+- schema
+- regression
 runners:
   api:
     endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
@@ -10,28 +13,61 @@ runners:
     endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
     openapi3: ../../contracts/openapi.yaml
     useCookie: true
-    # Only invalid types/path values bypass request validation; all responses remain validated.
     skipValidateRequest: true
 vars:
-  alphaAuth: ${RUNN_ALPHA_AUTHORIZATION:-Basic YWxwaGEtYWRtaW46ZGVidF9sb2NhbA==}
   invalidCreate:
-    - {code: 42, name: Numeric code rejected}
-    - {code: false, name: Boolean code rejected}
-    - {code: invalid-number-name, name: 42}
-    - {code: invalid-float-name, name: 0.5}
-  invalidVersion: [0.5, '0', '2', true]
-secrets: [vars.alphaAuth, token]
+  - code: 42
+    name: Numeric code rejected
+  - code: false
+    name: Boolean code rejected
+  - code: invalid-number-name
+    name: 42
+  - code: invalid-float-name
+    name: 0.5
+  invalidVersion:
+  - 0.5
+  - '0'
+  - '2'
+  - true
+  password: ${LOCAL_SEED_PASSWORD}
+secrets:
+- vars.password
+- token
+- cookie
+- accountAnonymousToken
+- accountAnonymousCookie
+- accountCookie
 steps:
   unique:
     bind:
-      customerCode: "'T-' + faker.UUID()"
+      customerCode: '''T-'' + faker.UUID()'
+  accountCsrf:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      accountAnonymousToken: current.res.body.csrfToken
+      accountAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200 && len(accountAnonymousToken) > 0
+  accountLogin:
+    api:
+      /api/auth/login:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ accountAnonymousToken }}'
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: '{{ vars.password }}'
+    bind:
+      accountCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204 && len(accountCookie) > 0 && accountCookie != accountAnonymousCookie
   session:
     api:
       /api/session:
         get:
-          useCookie: false
-          headers:
-            Authorization: '{{ vars.alphaAuth }}'
           body: null
     bind:
       token: current.res.body.csrfToken
@@ -40,8 +76,6 @@ steps:
     api:
       /api/customers:
         get:
-          headers:
-            Authorization: '{{ vars.alphaAuth }}'
           body: null
     bind:
       countBefore: len(current.res.body)
@@ -52,7 +86,6 @@ steps:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
           body:
             application/json: '{{ vars.invalidCreate[i] }}'
@@ -61,8 +94,6 @@ steps:
     api:
       /api/customers:
         get:
-          headers:
-            Authorization: '{{ vars.alphaAuth }}'
           body: null
     test: current.res.status == 200 && len(current.res.body) == countBefore
   create:
@@ -70,7 +101,6 @@ steps:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
           body:
             application/json:
@@ -85,7 +115,6 @@ steps:
       /api/customers/{{ customerId }}:
         put:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
           body:
             application/json:
@@ -98,7 +127,6 @@ steps:
       /api/customers/not-a-uuid:
         put:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
           body:
             application/json:
@@ -110,18 +138,18 @@ steps:
     api:
       /api/customers:
         get:
-          headers:
-            Authorization: '{{ vars.alphaAuth }}'
           body: null
-    test: |
-      current.res.status == 200 && len(current.res.body) == countBefore + 1
-      && len(filter(current.res.body, {#.id == customerId && #.name == 'Before rejected updates' && #.version == 0})) == 1
+    test: 'current.res.status == 200 && len(current.res.body) == countBefore + 1
+
+      && len(filter(current.res.body, {#.id == customerId && #.name == ''Before rejected updates'' && #.version
+      == 0})) == 1
+
+      '
   logout:
     api:
       /api/logout:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
           body:
             application/json: {}

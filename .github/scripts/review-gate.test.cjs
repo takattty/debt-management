@@ -20,3 +20,11 @@ test('latest exact-commit attestation and explicit findings govern acceptance', 
   assert.equal(evaluate([{ ...review(1), body: '<!-- independent-review: {invalid} -->' }], sha), false);
   assert.equal(evaluate([review(1), { ...review(2), body: '<!-- independent-review: {invalid} -->' }], sha), false);
 });
+
+test('withdrawn, dismissed or ambiguous latest review cannot revive an older pass', () => {
+  assert.equal(evaluate([review(1), { ...review(2), body: 'Review result withdrawn' }], sha), false);
+  assert.equal(evaluate([review(1), { ...review(2), state: 'DISMISSED' }], sha), false);
+  assert.equal(evaluate([review(1), { ...review(2), state: 'PENDING' }], sha), false);
+  assert.equal(evaluate([review(1), { ...review(2), body: review(2).body + '\n' + review(3, 'blocked').body }], sha), false);
+  assert.equal(evaluate([review(3), review(1), { ...review(2), body: 'withdrawn' }], sha), true);
+});

@@ -118,6 +118,38 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/ImportNotFound'}
+  /api/imports/{id}/confirm:
+    parameters:
+    - {$ref: '#/components/parameters/ImportId'}
+    post:
+      tags: [Imports]
+      operationId: confirmImport
+      summary: Confirm the immutable customer snapshot atomically
+      description: Accepts only the preview version, never replacement rows. Customers, audits and batch confirmation share one transaction. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportConfirmRequest'
+      responses:
+        '200':
+          description: Confirmed batch result, including idempotent retries
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImportBatchResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/ImportNotFound'}
+        '409':
+          description: IMPORT_INVALID, IMPORT_EXPIRED, VERSION_CONFLICT, IMPORT_REFERENCE_CONFLICT or IMPORT_ALREADY_CONFIRMED. For confirmed content in a different batch, errors contains field batchId and message with the original UUID.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
   /api/imports/{id}/errors:
     parameters:
     - {$ref: '#/components/parameters/ImportId'}
@@ -532,6 +564,12 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
   schemas:
+    ImportConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: {type: integer, format: int64, minimum: 0}
     ImportBatchResponse:
       type: object
       required: [id, kind, status, version, rowCount, errorCount, createdAt, expiresAt, confirmedAt, confirmedCount]
@@ -546,6 +584,11 @@ components:
         expiresAt: {type: string, format: date-time}
         confirmedAt: {type: string, format: date-time, nullable: true}
         confirmedCount: {type: integer, minimum: 0, maximum: 10000}
+        originalBatchId:
+          type: string
+          format: uuid
+          nullable: true
+          description: An already-confirmed batch in this tenant with the same semantic content; absent or null when none exists. The current confirmed batch does not refer to itself.
     ImportRowResponse:
       type: object
       required: [recordNumber, rowNumber, customerCode, customerName, valid]

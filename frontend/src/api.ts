@@ -2,6 +2,9 @@ import type { components, operations, paths } from './generated/schema';
 
 export type Customer = components['schemas']['CustomerResponse'];
 export type Session = components['schemas']['SessionResponse'];
+export type InvitationRole = components['schemas']['InvitationIssueRequest']['role'];
+export type InvitationInspection = components['schemas']['InvitationInspectionResponse'];
+export type InvitationIssued = components['schemas']['InvitationIssuedResponse'];
 type Csrf = components['schemas']['CsrfResponse'];
 type LoginInput = operations['login']['requestBody']['content']['application/json'];
 type CustomerCreateInput = operations['createCustomer']['requestBody']['content']['application/json'];
@@ -32,6 +35,15 @@ export const api = {
     { path: '/api/customers', method: 'POST' }, csrf, body,
   ),
   logout: (csrf: Csrf) => request({ path: '/api/logout', method: 'POST' }, csrf),
+  issueInvitation: (csrf: Csrf, body: operations['issueInvitation']['requestBody']['content']['application/json']) => request(
+    { path: '/api/invitations', method: 'POST' }, csrf, body,
+  ),
+  inspectInvitation: (csrf: Csrf, body: operations['inspectInvitation']['requestBody']['content']['application/json']) => request(
+    { path: '/api/invitations/inspect', method: 'POST' }, csrf, body,
+  ),
+  acceptInvitation: (csrf: Csrf, body: operations['acceptInvitation']['requestBody']['content']['application/json']) => request(
+    { path: '/api/invitations/accept', method: 'POST' }, csrf, body,
+  ),
 };
 
 export class ApiError extends Error {
@@ -59,14 +71,18 @@ async function request<E extends Endpoint>(endpoint: E, csrf: Csrf | undefined, 
     const failure: unknown = await response.json().catch(() => undefined);
     const code = typeof failure === 'object' && failure !== null && 'code' in failure && typeof failure.code === 'string'
       ? failure.code : undefined;
+    const invitation = endpoint.path.startsWith('/api/invitations');
     const messages: Record<number, string> = {
-      400: endpoint.path === '/api/auth/login' ? 'メールアドレスとパスワードの入力内容を確認してください。' : '顧客コード・顧客名の形式や文字数を確認してください。',
+      400: endpoint.path === '/api/auth/login' ? 'メールアドレスとパスワードの入力内容を確認してください。'
+        : endpoint.path === '/api/invitations' ? '招待先のメールアドレスと権限を確認してください。'
+          : invitation ? '入力したメールアドレスとパスワードの条件を確認してください。' : '顧客コード・顧客名の形式や文字数を確認してください。',
       401: endpoint.path === '/api/auth/login' ? 'メールアドレスまたはパスワードを確認してください。' : 'ログインの有効期限が切れました。もう一度ログインしてください。',
       403: code === 'ACCESS_DENIED' ? 'この操作を行う権限がありません。管理者にご確認ください。'
         : code === 'CSRF_INVALID' ? 'ログインの有効期限が切れました。もう一度ログインしてください。'
           : '操作を続けられません。画面を再読み込みして、もう一度お試しください。',
-      409: 'この顧客コードは登録済みです。別のコードを入力してください。',
-      429: 'ログイン試行が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。',
+      409: invitation ? '招待を処理できませんでした。管理者にご確認ください。' : 'この顧客コードは登録済みです。別のコードを入力してください。',
+      429: invitation ? '操作が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。'
+        : 'ログイン試行が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。',
     };
     throw new ApiError(response.status, messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code);
   }

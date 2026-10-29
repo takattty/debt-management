@@ -5,6 +5,7 @@ import com.example.debt.customer.CustomerValues;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -58,8 +59,11 @@ public class ImportConfirmationTransaction {
                 .map(row -> new CsvError(row.rowNumber(), "customer_code", row.customerCode(), false, "CUSTOMER_EXISTS",
                         "プレビュー後に顧客コードが登録されました。", "CSVを修正し、新しいプレビューを確認してください。")).toList();
         if (!conflicts.isEmpty()) { throw new ImportRejected("IMPORT_REFERENCE_CONFLICT", null, conflicts); }
+        // Acquire unique-index entries in the same code order for every batch, independent of CSV order.
+        // The stored preview snapshot and its original physical row numbers remain unchanged.
         List<Created> created = rows.stream().map(row -> new Created(UUID.randomUUID(),
-                new CustomerValues(row.customerCode(), row.customerName()))).toList();
+                new CustomerValues(row.customerCode(), row.customerName())))
+                .sorted(Comparator.comparing(customer -> customer.values().code())).toList();
         batches.batchUpdate("INSERT INTO customer(id,tenant_id,code,name) VALUES (?,?,?,?)", created, 500, (statement, customer) -> {
             statement.setObject(1, customer.id()); statement.setObject(2, user.tenantId());
             statement.setString(3, customer.values().code()); statement.setString(4, customer.values().name());

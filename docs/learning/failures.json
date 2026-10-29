@@ -24,6 +24,34 @@
       ]
     },
     {
+      "key": "customer-import-lock-order",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "independent-http-reversed-order-confirm",
+          "summary": "独立レビューの逆順CSV同時確定でunique index deadlockにより一方が500になった",
+          "evidence": "backend/src/test/java/com/example/debt/importing/CustomerImportConfirmationTest.java",
+          "recorded_at": "2026-10-29T23:49:59+00:00"
+        },
+        {
+          "event": "regression-red-forced-overlap-before-fix",
+          "summary": "回帰テストを改修前のwrite順で実行し、強制overlap下の実PostgreSQL deadlockを再現した",
+          "evidence": "backend/src/test/java/com/example/debt/importing/CustomerImportConfirmationTest.java",
+          "recorded_at": "2026-10-29T23:49:59+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "batch row lockは別batchのcustomer unique index取得順をそろえず、CSV順の逆転がlock cycleを作った",
+          "prevention": "永続snapshot順とは別に新規customer INSERT順を正規codeでsortする。実INSERTのoverlapをtriggerで強制する逆順回帰2件をCIで実行する",
+          "verification": "改修前は逆順同内容でPessimisticLockingFailureExceptionを再現。改修後は同内容/異内容の逆順強制overlap2件を含む確認10件が成功し、元のsnapshot順・監査・loserの409分類を維持した",
+          "guard": "backend/src/test/java/com/example/debt/importing/CustomerImportConfirmationTest.java",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T23:49:59+00:00"
+        }
+      ]
+    },
+    {
       "key": "github-integration-permissions",
       "status": "resolved",
       "events": [

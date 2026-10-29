@@ -126,6 +126,55 @@ class CustomerImportConfirmationTest {
     }
 
     @Test
+    void reversedEquivalentBatchesWithOverlappingInsertsReturnOneResultWithoutDeadlock() throws Exception {
+        reversedInsertRace(false);
+    }
+
+    @Test
+    void reversedDifferentContentWithOverlappingInsertsReturnsConflictWithoutDeadlock() throws Exception {
+        reversedInsertRace(true);
+    }
+
+    private void reversedInsertRace(boolean differentContent) throws Exception {
+        var first = preview(twoRows("A", "B"));
+        var second = preview(CustomerCsv.HEADER + prefix + "-2," + (differentContent ? "Changed B" : "B")
+                + "\n" + prefix + "-1," + (differentContent ? "Changed A" : "A") + "\n");
+        var firstSnapshot = store.rows(user.tenantId(), first.id(), 0, 10);
+        var secondSnapshot = store.rows(user.tenantId(), second.id(), 0, 10);
+        // Both transactions reach their first unique-index insert before continuing to the second.
+        // Without deterministic write ordering, reversed CSV records create a real PostgreSQL lock cycle.
+        jdbc.sql("""
+                CREATE FUNCTION overlap_customer_import_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN PERFORM pg_sleep(1); RETURN NEW; END $$
+                """).update();
+        jdbc.sql("CREATE TRIGGER overlap_customer_import_fixture BEFORE INSERT ON customer FOR EACH ROW EXECUTE FUNCTION overlap_customer_import_fixture()")
+                .update();
+        List<Object> results;
+        try {
+            results = race(() -> confirmation.confirm(user, first.id(), 0), () -> confirmation.confirm(user, second.id(), 0));
+        } finally {
+            jdbc.sql("DROP TRIGGER overlap_customer_import_fixture ON customer").update();
+            jdbc.sql("DROP FUNCTION overlap_customer_import_fixture()").update();
+        }
+        assertThat(results.stream().filter(ImportBatch.class::isInstance)).hasSize(1);
+        var winner = results.stream().filter(ImportBatch.class::isInstance).map(ImportBatch.class::cast).findFirst().orElseThrow();
+        var rejected = results.stream().filter(ImportRejected.class::isInstance).map(ImportRejected.class::cast).findFirst().orElseThrow();
+        assertThat(rejected.code()).isEqualTo(differentContent ? "IMPORT_REFERENCE_CONFLICT" : "IMPORT_ALREADY_CONFIRMED");
+        assertThat(rejected.originalBatchId()).isEqualTo(differentContent ? null : winner.id());
+        var loser = store.get(user.tenantId(), winner.id().equals(first.id()) ? second.id() : first.id(), false);
+        assertThat(loser.status()).isEqualTo(ImportBatch.Status.PREVIEW_INVALID);
+        assertThat(loser.errorCount()).isGreaterThan(0);
+        assertThat(store.rows(user.tenantId(), first.id(), 0, 10)).isEqualTo(firstSnapshot);
+        assertThat(store.rows(user.tenantId(), second.id(), 0, 10)).isEqualTo(secondSnapshot);
+        assertThat(firstSnapshot).extracting(CustomerCsv.Row::customerCode).containsExactly(prefix + "-1", prefix + "-2");
+        assertThat(secondSnapshot).extracting(CustomerCsv.Row::customerCode).containsExactly(prefix + "-2", prefix + "-1");
+        assertThat(customers()).isEqualTo(2);
+        assertThat(customerAudits()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_event WHERE tenant_id=? AND entity_id IN (?,?) AND action='CUSTOMER_IMPORT_CONFIRMED'")
+                .params(user.tenantId(), first.id(), second.id()).query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
     void newCustomerBetweenPreviewAndConfirmInvalidatesPreviewAndPreservesSnapshotAfterRollback() {
         var batch = preview(twoRows("A", "B"));
         var snapshot = store.rows(user.tenantId(), batch.id(), 0, 10);

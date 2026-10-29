@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "failures": [
+    {
+      "key": "github-integration-permissions",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "visibility-patch-403",
+          "summary": "public変更APIがintegration権限で403",
+          "evidence": "docs/runtime-evidence.md",
+          "recorded_at": "2026-10-29T13:06:04+00:00"
+        },
+        {
+          "event": "protection-read-403",
+          "summary": "branch protection APIがintegration権限で403",
+          "evidence": "docs/runtime-evidence.md",
+          "recorded_at": "2026-10-29T13:06:04+00:00"
+        },
+        {
+          "event": "commit-status-write-403",
+          "summary": "commit status書込みもintegration権限で403",
+          "evidence": "docs/github-gate.md",
+          "recorded_at": "2026-10-29T13:06:04+00:00"
+        },
+        {
+          "event": "bootstrap-variable-delete-403",
+          "summary": "合意済み初期変数の削除APIもintegrationのVariables権限不足で403",
+          "evidence": "https://github.com/takattty/debt-management/pull/16",
+          "recorded_at": "2026-10-29T14:10:49+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "Repository metadataのadmin表示はintegration tokenのendpoint許可を保証しない",
+          "prevention": "同じ認証状態で拒否済み設定/status APIを反復しない。設定はユーザー操作、review checkはActions経由を設計する",
+          "verification": "設定変更/status書込みの403とpublic状態GET成功を比較し、未対応操作をdocs/github-gate.mdへ明記した",
+          "guard": "docs/github-gate.md",
+          "event_count": 3,
+          "resolved_at": "2026-10-29T13:06:04+00:00"
+        },
+        {
+          "cause": "settings/status/variablesの権限はmetadata.adminと別で、付与されていない",
+          "prevention": "拒否済みendpointは認証権限の変更証拠まで再試行せず、解除はユーザーUI操作へ渡す",
+          "verification": "削除API403を記録し、ユーザーが変数削除を報告。初期base失効と経路除去PRを進めた",
+          "guard": "docs/github-gate.md",
+          "event_count": 4,
+          "resolved_at": "2026-10-29T14:10:49+00:00"
+        }
+      ]
+    },
+    {
+      "key": "github-metadata-shape",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "combined-status-omits-creator",
+          "summary": "combined statusの簡略DTOにcreatorがあると仮定してpremergeが安全側に停止した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T15:47:15+00:00"
+        },
+        {
+          "event": "cli-json-baserefoid-unsupported",
+          "summary": "gh pr viewのJSON選択にGraphQLと同じbaseRefOidを指定して失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T15:47:15+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "似たAPI/CLIでも返却DTOと選択可能fieldが異なるのに同じ契約と仮定した",
+          "prevention": "metadata取得をRESTの実在fieldに統一し、creatorはlist statusesで確認、未知fieldは失敗を維持しendpointを修正する",
+          "verification": "list statusesでgithub-actions botとsuccessを実確認し、premergeのhead/base/review/quality検査を通過してPR16を正しくmergeできた",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T15:47:15+00:00"
+        }
+      ]
+    },
+    {
+      "key": "npm-cache-location",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "initial-install-cache-permission",
+          "summary": "Cloudの既定home cacheが書込み不可でinstall失敗",
+          "evidence": "docs/runtime-evidence.md",
+          "recorded_at": "2026-10-29T13:23:27+00:00"
+        },
+        {
+          "event": "openapi-metadata-cache-permission",
+          "summary": "metadata照会でも既定cacheを使って同じ権限失敗が再発",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T13:23:27+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "明示cacheを忘れると読み取り専用homeが選択される",
+          "prevention": "frontend/.npmrcでwork配下cacheを自動選択し、verifyでもnpm_config_cacheを指定する",
+          "verification": "frontendでオプションなしnpm config get cacheがfrontend/work/npm-cacheとなり、生成/型/単体/buildが成功",
+          "guard": "frontend/.npmrc",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T13:23:27+00:00"
+        }
+      ]
+    },
+    {
+      "key": "stale-main-tracking-ref",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "post-bootstrap-fetch-without-destination",
+          "summary": "main取得は成功したがorigin/mainは初期SHAのままだった",
+          "evidence": "docs/runtime-evidence.md",
+          "recorded_at": "2026-10-29T14:14:52+00:00"
+        },
+        {
+          "event": "cleanup-fetch-reused-stale-tracking-ref",
+          "summary": "同じ取得方法を繰返し初期treeからcleanupを作成して対象file不在になった",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T14:14:52+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "明示sourceだけのfetchは設定次第でFETCH_HEADのみ更新しremote tracking refを更新しない",
+          "prevention": "fetch-main.shで宛先refを明示し、ls-remoteのSHAと一致するまでbaseとして使わない",
+          "verification": "同じrepoでold87bから737c01eへorigin/main更新とremote一致を確認しcleanup再作成に成功",
+          "guard": "scripts/fetch-main.sh",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T14:14:55+00:00"
+        }
+      ]
+    }
+  ]
+}

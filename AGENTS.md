@@ -21,6 +21,7 @@
 
 ## 開発ループ
 
+作業開始時と関連操作の直前に `docs/learning/failures.json` と [Failure learning loop](docs/learning/README.md) を参照する。同じ原因の別失敗を 2 回観測したら、原因・予防策・実際の検証結果・次回 guard を保存し、`python3 scripts/failure-loop.py check` が通るまで同じ失敗操作を繰り返さない。同じ証拠の再読は新しい失敗に数えず、解決後の再発は再度改善対象とする。依存しない作業は継続する。
 
 1. Issue に範囲・依存関係・受入条件・検証コマンドを定義する。
 2. 実装し、対象 commit を固定して Lint、型、単体、API、実 PostgreSQL 統合、画面→DB の E2E を実施する。

@@ -29,4 +29,6 @@ python3 scripts/failure-loop.py resolve --key github-integration-permission --ca
 
 mainの取得では `scripts/fetch-main.sh` を使い、明示先refとremote SHA一致を確認する。宛先なしfetchが成功してもorigin/mainが更新されるとは限らない。
 
+patch適用前に対象の行全体を読み、部分行を完全なcontext行と仮定しない。長い段落の一部しか使えない場合は実在する短い見出しをanchorにする。context不一致の同じ操作を反復せず、再読してから最小差分を適用し、diffを検査する。
+
 GitHub metadata取得は応答ごとの契約を確認する。PRのhead/baseはREST pulls/{number}のhead.sha/base.shaを用いる。combined statusはcreatorを省略するため、発行者確認はcommits/{sha}/statusesを用いる。gh pr viewのJSON選択肢はGraphQL全fieldと同じではなく、未対応field名を推測して反復しない。metadata不足ではmergeを止め、guard条件を緩めず正しいendpointへ直す。

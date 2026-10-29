@@ -26,7 +26,8 @@ public class ImportErrors {
         };
         var errors = exception.originalBatchId() == null ? List.<FieldError>of()
                 : List.of(new FieldError("batchId", exception.originalBatchId().toString()));
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError(exception.code(), message, errors));
+        return ResponseEntity.status(HttpStatus.CONFLICT).contentType(MediaType.APPLICATION_JSON)
+                .body(new ApiError(exception.code(), message, errors));
     }
 
     @ExceptionHandler(ImportNotFound.class)

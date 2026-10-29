@@ -4,6 +4,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -65,6 +67,12 @@ public class ImportStore {
                 AND semantic_fingerprint=decode(:hash,'hex') AND status='CONFIRMED' AND id<>:id
                 """).param("tenant", batch.tenantId()).param("format", batch.formatVersion())
                 .param("hash", batch.semanticFingerprint()).param("id", batch.id()).query(UUID.class).optional().orElse(null);
+    }
+
+    public Set<Integer> invalidLines(UUID tenant, UUID id, List<Integer> lines) {
+        return lines.isEmpty() ? Set.of() : new HashSet<>(jdbc.sql("""
+                SELECT DISTINCT row_number FROM import_error WHERE tenant_id=:tenant AND batch_id=:id AND row_number IN (:lines)
+                """).param("tenant", tenant).param("id", id).param("lines", lines).query(Integer.class).list());
     }
 
     public ImportBatch get(UUID tenant, UUID id, boolean lock) {

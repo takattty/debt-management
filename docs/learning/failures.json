@@ -246,6 +246,28 @@
       ]
     },
     {
+      "key": "spring-test-pool-capacity",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "customer-confirm-context-pool-exhaustion",
+          "summary": "複数Spring test contextの既定10接続poolが共有Cloud PostgreSQLの100接続上限へ到達した",
+          "evidence": "backend/build.gradle.kts",
+          "recorded_at": "2026-10-29T23:40:42+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "各cached contextが独立した既定10接続poolを保持し、他の独立検証processと合わせ接続上限に達した",
+          "prevention": "test JVMだけpool最大4とcontext cache最大8へ固定。runtime/DB全体を変更せず二接続raceの余裕を維持する",
+          "verification": "上限を適用し全BE98件0failure0skip、同batch/別batchの実PG並行検証と8runn scenariosも全成功",
+          "guard": "backend/build.gradle.kts",
+          "event_count": 1,
+          "resolved_at": "2026-10-29T23:40:42+00:00"
+        }
+      ]
+    },
+    {
       "key": "stale-main-tracking-ref",
       "status": "resolved",
       "events": [
@@ -306,6 +328,12 @@
           "summary": "新helper未導入の古い証拠checkoutからhelper相対pathを呼び起動前に失敗した",
           "evidence": "scripts/read-evidence.py",
           "recorded_at": "2026-10-29T18:08:18+00:00"
+        },
+        {
+          "event": "customer-confirm-absolute-artifact-argument",
+          "summary": "証拠readerのartifact引数へ絶対pathを渡しguardに拒否された。読込前に停止した",
+          "evidence": "scripts/read-evidence.py",
+          "recorded_at": "2026-10-29T23:40:41+00:00"
         }
       ],
       "resolutions": [
@@ -340,6 +368,14 @@
           "guard": "docs/learning/README.md",
           "event_count": 5,
           "resolved_at": "2026-10-29T18:08:19+00:00"
+        },
+        {
+          "cause": "helper自身の絶対pathとartifact引数の相対pathを混同した",
+          "prevention": "helperの実行pathだけ絶対指定し、artifactはwork/name.logに固定する。所有treeが複数なら--worktreeで明示する",
+          "verification": "絶対artifactはguardが読込前に拒否。所有treeからwork/customer-confirm-tests.logを指定して8実PG検証の成功を読み直し、reader回帰3件も成功",
+          "guard": "scripts/read-evidence.py",
+          "event_count": 6,
+          "resolved_at": "2026-10-29T23:40:41+00:00"
         }
       ]
     }

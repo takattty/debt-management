@@ -85,8 +85,9 @@ public class ImportController implements ImportsApi {
         var user = current.require();
         store.get(user.tenantId(), id, false);
         var rows = store.rows(user.tenantId(), id, cursor, limit + 1);
+        var invalid = store.invalidLines(user.tenantId(), id, rows.stream().map(CustomerCsv.Row::rowNumber).toList());
         var items = rows.stream().limit(limit).map(row -> new ImportRowResponse(row.recordNumber(), row.rowNumber(),
-                row.customerCode(), row.customerName(), row.valid())).toList();
+                row.customerCode(), row.customerName(), row.valid() && !invalid.contains(row.rowNumber()))).toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(new ImportRowsPage(items, rows.size() > limit ? items.getLast().getRecordNumber() : 0));
     }

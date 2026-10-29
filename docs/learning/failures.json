@@ -78,6 +78,40 @@
       ]
     },
     {
+      "key": "nested-select-label",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "invitation-e2e-invite-accountant",
+          "summary": "nested labelでselectのaccessible nameがoption文字列を含みE2Eが停止した",
+          "evidence": "frontend/e2e/invitations.spec.ts",
+          "recorded_at": "2026-10-29T17:12:16+00:00"
+        },
+        {
+          "event": "invitation-e2e-invite-admin",
+          "summary": "追加管理者のE2Eも同じselectのexact name不一致で停止した",
+          "evidence": "frontend/e2e/invitations.spec.ts",
+          "recorded_at": "2026-10-29T17:12:16+00:00"
+        },
+        {
+          "event": "invitation-e2e-refuse-reuse",
+          "summary": "再使用拒否のE2Eも同じselectのexact name不一致で停止した",
+          "evidence": "frontend/e2e/invitations.spec.ts",
+          "recorded_at": "2026-10-29T17:12:16+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "label内selectのoptionsがcontrolのaccessible nameへ混入した",
+          "prevention": "labelとselectをfor/idで関連付けた兄弟にしunitでexact accessible nameのrole選択を行う",
+          "verification": "InvitationFlowの追加管理者と手動コピーunitにcomboboxのexact nameを追加し全29unitとLint型build成功。E2E再試行はこのcheck後に行う",
+          "guard": "frontend/src/InvitationFlow.test.tsx",
+          "event_count": 3,
+          "resolved_at": "2026-10-29T17:12:16+00:00"
+        }
+      ]
+    },
+    {
       "key": "npm-cache-location",
       "status": "resolved",
       "events": [

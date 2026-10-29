@@ -11,4 +11,6 @@
 - `CHROMIUM_PATH=/usr/bin/chromium npm run test:e2e` は起動済みの実backend/PostgreSQLに接続する。APIモックでE2E合格に代替しない。
 - E2Eデータは架空のみ。失敗表示、重複、再読込後の永続化、別tenant分離を確認する。
 - 認証E2Eのnetwork traceはpassword本文やsession cookieを含むため保存しない。HTML reportと失敗時screenshotで診断し、password入力はtype=passwordを維持する。
+- 招待リンクはmemory内で一度表示し、画面を離れると破棄する。accept-invitationのfragmentは起動時とhashchange直後にhistoryから除去し、POST本文にだけ送る。
+- E2Eは共通fixtureを使い、data-sensitive/password要素を画像でmaskする。自動DOM snapshotもbearerリンクを含み得るため、秘密を含まないerror-context attachmentで置き換える。
 - 現在は顧客登録の縦断基盤。請求・消込・督促等が完成したと報告しない。

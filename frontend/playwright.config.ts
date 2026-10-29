@@ -9,7 +9,8 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5173',
     // Network traces retain login bodies and session cookies; keep visual diagnostics only.
     trace: 'off',
-    screenshot: 'only-on-failure',
+    // The shared fixture attaches masked failure screenshots for both auth and invitation tests.
+    screenshot: 'off',
     ...devices['Desktop Chrome'],
     launchOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH, args: ['--no-sandbox'] } : {},
   },

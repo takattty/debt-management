@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:18.0@sha256:41fc5342eefba6cc2ccda736aaf034bbbb7c3df0fdb81516eba1ba33f360162c
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-debt}
+      POSTGRES_USER: ${POSTGRES_USER:-debt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-debt_local}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  backend:
+    build: ./backend
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-debt}
+      DB_USERNAME: ${POSTGRES_USER:-debt}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-debt_local}
+      DEV_PASSWORD: ${DEV_PASSWORD:-debt_local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:8088:8080"
+    depends_on:
+      - backend
+volumes:
+  postgres-data:

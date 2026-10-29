@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-29",
+  "ruleset": {
+    "id": 26124161,
+    "enforcement": "active",
+    "bypass_actors": [],
+    "required_checks": [
+      {
+        "context": "quality",
+        "integration_id": 15368
+      },
+      {
+        "context": "independent-review",
+        "integration_id": 15368
+      }
+    ],
+    "strict": true
+  },
+  "review_failure_probe": {
+    "pr": 9,
+    "head_sha": "e4ace7b66f30e7fde2ad75ca34535df736fcda86",
+    "quality": "success",
+    "independent-review": "failure",
+    "merge_http_status": 405,
+    "message": "Required status check \"independent-review\" is failing.",
+    "merged": false,
+    "main_after": "87b2c64de0c7b9c2439a0882d31e7eb4a910b1b6"
+  },
+  "quality_failure_probe": {
+    "pr": 14,
+    "head_sha": "46de679b1eecc0b2b34b860d9d4b54912b935357",
+    "state": "rejected",
+    "quality": "failure",
+    "merge_http_status": 405,
+    "message": "2 of 2 required status checks have not succeeded: 1 expected and 1 failing.",
+    "merged": false,
+    "main_after": "87b2c64de0c7b9c2439a0882d31e7eb4a910b1b6",
+    "run": 40884015468
+  },
+  "limitations": [
+    "Review events are asynchronous; coordinator also refetches exact head/base/reviews immediately before merge.",
+    "Cloud-task stop/restart and separate-task delegation remain unverified."
+  ],
+  "normal_gate_revocation": {
+    "pr": 16,
+    "head_sha": "4b812aa7fd6d85833cbf07ed0e8c3ab5d58fdb12",
+    "base_sha": "737c01e40de013ab7d2fea8b567e52187fff9085",
+    "unreviewed": "failure",
+    "pass_review": 5699039117,
+    "pass_consumer_run": 40888221118,
+    "edited_to_malformed_marker": true,
+    "automatic_edited_relay": 40889078413,
+    "revocation_consumer_run": 40889107112,
+    "revoked_status": "failure",
+    "merge_http_status": 405,
+    "recovery_review": 5699228741,
+    "recovered_status": "success",
+    "cleanup_merge": "b9f48e666c6e0d24a652a2f6ff5a162ba0e7a4ba"
+  },
+  "quality_isolated": {
+    "pr": 18,
+    "head": "d8b0882b5c9f11d638caaee44d0189768d8cb0b8",
+    "base": "a185e00d502a52468db696c479b55534b94c8e9e",
+    "independent_review": "success",
+    "quality": "failure",
+    "merge_http_status": 405,
+    "message": "Required status check quality is failing",
+    "merged": false,
+    "main_unchanged": true
+  },
+  "native_auto_merge": {
+    "pr": 12,
+    "head": "46a9e88baaf5660a89a2b9af97295083424869f0",
+    "enabled_at_utc": "2026-10-29T15:17:19Z",
+    "merged_at_utc": "2026-10-29T15:18:34Z",
+    "merge_commit": "afd2d916a78a8a31cc77b79b2454430890aa4d2e",
+    "observed_pending_auto_merge": true
+  }
+}

@@ -21,8 +21,8 @@ export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$PWD/work/gradle-home}"
 export DB_URL="${DB_URL:-jdbc:postgresql://localhost:5432/debt}"
 export DB_USERNAME="${DB_USERNAME:-debt}"
 export DB_PASSWORD="${DB_PASSWORD:-debt_local}"
-export DEV_PASSWORD="${DEV_PASSWORD:-debt_local}"
-export SPRING_PROFILES_ACTIVE=dev
+export LOCAL_SEED_PASSWORD="${LOCAL_SEED_PASSWORD:-debt_local_demo_2026}"
+export SPRING_PROFILES_ACTIVE=local
 (cd backend && ./gradlew --no-daemon check bootJar)
 npm --prefix frontend ci
 npm --prefix frontend run check:api
@@ -37,7 +37,7 @@ trap 'kill "$backend_pid" 2>/dev/null || true' EXIT
 ready=false
 for _ in $(seq 1 60); do
   if ! kill -0 "$backend_pid" 2>/dev/null; then cat work/backend.log; exit 1; fi
-  if grep -q "Started DebtApplication" work/backend.log && curl --silent --fail -u "alpha-admin:$DEV_PASSWORD" http://localhost:8080/api/session >/dev/null; then
+  if grep -q "Started DebtApplication" work/backend.log && curl --silent --fail http://localhost:8080/api/csrf >/dev/null; then
     kill -0 "$backend_pid" || { cat work/backend.log; exit 1; }
     ready=true
     break

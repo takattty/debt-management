@@ -1,0 +1,245 @@
+desc: Persisted email login, real cookie rotation, fresh CSRF and session revocation
+concurrency: debt-api-acceptance
+labels:
+- api
+- authentication
+- security
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+  invalid:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    skipValidateRequest: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+secrets:
+- vars.password
+- anonymousToken
+- anonymousCookie
+- token
+- authenticatedCookie
+steps:
+  unique:
+    bind:
+      customerCode: '''AUTH-'' + faker.UUID()'
+  anonymous:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      anonymousToken: current.res.body.csrfToken
+      anonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: 'current.res.status == 200 && len(anonymousToken) > 0 && len(anonymousCookie) > 0
+
+      && current.res.cookies.JSESSIONID.HttpOnly && current.res.cookies.JSESSIONID.Path == ''/''
+
+      && !current.res.cookies.JSESSIONID.Secure
+
+      '
+  basicRejected:
+    invalid:
+      /api/session:
+        get:
+          useCookie: false
+          headers:
+            Authorization: Basic YWxwaGEtYWRtaW46ZGVidF9sb2NhbA==
+          body: null
+    test: current.res.status == 401 && current.res.body.code == 'UNAUTHENTICATED'
+  loginCsrfRequired:
+    invalid:
+      /api/auth/login:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ anonymousCookie }}
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: '{{ vars.password }}'
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
+  wrongPassword:
+    invalid:
+      /api/auth/login:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ anonymousCookie }}
+            X-CSRF-TOKEN: '{{ anonymousToken }}'
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: Incorrect fictional password
+    bind:
+      wrongLoginError: current.res.body
+    test: current.res.status == 401 && current.res.body.code == 'UNAUTHENTICATED'
+  unknownEmail:
+    invalid:
+      /api/auth/login:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ anonymousCookie }}
+            X-CSRF-TOKEN: '{{ anonymousToken }}'
+          body:
+            application/json:
+              email: not-registered@example.test
+              password: Incorrect fictional password
+    test: current.res.status == 401 && compare(current.res.body, wrongLoginError)
+  login:
+    api:
+      /api/auth/login:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ anonymousCookie }}
+            X-CSRF-TOKEN: '{{ anonymousToken }}'
+          body:
+            application/json:
+              email: ALPHA-ADMIN@example.test
+              password: '{{ vars.password }}'
+    bind:
+      authenticatedCookie: current.res.cookies.JSESSIONID.Value
+    test: 'current.res.status == 204 && len(authenticatedCookie) > 0 && authenticatedCookie != anonymousCookie
+
+      && current.res.rawBody == '''' && current.res.cookies.JSESSIONID.HttpOnly
+
+      '
+  session:
+    api:
+      /api/session:
+        get:
+          body: null
+    bind:
+      token: current.res.body.csrfToken
+      userId: current.res.body.userId
+    test: 'current.res.status == 200 && current.res.body.email == ''alpha-admin@example.test''
+
+      && current.res.body.role == ''ADMIN'' && len(userId) == 36
+
+      && !(''password'' in current.res.body) && !(''passwordHash'' in current.res.body)
+
+      '
+  oldAnonymousCookieRejected:
+    invalid:
+      /api/session:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ anonymousCookie }}
+          body: null
+    test: current.res.status == 401 && current.res.body.code == 'UNAUTHENTICATED'
+  oldCsrfRejected:
+    invalid:
+      /api/customers:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ authenticatedCookie }}
+            X-CSRF-TOKEN: '{{ anonymousToken }}'
+          body:
+            application/json:
+              code: '{{ customerCode }}'
+              name: Old CSRF cannot mutate
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
+  reloadSession:
+    api:
+      /api/session:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.body.userId == userId && current.res.body.role == 'ADMIN'
+  tenantBodyRejected:
+    invalid:
+      /api/customers:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ authenticatedCookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              code: '{{ customerCode }}'
+              name: Tenant override rejected
+              tenantId: 22222222-2222-2222-2222-222222222222
+              role: ADMIN
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  noMutation:
+    api:
+      /api/customers:
+        get:
+          body: null
+    test: current.res.status == 200 && len(filter(current.res.body, {#.code == customerCode})) == 0
+  logout:
+    api:
+      /api/logout:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json: {}
+    test: current.res.status == 204 && current.res.rawBody == ''
+  oldAuthenticatedCookieRejected:
+    invalid:
+      /api/session:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ authenticatedCookie }}
+          body: null
+    test: current.res.status == 401 && current.res.body.code == 'UNAUTHENTICATED'
+  accountantCsrf:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      accountantAnonymousToken: current.res.body.csrfToken
+    test: current.res.status == 200
+  accountantLogin:
+    api:
+      /api/auth/login:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ accountantAnonymousToken }}'
+          body:
+            application/json:
+              email: alpha-accountant@example.test
+              password: '{{ vars.password }}'
+    test: current.res.status == 204
+  accountantSession:
+    api:
+      /api/session:
+        get:
+          body: null
+    bind:
+      accountantToken: current.res.body.csrfToken
+    test: 'current.res.status == 200 && current.res.body.email == ''alpha-accountant@example.test''
+
+      && current.res.body.role == ''ACCOUNTANT''
+
+      '
+  accountantCustomer:
+    api:
+      /api/customers:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ accountantToken }}'
+          body:
+            application/json:
+              code: '{{ customerCode }}'
+              name: Accountant may register customer
+    test: current.res.status == 201 && current.res.body.code == customerCode
+  accountantLogout:
+    api:
+      /api/logout:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ accountantToken }}'
+          body:
+            application/json: {}
+    test: current.res.status == 204

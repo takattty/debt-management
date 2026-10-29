@@ -1,6 +1,10 @@
 desc: Real HTTP accepts Unicode code point boundaries and rejects overflow atomically
 concurrency: debt-api-acceptance
-labels: [api, schema, unicode, regression]
+labels:
+- api
+- schema
+- unicode
+- regression
 runners:
   valid:
     endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
@@ -9,39 +13,62 @@ runners:
   invalid:
     endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
     openapi3: ../../contracts/openapi.yaml
-    # Oversized values deliberately reach the server; responses must still match OpenAPI.
     skipValidateRequest: true
 vars:
-  alphaAuth: ${RUNN_ALPHA_AUTHORIZATION:-Basic YWxwaGEtYWRtaW46ZGVidF9sb2NhbA==}
-secrets: [vars.alphaAuth, token, cookie]
+  password: ${LOCAL_SEED_PASSWORD}
+secrets:
+- vars.password
+- token
+- cookie
+- accountAnonymousToken
+- accountAnonymousCookie
+- accountCookie
 steps:
   unique:
     bind:
       uniqueId: faker.UUID()
-      boundaryName: "repeat('𠮷', 200)"
+      boundaryName: repeat('𠮷', 200)
   boundaries:
     bind:
-      boundaryCode: "uniqueId + repeat('𠮷', 14)"
-      overflowCode: "uniqueId + repeat('𠮷', 15)"
-      overflowName: "repeat('𠮷', 201)"
+      boundaryCode: uniqueId + repeat('𠮷', 14)
+      overflowCode: uniqueId + repeat('𠮷', 15)
+      overflowName: repeat('𠮷', 201)
+  accountCsrf:
+    valid:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      accountAnonymousToken: current.res.body.csrfToken
+      accountAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200 && len(accountAnonymousToken) > 0
+  accountLogin:
+    valid:
+      /api/auth/login:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ accountAnonymousToken }}'
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: '{{ vars.password }}'
+    bind:
+      accountCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204 && len(accountCookie) > 0 && accountCookie != accountAnonymousCookie
   session:
     valid:
       /api/session:
         get:
-          useCookie: false
-          headers:
-            Authorization: '{{ vars.alphaAuth }}'
           body: null
     bind:
       token: current.res.body.csrfToken
-      cookie: current.res.cookies.JSESSIONID.Value
+      cookie: accountCookie
     test: current.res.status == 200 && len(token) > 0
   before:
     valid:
       /api/customers:
         get:
-          headers:
-            Authorization: '{{ vars.alphaAuth }}'
           body: null
     bind:
       countBefore: len(current.res.body)
@@ -51,7 +78,6 @@ steps:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
           body:
             application/json:
@@ -59,30 +85,31 @@ steps:
               name: '{{ boundaryName }}'
     bind:
       customerId: current.res.body.id
-    test: |
-      current.res.status == 201 && current.res.body.code == boundaryCode
+    test: 'current.res.status == 201 && current.res.body.code == boundaryCode
+
       && current.res.body.name == boundaryName && current.res.body.version == 0
+
+      '
   codeOverflow:
     invalid:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
-            Cookie: 'JSESSIONID={{ cookie }}'
+            Cookie: JSESSIONID={{ cookie }}
           body:
             application/json:
               code: '{{ overflowCode }}'
               name: 51 code points rejected
-    test: current.res.status == 400 && current.res.body.code == 'VALIDATION_ERROR' && len(current.res.body.errors) > 0
+    test: current.res.status == 400 && current.res.body.code == 'VALIDATION_ERROR' && len(current.res.body.errors)
+      > 0
   nameOverflow:
     invalid:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
-            Cookie: 'JSESSIONID={{ cookie }}'
+            Cookie: JSESSIONID={{ cookie }}
           body:
             application/json:
               code: '{{ uniqueId }}'
@@ -93,9 +120,8 @@ steps:
       /api/customers/{{ customerId }}:
         put:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
-            Cookie: 'JSESSIONID={{ cookie }}'
+            Cookie: JSESSIONID={{ cookie }}
           body:
             application/json:
               code: '{{ boundaryCode }}'
@@ -106,18 +132,18 @@ steps:
     valid:
       /api/customers:
         get:
-          headers:
-            Authorization: '{{ vars.alphaAuth }}'
           body: null
-    test: |
-      current.res.status == 200 && len(current.res.body) == countBefore + 1
-      && len(filter(current.res.body, {#.id == customerId && #.code == boundaryCode && #.name == boundaryName && #.version == 0})) == 1
+    test: 'current.res.status == 200 && len(current.res.body) == countBefore + 1
+
+      && len(filter(current.res.body, {#.id == customerId && #.code == boundaryCode && #.name == boundaryName &&
+      #.version == 0})) == 1
+
+      '
   logout:
     valid:
       /api/logout:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ token }}'
           body:
             application/json: {}

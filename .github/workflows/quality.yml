@@ -21,7 +21,7 @@ jobs:
           --health-interval 3s --health-timeout 3s --health-retries 20
     env:
       DB_PASSWORD: debt_local
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: local
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:

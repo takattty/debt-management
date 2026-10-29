@@ -1,9 +1,9 @@
 # Real HTTP API acceptance with runn
 
-Cookie session 認証と顧客管理の全7操作を、実 HTTP / 実 PostgreSQL で検証する。
+Cookie session 認証と顧客管理の認証・顧客・招待の全10操作を、実 HTTP / 実 PostgreSQL で検証する。
 `runn` が API 受入を担当し、Java の domain / DB / 同時更新テストと画面 E2E も維持する。
 明示 `local` profile の架空データ専用。既存の顧客39ケースを維持し、匿名 CSRF と login、
-session fixation / logout / role / 旧 Basic 拒否を加えた4 runbooks・66 HTTP assertions。
+session fixation / logout / role / 旧 Basic 拒否を加えた5 runbooks・94 HTTP assertions。
 
 Repository root で local Backend と実 PostgreSQL を起動し、起動時と同じ
 `LOCAL_SEED_PASSWORD` を shell 環境へ設定して実行する。Password に既定値はない。
@@ -20,6 +20,7 @@ DB 初期化や固定 ID の削除に依存せず、同じ concurrency key で�
 Password / token / cookie を `secrets` に指定し、通常実行で debug dump を出さない。
 
 - `authentication.yml`: 匿名 CSRF、email login、session ID 更新、古い匿名 cookie/CSRF の拒否、generic な認証失敗、Basic 拒否、再読込での User 復元、logout、Accountant の業務操作。
+- `invitations.yml`: ADMIN が追加 ADMIN を招待し、その ADMIN が ACCOUNTANT を招待。匿名 preview / accept、email一致、単回利用、role/tenant改ざん・CSRF拒否、Accountant招待権限拒否、generic errorと非自動loginを実HTTPで確認。
 - `customers.yml`: 顧客登録・一覧・重複、Tenant 分離、同じコードの別 Tenant 登録、更新・競合、CSRF と logout。取得した別々の cookie を明示して Alpha / Beta の session を独立して扱う。
 - `json-types.yml`: number / boolean → String、fraction / String / boolean → integer、UUID 不正を拒否し、一覧から不変を確認。
 - `unicode.yml`: 補助文字を含む50 code point のコード・200 code point の名称を登録し、51 / 201 の超過で作成・更新が発生しないことを確認。

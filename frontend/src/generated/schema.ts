@@ -123,6 +123,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a one-use manual link for a member in the current tenant
+         * @description ADMIN only. Tenant is fixed from the current DB membership. The fragment URL is returned once; no email is sent. It expires after24hours. Existing global email conflicts return a generic409 without identifying another tenant.
+         */
+        post: operations["issueInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect minimal invitation information using a bearer token
+         * @description Anonymous accessible with CSRF session cookie/header. Token is sent only in the POST body; no token in request URL or audit. Invalid/expired/used tokens share a generic error.
+         */
+        post: operations["inspectInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invitation and create a user atomically
+         * @description Anonymous accessible with CSRF session cookie/header. Token is sent only in the POST body; no token in request URL or audit. Invalid/expired/used tokens share a generic error.
+         */
+        post: operations["acceptInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -181,6 +241,61 @@ export interface components {
              * @description No trim/normalization; maximum512UTF-8bytes. Creation policy is separate from login verification.
              */
             password: string;
+        };
+        InvitationIssueRequest: {
+            /** @description ASCII email; surrounding whitespace stripped and lowercased by the domain */
+            email: string;
+            /** @enum {string} */
+            role: "ADMIN" | "ACCOUNTANT";
+        };
+        InvitationIssuedResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /**
+             * Format: password
+             * @description Sensitive relative fragment URL /accept-invitation#token=...; returned once. Password format redacts generated DTO diagnostics; response value remains readable for manual sharing.
+             */
+            acceptanceUrl: string;
+        };
+        InvitationInspectRequest: {
+            /**
+             * Format: password
+             * @description Secret canonical32-byte base64url bearer token, unpadded43characters. Never log or put in a request URL.
+             */
+            token: string;
+        };
+        InvitationInspectionResponse: {
+            tenantDisplayName: string;
+            /** @description Entire local part hidden; full invited email is not returned */
+            maskedEmail: string;
+            /** @enum {string} */
+            role: "ADMIN" | "ACCOUNTANT";
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        InvitationAcceptRequest: {
+            /**
+             * Format: password
+             * @description Secret canonical32-byte base64url bearer token, unpadded43characters. Never log or put in a request URL.
+             */
+            token: string;
+            /** @description ASCII email; surrounding whitespace stripped and lowercased by the domain */
+            email: string;
+            /**
+             * Format: password
+             * @description 12..128 Unicode code points, at most512UTF-8bytes; no trim/normalization
+             */
+            password: string;
+        };
+        InvitationAcceptedResponse: {
+            /** Format: uuid */
+            userId: string;
+            /** Format: email */
+            email: string;
+            /** @enum {string} */
+            role: "ADMIN" | "ACCOUNTANT";
         };
     };
     responses: {
@@ -412,6 +527,119 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    issueInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description One-time secret fragment URL; Cache-Control:no-store */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationIssuedResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Invitation cannot be issued (INVITATION_UNAVAILABLE); no tenant membership details */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    inspectInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationInspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitation information */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationInspectionResponse"];
+                };
+            };
+            /** @description Malformed input (VALIDATION_ERROR/INVALID_REQUEST) or invalid, expired, consumed, mismatched invitation (INVITATION_INVALID); token-state errors have the same public response */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    acceptInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description User created; invitation consumed; not automatically logged in */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationAcceptedResponse"];
+                };
+            };
+            /** @description Malformed input (VALIDATION_ERROR/INVALID_REQUEST) or invalid, expired, consumed, mismatched invitation (INVITATION_INVALID); token-state errors have the same public response */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            /** @description Cannot accept invitation (INVITATION_UNAVAILABLE); includes global email conflict without identifying another tenant */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
 }

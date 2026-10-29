@@ -1,0 +1,45 @@
+name: Work item
+description: 依存関係・業務例・受入条件を持つ実装または検証作業
+title: "[Work] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 課題と変更後の動作
+      description: 誰がどの操作で何に困り、変更後にどうなるか
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 範囲と仕様参照
+      description: Rxx / EX-xxx、ADR、対象外を含む
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依存関係と未決事項
+      description: 先行 Issue、必要な回答、依存しない作業
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 受入条件
+      description: 正常例とtenant越境・競合・取消等の否定例を具体化する
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: 検証と独立レビュー
+      description: 実行コマンド、実PostgreSQL/E2E、別contextへ渡す仕様、merge条件
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 結果と再開手順
+      description: branch・SHA・PR、実施/検証/未実施/阻害要因を区別する

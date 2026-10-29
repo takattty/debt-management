@@ -1,0 +1,32 @@
+name: Bug report
+description: 業務例または品質条件に反する動作
+title: "[Bug] "
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 再現手順と入力
+      description: 架空データで記載し、秘密・実データを含めない
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待結果と実際の結果
+      description: 該当するRxx・EX-xxx・不変条件を示す
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境と対象commit
+      description: Cloud/Docker、SHA、再現コマンド、影響範囲
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 修正の受入条件と回帰検証
+      value: "- [ ] "
+    validations:
+      required: true

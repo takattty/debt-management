@@ -1,0 +1,286 @@
+openapi: 3.0.3
+info:
+  title: Debt Management API
+  version: 0.1.0
+  description: |
+    開発基盤の顧客管理 API。現段階の Basic 認証は明示した dev profile の架空アカウント専用。
+    Tenant は認証済みの server-side membership から決め、入力による Tenant 指定を認めない。
+    dev 以外は API を拒否する。本番認証・メンバー招待は後続 Issue の対象。
+    同一オリジンで Basic credentials を毎回送り、GET /api/session で取得した CSRF token と
+    JSESSIONID cookie を変更系リクエストに付ける。CSRF session cookie 自体は認証資格ではない。
+servers:
+  - url: /
+    description: Same-origin API
+security:
+  - basicAuth: []
+tags:
+  - name: Session
+    description: Authentication context and CSRF session lifecycle
+  - name: Customers
+    description: Tenant-scoped customer registration and optimistic updates
+paths:
+  /api/session:
+    get:
+      tags: [Session]
+      operationId: getSession
+      summary: Read the authenticated user and issue a CSRF token
+      description: |
+        CSRF token は現在の session に結び付く。レスポンスの csrfHeaderName と csrfToken を使い、
+        ブラウザーは同時に発行される JSESSIONID cookie を保持する。
+      responses:
+        '200':
+          description: Authenticated user and CSRF token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/logout:
+    post:
+      tags: [Session]
+      operationId: logout
+      summary: Invalidate the CSRF session
+      description: |
+        CSRF 検証と認証後に session を無効化する。クライアントも保持する Basic credentials と
+        CSRF token を破棄する。有効な Basic credentials を再送すれば再認証できる。
+      security:
+        - basicAuth: []
+          csrfToken: []
+          csrfSession: []
+      responses:
+        '204':
+          description: Session invalidated; no response body
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/customers:
+    get:
+      tags: [Customers]
+      operationId: listCustomers
+      summary: List customers in the authenticated tenant
+      description: 顧客コードの昇順。Tenant header/body によるスコープ変更はできない。
+      responses:
+        '200':
+          description: Tenant-scoped customer list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Customers]
+      operationId: createCustomer
+      summary: Register a customer and its audit event atomically
+      security:
+        - basicAuth: []
+          csrfToken: []
+          csrfSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreateRequest'
+      responses:
+        '201':
+          description: Customer registered
+          headers:
+            Location:
+              description: Relative URI of the created customer
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Customer code is already registered in this tenant (DUPLICATE_CUSTOMER_CODE)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/customers/{id}:
+    put:
+      tags: [Customers]
+      operationId: updateCustomer
+      summary: Update a customer with its expected version
+      description: |
+        id は同じ Tenant に属する必要がある。他 Tenant の id も存在しない id と同じ 404。
+        更新・version 加算・操作履歴を同じ transaction で確定する。
+      security:
+        - basicAuth: []
+          csrfToken: []
+          csrfSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerUpdateRequest'
+      responses:
+        '200':
+          description: Updated customer with incremented version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Customer does not exist in the authenticated tenant (NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Stale version (VERSION_CONFLICT) or duplicate code (DUPLICATE_CUSTOMER_CODE)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: Dev profile fictional accounts only; send credentials on every API call
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-TOKEN
+      description: Token obtained from GET /api/session; required for mutations
+    csrfSession:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+      description: CSRF session cookie; not an authentication credential
+  responses:
+    BadRequest:
+      description: Invalid fields or malformed JSON (VALIDATION_ERROR or INVALID_REQUEST)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Missing or invalid credentials (UNAUTHENTICATED)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Missing/invalid CSRF token or API access denied (ACCESS_DENIED)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  schemas:
+    SessionResponse:
+      type: object
+      required: [username, csrfToken, csrfHeaderName]
+      properties:
+        username:
+          type: string
+          minLength: 1
+        csrfToken:
+          type: string
+          minLength: 1
+        csrfHeaderName:
+          type: string
+          minLength: 1
+          example: X-CSRF-TOKEN
+    CustomerResponse:
+      type: object
+      required: [id, code, name, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          minLength: 1
+          maxLength: 50
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+    CustomerCreateRequest:
+      type: object
+      required: [code, name]
+      description: Surrounding whitespace is stripped; blank/control characters are rejected
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 50
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+    CustomerUpdateRequest:
+      type: object
+      required: [code, name, version]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 50
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+    ApiError:
+      type: object
+      required: [code, message, errors]
+      properties:
+        code:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          minLength: 1
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+        message:
+          type: string

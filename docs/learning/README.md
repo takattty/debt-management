@@ -26,3 +26,5 @@ python3 scripts/failure-loop.py resolve --key github-integration-permission --ca
 - summary、cause、prevention、verification も秘密を含まない要約にする。CLI が任意の文章中の秘密を完全に検出できるとは主張しない。
 - このループはルールや権限を自動変更しない。観測済みの原因と検証済みの改善を保存し、将来の作業者が参照できる状態にする。
 - 失敗を解決済みとして記録したことは、業務機能や merge gate の完了を意味しない。実際の検証と独立レビューは対象 commit に別途結び付ける。
+
+mainの取得では `scripts/fetch-main.sh` を使い、明示先refとremote SHA一致を確認する。宛先なしfetchが成功してもorigin/mainが更新されるとは限らない。

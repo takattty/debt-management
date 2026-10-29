@@ -1,37 +1,55 @@
 name: Independent review
-# This workflow is trusted only after installation on protected default branch.
-# It never checks out or executes pull-request code.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows: [Review event relay]
+    types: [completed]
   issue_comment:
     types: [created]
 permissions:
   contents: read
   pull-requests: read
   statuses: write
+concurrency:
+  group: independent-review-writer
+  cancel-in-progress: false
 jobs:
   attest-review:
-    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
+      - id: policy
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - run: node --test .github/scripts/review-gate.test.cjs
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          TRUSTED_POLICY_SHA: ${{ steps.policy.outputs.sha }}
         with:
           script: |
-            const number = context.payload.pull_request?.number ?? context.payload.issue.number;
-            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: number });
-            if (pr.state !== 'open') return;
-            const reviews = await github.paginate(github.rest.pulls.listReviews, { ...context.repo, pull_number: number });
             const { evaluate } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/review-gate.cjs`);
-            const passed = evaluate(reviews, pr.head.sha);
-            await github.rest.repos.createCommitStatus({ ...context.repo, sha: pr.head.sha,
-              context: 'independent-review', state: passed ? 'success' : 'failure',
-              description: passed ? 'Exact-head independent review has zero blocking findings.' : 'Missing or blocking independent review for current head.',
-              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/pull/${number}#pullrequestreview` });
-            if (!passed) core.setFailed('Current head has no passing independent review.');
+            const path = '.github/workflows/review-event-relay.yml';
+            const { data: trusted } = await github.rest.repos.getContent({ ...context.repo, path, ref: process.env.TRUSTED_POLICY_SHA });
+            const open = await github.paginate(github.rest.pulls.list, { ...context.repo, state: 'open', per_page: 100 });
+            for (const entry of open) {
+              const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: entry.number });
+              await github.rest.repos.createCommitStatus({ ...context.repo, sha: pr.head.sha, context: 'independent-review', state: 'pending', description: 'Rechecking current review and trusted relay.' });
+              let sameRelay = false;
+              try {
+                const { data: candidate } = await github.rest.repos.getContent({ owner: pr.head.repo.owner.login, repo: pr.head.repo.name, path, ref: pr.head.sha });
+                sameRelay = candidate.type === 'file' && candidate.sha === trusted.sha;
+              } catch (error) { if (error.status !== 404) throw error; }
+              const reviews = await github.paginate(github.rest.pulls.listReviews, { ...context.repo, pull_number: pr.number });
+              const passed = sameRelay && evaluate(reviews, pr.head.sha);
+              const { data: latest } = await github.rest.pulls.get({ ...context.repo, pull_number: pr.number });
+              if (latest.state !== 'open' || latest.head.sha !== pr.head.sha) continue;
+              await github.rest.repos.createCommitStatus({ ...context.repo, sha: pr.head.sha, context: 'independent-review',
+                state: passed ? 'success' : 'failure',
+                description: passed ? 'Exact-head review passed; trusted relay is unchanged.' : 'Missing/blocked review or modified review-event relay.',
+                target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/pull/${pr.number}` });
+            }

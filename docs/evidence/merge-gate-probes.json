@@ -30,12 +30,34 @@
   "quality_failure_probe": {
     "pr": 14,
     "head_sha": "46de679b1eecc0b2b34b860d9d4b54912b935357",
-    "state": "awaiting-run"
+    "state": "rejected",
+    "quality": "failure",
+    "merge_http_status": 405,
+    "message": "2 of 2 required status checks have not succeeded: 1 expected and 1 failing.",
+    "merged": false,
+    "main_after": "87b2c64de0c7b9c2439a0882d31e7eb4a910b1b6",
+    "run": 40884015468
   },
   "limitations": [
-    "This old-head rejection does not establish the new trusted relay consumer is deployed.",
-    "Bootstrap e7b6d06 pin/execution requires explicit user approval."
+    "Review events are asynchronous; coordinator also refetches exact head/base/reviews immediately before merge.",
+    "Cloud-task stop/restart and separate-task delegation remain unverified."
   ],
+  "normal_gate_revocation": {
+    "pr": 16,
+    "head_sha": "4b812aa7fd6d85833cbf07ed0e8c3ab5d58fdb12",
+    "base_sha": "737c01e40de013ab7d2fea8b567e52187fff9085",
+    "unreviewed": "failure",
+    "pass_review": 5699039117,
+    "pass_consumer_run": 40888221118,
+    "edited_to_malformed_marker": true,
+    "automatic_edited_relay": 40889078413,
+    "revocation_consumer_run": 40889107112,
+    "revoked_status": "failure",
+    "merge_http_status": 405,
+    "recovery_review": 5699228741,
+    "recovered_status": "success",
+    "cleanup_merge": "b9f48e666c6e0d24a652a2f6ff5a162ba0e7a4ba"
+  },
   "quality_isolated": {
     "pr": 18,
     "head": "d8b0882b5c9f11d638caaee44d0189768d8cb0b8",

@@ -14,7 +14,7 @@ fi
 export API_PROXY_TARGET=http://127.0.0.1:8080
 python3 scripts/failure-loop.py check
 python3 -m unittest discover -s tests
-node --test .github/scripts/review-gate.test.cjs
+node --test .github/scripts/*.test.cjs
 python3 scripts/assert-ports-free.py 8080 5173
 export npm_config_cache="${npm_config_cache:-$PWD/work/npm-cache}"
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$PWD/work/gradle-home}"

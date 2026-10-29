@@ -190,6 +190,34 @@
       ]
     },
     {
+      "key": "patch-file-boundaries",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "pr-template-delete-add-same-path",
+          "summary": "同じpathへのDeleteとAddを一つのpatchへ含めtoolが原子的に拒否した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:24:18+00:00"
+        },
+        {
+          "event": "customer-ui-missing-second-file-header",
+          "summary": "複数file patchの2つ目のUpdate File指定が欠け別fileのcontextを探索し拒否された",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:24:18+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "複数file patchのfile指定境界を検査せず同一pathの重複操作やUpdate指定の欠落を含めた",
+          "prevention": "fileごとに一つの正しいUpdate Fileを置き既存fileの置換はDelete/AddでなくUpdateとする",
+          "verification": "file境界を直したPRテンプレートとUI修正は適用成功。新規PR構造/CLI/既存review計7testsとgit diff check成功",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T23:24:19+00:00"
+        }
+      ]
+    },
+    {
       "key": "review-result-fallback",
       "status": "resolved",
       "events": [
@@ -278,6 +306,12 @@
           "summary": "新helper未導入の古い証拠checkoutからhelper相対pathを呼び起動前に失敗した",
           "evidence": "scripts/read-evidence.py",
           "recorded_at": "2026-10-29T18:08:18+00:00"
+        },
+        {
+          "event": "frontend-package-cwd-enoent-20261030",
+          "summary": "FEのpackageコマンドをrepository rootから実行しpackage.json不在で失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:21:14+00:00"
         }
       ],
       "resolutions": [
@@ -312,6 +346,14 @@
           "guard": "docs/learning/README.md",
           "event_count": 5,
           "resolved_at": "2026-10-29T18:08:19+00:00"
+        },
+        {
+          "cause": "checkout所有先を明示していてもnpmがrepository rootのpackage.jsonを読むと仮定した",
+          "prevention": "複数worktreeのFE packageコマンドはnpm --prefixと絶対frontend pathで実行し編集と分離する",
+          "verification": "repository rootをcwdにしてnpm --prefix /workspace/debt-customer-ui/frontend run lintを実行し成功した",
+          "guard": "frontend/AGENTS.md",
+          "event_count": 6,
+          "resolved_at": "2026-10-29T23:21:27+00:00"
         }
       ]
     }

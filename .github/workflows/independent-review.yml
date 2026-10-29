@@ -1,7 +1,7 @@
 name: Independent review
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_run:
     workflows: [Review event relay]
     types: [completed]
@@ -26,13 +26,14 @@ jobs:
           persist-credentials: false
       - id: policy
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - run: node --test .github/scripts/review-gate.test.cjs
+      - run: node --test .github/scripts/*.test.cjs
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
         env:
           TRUSTED_POLICY_SHA: ${{ steps.policy.outputs.sha }}
         with:
           script: |
             const { evaluate } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/review-gate.cjs`);
+            const { validateDescription } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/pr-description.cjs`);
             const path = '.github/workflows/review-event-relay.yml';
             const { data: trusted } = await github.rest.repos.getContent({ ...context.repo, path, ref: process.env.TRUSTED_POLICY_SHA });
             const open = await github.paginate(github.rest.pulls.list, { ...context.repo, state: 'open', per_page: 100 });
@@ -45,11 +46,12 @@ jobs:
                 sameRelay = candidate.type === 'file' && candidate.sha === trusted.sha;
               } catch (error) { if (error.status !== 404) throw error; }
               const reviews = await github.paginate(github.rest.pulls.listReviews, { ...context.repo, pull_number: pr.number });
-              const passed = sameRelay && evaluate(reviews, pr.head.sha);
+              const descriptionValid = validateDescription(pr.body).length === 0;
+              const passed = sameRelay && descriptionValid && evaluate(reviews, pr.head.sha);
               const { data: latest } = await github.rest.pulls.get({ ...context.repo, pull_number: pr.number });
-              if (latest.state !== 'open' || latest.head.sha !== pr.head.sha) continue;
+              if (latest.state !== 'open' || latest.head.sha !== pr.head.sha || latest.body !== pr.body) continue;
               await github.rest.repos.createCommitStatus({ ...context.repo, sha: pr.head.sha, context: 'independent-review',
                 state: passed ? 'success' : 'failure',
-                description: passed ? 'Exact-head review passed; trusted relay is unchanged.' : 'Missing/blocked review or modified review-event relay.',
+                description: passed ? 'Exact-head review and PR description passed.' : 'Missing/blocked review, incomplete PR body or modified relay.',
                 target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/pull/${pr.number}` });
             }

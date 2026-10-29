@@ -8,6 +8,7 @@
 - 契約変更後は `npm run generate:api` で `src/generated/schema.ts` を再生成する。生成ファイルを直接編集しない。
 - `npm ci --cache ../work/npm-cache && npm run check:api && npm run lint && npm run typecheck && npm test && npm run build`。
 - Cloudでは `.npmrc` の `cache=./work/npm-cache` で書込み可能なcacheを使用する。明示する場合もwork内を指定し、homeの既定cacheへの失敗を反復しない。
+- 複数worktreeを扱うCoordinatorは、FE packageコマンドに `npm --prefix /absolute/checkout/frontend ...` を用いる。repository rootにpackage.jsonがあると仮定せず、source編集とpackage実行を別commandへ分ける。
 - `CHROMIUM_PATH=/usr/bin/chromium npm run test:e2e` は起動済みの実backend/PostgreSQLに接続する。APIモックでE2E合格に代替しない。
 - E2Eデータは架空のみ。失敗表示、重複、再読込後の永続化、別tenant分離を確認する。
 - 認証E2Eのnetwork traceはpassword本文やsession cookieを含むため保存しない。HTML reportと失敗時screenshotで診断し、password入力はtype=passwordを維持する。

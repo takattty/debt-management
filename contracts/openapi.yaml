@@ -214,6 +214,20 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '429':
+          description: Validated login attempts temporarily limited (RATE_LIMITED); retry after1..60seconds. Cookie
+            replacement does not reset the budget.
+          headers:
+            Retry-After:
+              description: Whole seconds until retry; bounded between1and60
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/invitations:
     post:
       tags:

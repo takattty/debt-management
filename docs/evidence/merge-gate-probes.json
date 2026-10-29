@@ -35,5 +35,24 @@
   "limitations": [
     "This old-head rejection does not establish the new trusted relay consumer is deployed.",
     "Bootstrap e7b6d06 pin/execution requires explicit user approval."
-  ]
+  ],
+  "quality_isolated": {
+    "pr": 18,
+    "head": "d8b0882b5c9f11d638caaee44d0189768d8cb0b8",
+    "base": "a185e00d502a52468db696c479b55534b94c8e9e",
+    "independent_review": "success",
+    "quality": "failure",
+    "merge_http_status": 405,
+    "message": "Required status check quality is failing",
+    "merged": false,
+    "main_unchanged": true
+  },
+  "native_auto_merge": {
+    "pr": 12,
+    "head": "46a9e88baaf5660a89a2b9af97295083424869f0",
+    "enabled_at_utc": "2026-10-29T15:17:19Z",
+    "merged_at_utc": "2026-10-29T15:18:34Z",
+    "merge_commit": "afd2d916a78a8a31cc77b79b2454430890aa4d2e",
+    "observed_pending_auto_merge": true
+  }
 }

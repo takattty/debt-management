@@ -294,6 +294,34 @@
       ]
     },
     {
+      "key": "runn-test-scalar-encoding",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "customer-import-filter-comment",
+          "summary": "inline filterの二つ目の#がYAMLコメントとして切り捨てられ式が不完全になった",
+          "evidence": "backend/runn/customer-import.yml",
+          "recorded_at": "2026-10-29T23:24:34+00:00"
+        },
+        {
+          "event": "customer-import-folded-scalar",
+          "summary": "pinned runn1.11.1でfolded scalarのtestがboolean式ではなく文字列として扱われた",
+          "evidence": "backend/runn/customer-import.yml",
+          "recorded_at": "2026-10-29T23:24:35+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "YAML scalarの表現とrunn式の解釈を確認せずfilter式を追加した",
+          "prevention": "inline filter/#を含むtestは既存bookで動作するsinglequoted scalarを使用し、内側quoteを二重化する。folded scalarは使用しない",
+          "verification": "singlequoted scalarへ変更しcustomer-import.ymlの14実HTTP検証が0skip/0failureで成功。部分取込ゼロassertionを維持した",
+          "guard": "backend/runn/customer-import.yml",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T23:24:35+00:00"
+        }
+      ]
+    },
+    {
       "key": "stale-main-tracking-ref",
       "status": "resolved",
       "events": [

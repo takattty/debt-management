@@ -4,6 +4,142 @@
  */
 
 export interface paths {
+    "/api/imports/customers/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the UTF-8 BOM customer CSV header
+         * @description Header only. Columns are customer_code,customer_name. Surrounding field whitespace is stripped as in manual customer registration; case and Unicode are not normalized.
+         */
+        get: operations["downloadCustomerImportTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/customers/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Store a customer CSV preview without creating any customer
+         * @description New customers only. Existing or repeated customer codes invalidate the entire batch. Syntax and row errors are saved for correction; a preview expires after 24 hours. Maximum 10MiB and 10000 data records.
+         */
+        post: operations["previewCustomerImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the stored preview or confirmed result
+         * @description A different tenant or unsupported import kind returns 404. Reads remain available after preview expiry for correction and outcome recovery.
+         */
+        get: operations["getImportBatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{id}/rows": {
+        parameters: {
+            query?: {
+                /** @description Last record or error number from the preceding page; zero starts the snapshot */
+                cursor?: components["parameters"]["ImportCursor"];
+                /** @description Maximum items per page */
+                limit?: components["parameters"]["ImportLimit"];
+            };
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        /** Read an immutable preview page in original record order */
+        get: operations["listImportRows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{id}/errors": {
+        parameters: {
+            query?: {
+                /** @description Last record or error number from the preceding page; zero starts the snapshot */
+                cursor?: components["parameters"]["ImportCursor"];
+                /** @description Maximum items per page */
+                limit?: components["parameters"]["ImportLimit"];
+            };
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        /** Read all correction details through bounded pages */
+        get: operations["listImportErrors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{id}/errors.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Download the complete spreadsheet-safe error snapshot
+         * @description UTF-8 BOM CSV with row_number,field,input_value,input_truncated,reason,correction. This report is for correction guidance, not a re-import file. Formula-like values are neutralized.
+         */
+        get: operations["downloadImportErrors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session": {
         parameters: {
             query?: never;
@@ -187,6 +323,50 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ImportBatchResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "CUSTOMER";
+            /** @enum {string} */
+            status: "PREVIEW_VALID" | "PREVIEW_INVALID" | "CONFIRMED";
+            /** Format: int64 */
+            version: number;
+            rowCount: number;
+            errorCount: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            confirmedAt: string | null;
+            confirmedCount: number;
+        };
+        ImportRowResponse: {
+            recordNumber: number;
+            rowNumber: number;
+            customerCode: string;
+            customerName: string;
+            valid: boolean;
+        };
+        ImportErrorResponse: {
+            errorNumber: number;
+            rowNumber: number;
+            field: string;
+            inputValue: string;
+            inputTruncated: boolean;
+            reasonCode: string;
+            reason: string;
+            correction: string;
+        };
+        ImportRowsPage: {
+            items: components["schemas"]["ImportRowResponse"][];
+            nextCursor: number;
+        };
+        ImportErrorsPage: {
+            items: components["schemas"]["ImportErrorResponse"][];
+            nextCursor: number;
+        };
         SessionResponse: {
             /** Format: uuid */
             userId: string;
@@ -299,6 +479,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description Batch not found in the authenticated tenant */
+        ImportNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
         /** @description Invalid fields or malformed JSON (VALIDATION_ERROR or INVALID_REQUEST) */
         BadRequest: {
             headers: {
@@ -327,13 +516,203 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /** @description Server-issued batch ID */
+        ImportId: string;
+        /** @description Last record or error number from the preceding page; zero starts the snapshot */
+        ImportCursor: number;
+        /** @description Maximum items per page */
+        ImportLimit: number;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    downloadCustomerImportTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fixed-format CSV template */
+            200: {
+                headers: {
+                    /** @description Attachment filename customers-template.csv */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    previewCustomerImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Immutable valid or invalid preview; business rows remain unchanged */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Multipart upload exceeds its bounded size */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getImportBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current server-side batch state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ImportNotFound"];
+        };
+    };
+    listImportRows: {
+        parameters: {
+            query?: {
+                /** @description Last record or error number from the preceding page; zero starts the snapshot */
+                cursor?: components["parameters"]["ImportCursor"];
+                /** @description Maximum items per page */
+                limit?: components["parameters"]["ImportLimit"];
+            };
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description At most limit rows; nextCursor is zero at the end */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRowsPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ImportNotFound"];
+        };
+    };
+    listImportErrors: {
+        parameters: {
+            query?: {
+                /** @description Last record or error number from the preceding page; zero starts the snapshot */
+                cursor?: components["parameters"]["ImportCursor"];
+                /** @description Maximum items per page */
+                limit?: components["parameters"]["ImportLimit"];
+            };
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description At most limit errors; nextCursor is zero at the end */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportErrorsPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ImportNotFound"];
+        };
+    };
+    downloadImportErrors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All stored errors, matching the paginated error API */
+            200: {
+                headers: {
+                    /** @description Attachment filename import-errors.csv */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ImportNotFound"];
+        };
+    };
     getSession: {
         parameters: {
             query?: never;

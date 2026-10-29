@@ -8,12 +8,20 @@ import java.util.List;
 /** Writes spreadsheet-safe error reports; not the fixed-format re-import template. */
 public final class CsvErrorWriter {
     public void write(List<CsvError> errors, OutputStream target) throws IOException {
+        writeHeader(target);
+        for (CsvError error : errors) {
+            writeError(error, target);
+        }
+    }
+
+    void writeHeader(OutputStream target) throws IOException {
         target.write(new byte[] {(byte) 0xef, (byte) 0xbb, (byte) 0xbf});
         row(target, List.of("row_number", "field", "input_value", "input_truncated", "reason", "correction"));
-        for (CsvError error : errors) {
-            row(target, List.of(Integer.toString(error.rowNumber()), error.field(), error.inputValue(),
-                    Boolean.toString(error.inputTruncated()), error.reason(), error.correction()));
-        }
+    }
+
+    void writeError(CsvError error, OutputStream target) throws IOException {
+        row(target, List.of(Integer.toString(error.rowNumber()), error.field(), error.inputValue(),
+                Boolean.toString(error.inputTruncated()), error.reason(), error.correction()));
     }
 
     private void row(OutputStream target, List<String> values) throws IOException {

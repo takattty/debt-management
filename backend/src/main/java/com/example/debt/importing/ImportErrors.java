@@ -1,0 +1,34 @@
+package com.example.debt.importing;
+
+import com.example.debt.generated.model.ApiError;
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
+
+@RestControllerAdvice
+public class ImportErrors {
+    @ExceptionHandler(ImportNotFound.class)
+    ResponseEntity<ApiError> notFound(ImportNotFound exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).contentType(MediaType.APPLICATION_JSON)
+                .body(new ApiError("NOT_FOUND", "取込が見つかりません。", List.of()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> tooLarge(MaxUploadSizeExceededException exception) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).contentType(MediaType.APPLICATION_JSON)
+                .body(new ApiError("IMPORT_SIZE_LIMIT", "CSVは10MiB以内に分割してください。", List.of()));
+    }
+
+    @ExceptionHandler({MissingServletRequestPartException.class, MissingServletRequestParameterException.class, MultipartException.class})
+    ResponseEntity<ApiError> missingPart(Exception exception) {
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON)
+                .body(new ApiError("INVALID_REQUEST", "CSVファイルを1つ選択し、multipart形式を確認してください。", List.of()));
+    }
+}

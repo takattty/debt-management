@@ -7,6 +7,7 @@ import java.util.List;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -22,7 +23,7 @@ public class ApiErrors {
     ResponseEntity<ApiError> invalidFields(MethodArgumentNotValidException exception) {
         List<FieldError> fields = exception.getBindingResult().getFieldErrors().stream()
                 .map(error -> new FieldError(error.getField(), error.getDefaultMessage())).toList();
-        return ResponseEntity.badRequest().body(new ApiError("VALIDATION_ERROR", "入力内容を確認してください。", fields));
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(new ApiError("VALIDATION_ERROR", "入力内容を確認してください。", fields));
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)
@@ -34,7 +35,7 @@ public class ApiErrors {
                 .filter(ParameterErrors.class::isInstance).map(ParameterErrors.class::cast)
                 .flatMap(result -> result.getFieldErrors().stream())
                 .map(field -> new FieldError(field.getField(), field.getDefaultMessage())).toList();
-        return ResponseEntity.badRequest().body(new ApiError("VALIDATION_ERROR", "入力内容を確認してください。", fields));
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(new ApiError("VALIDATION_ERROR", "入力内容を確認してください。", fields));
     }
 
     @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
@@ -63,6 +64,6 @@ public class ApiErrors {
     }
 
     private ResponseEntity<ApiError> error(HttpStatus status, String code, String message) {
-        return ResponseEntity.status(status).body(new ApiError(code, message, List.of()));
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON).body(new ApiError(code, message, List.of()));
     }
 }

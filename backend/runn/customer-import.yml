@@ -1,0 +1,189 @@
+desc: Customer CSV preview, every correction detail, safe download and repaired re-upload over real HTTP
+concurrency: debt-api-acceptance
+labels: [api, importing, security]
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+  invalid:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    skipValidateRequest: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+secrets:
+- vars.password
+- anonymousToken
+- anonymousCookie
+- cookie
+- token
+steps:
+  unauthenticatedTemplate:
+    invalid:
+      /api/imports/customers/template:
+        get:
+          useCookie: false
+          body: null
+    test: current.res.status == 401
+  csrf:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      anonymousToken: current.res.body.csrfToken
+      anonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  login:
+    api:
+      /api/auth/login:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ anonymousCookie }}
+            X-CSRF-TOKEN: '{{ anonymousToken }}'
+          body:
+            application/json:
+              email: alpha-accountant@example.test
+              password: '{{ vars.password }}'
+    bind:
+      cookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  session:
+    api:
+      /api/session:
+        get:
+          body: null
+    bind:
+      token: current.res.body.csrfToken
+    test: current.res.status == 200 && current.res.body.role == 'ACCOUNTANT'
+  template:
+    api:
+      /api/imports/customers/template:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.rawBody == '\uFEFFcustomer_code,customer_name\r\n'
+      && current.res.headers['Content-Disposition'][0] == 'attachment; filename="customers-template.csv"'
+  unknownCsvAccept:
+    api:
+      /api/imports/00000000-0000-0000-0000-000000000000/errors.csv:
+        get:
+          headers:
+            Accept: text/csv
+          body: null
+    test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'
+      && current.res.headers['Content-Type'][0] == 'application/json'
+  malformedIdCsvAccept:
+    invalid:
+      /api/imports/not-a-uuid/errors.csv:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            Accept: text/csv
+          body: null
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  missingMultipartBoundary:
+    invalid:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+            Content-Type: multipart/form-data
+          body:
+            text/plain: broken
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  truncatedMultipartBoundary:
+    invalid:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+            Content-Type: multipart/form-data; boundary=abc
+          body:
+            text/plain: "--abc\r\nContent-Disposition: form-data; name=\"file\"; filename=\"fictional.csv\"\r\n\r\nbroken"
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  missingCsrf:
+    invalid:
+      /api/imports/customers/preview:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+          body:
+            multipart/form-data:
+              file: ../../work/runn-customer-valid.csv
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
+  previewInvalid:
+    api:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            multipart/form-data:
+              file: ../../work/runn-customer-invalid.csv
+    bind:
+      invalidBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_INVALID'
+      && current.res.body.rowCount == 2 && current.res.body.errorCount == 1 && current.res.body.confirmedCount == 0
+  invalidRows:
+    api:
+      /api/imports/{{ invalidBatch }}/rows?limit=1:
+        get:
+          body: null
+    bind:
+      firstCode: current.res.body.items[0].customerCode
+    test: current.res.status == 200 && len(current.res.body.items) == 1
+      && current.res.body.items[0].valid && current.res.body.nextCursor == 1
+  secondRow:
+    api:
+      /api/imports/{{ invalidBatch }}/rows?cursor=1&limit=1:
+        get:
+          body: null
+    bind:
+      secondCode: current.res.body.items[0].customerCode
+    test: current.res.status == 200 && !current.res.body.items[0].valid && current.res.body.nextCursor == 0
+  errors:
+    api:
+      /api/imports/{{ invalidBatch }}/errors:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.body.items[0].rowNumber == 3
+      && current.res.body.items[0].field == 'customer_name' && current.res.body.items[0].inputValue == ''
+      && len(current.res.body.items[0].reason) > 0 && len(current.res.body.items[0].correction) > 0 && current.res.body.nextCursor == 0
+  errorsCsv:
+    api:
+      /api/imports/{{ invalidBatch }}/errors.csv:
+        get:
+          body: null
+    test: current.res.status == 200 && len(split(current.res.rawBody, '"3","customer_name","","false"')) == 2
+  noPartialCustomer:
+    api:
+      /api/customers:
+        get:
+          body: null
+    test: 'current.res.status == 200 && len(filter(current.res.body, {#.code == firstCode || #.code == secondCode})) == 0'
+  corrected:
+    api:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            multipart/form-data:
+              file: ../../work/runn-customer-valid.csv
+    bind:
+      validBatch: current.res.body.id
+      validVersion: current.res.body.version
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID'
+      && current.res.body.id != invalidBatch && current.res.body.errorCount == 0 && current.res.body.rowCount == 2
+  oldSnapshot:
+    api:
+      /api/imports/{{ invalidBatch }}:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.body.status == 'PREVIEW_INVALID' && current.res.body.errorCount == 1

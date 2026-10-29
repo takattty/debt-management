@@ -37,5 +37,20 @@ class PasswordPolicyTest {
         assertThat(new EmailAddress(" Alpha-Admin@EXAMPLE.TEST ").canonical()).isEqualTo("alpha-admin@example.test");
         assertThatThrownBy(() -> new EmailAddress("担当者@example.test")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new EmailAddress("not-an-email")).isInstanceOf(IllegalArgumentException.class);
+        assertThat(new EmailAddress("a.b+tag@sub.example.test").canonical()).isEqualTo("a.b+tag@sub.example.test");
+        for (String invalid : new String[] {".alice..@example.test", "alice@example..sub.test",
+                "alice@a.-b.test", "a".repeat(65) + "@example.test", "alice@" + "a".repeat(64) + ".test"}) {
+            assertThatThrownBy(() -> new EmailAddress(invalid)).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Test
+    void rejectsMalformedUnicodeBeforeHashing() {
+        for (String invalid : new String[] {"\uD800".repeat(12), "\uDC00".repeat(12), "valid-password\uD800"}) {
+            assertThatThrownBy(() -> PasswordPolicy.validateCreation(invalid))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> PasswordPolicy.validateLogin(invalid))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
     }
 }

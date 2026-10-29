@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-29",
+  "ruleset": {
+    "id": 26124161,
+    "enforcement": "active",
+    "bypass_actors": [],
+    "required_checks": [
+      {
+        "context": "quality",
+        "integration_id": 15368
+      },
+      {
+        "context": "independent-review",
+        "integration_id": 15368
+      }
+    ],
+    "strict": true
+  },
+  "review_failure_probe": {
+    "pr": 9,
+    "head_sha": "e4ace7b66f30e7fde2ad75ca34535df736fcda86",
+    "quality": "success",
+    "independent-review": "failure",
+    "merge_http_status": 405,
+    "message": "Required status check \"independent-review\" is failing.",
+    "merged": false,
+    "main_after": "87b2c64de0c7b9c2439a0882d31e7eb4a910b1b6"
+  },
+  "quality_failure_probe": {
+    "pr": 14,
+    "head_sha": "46de679b1eecc0b2b34b860d9d4b54912b935357",
+    "state": "awaiting-run"
+  },
+  "limitations": [
+    "This old-head rejection does not establish the new trusted relay consumer is deployed.",
+    "Bootstrap e7b6d06 pin/execution requires explicit user approval."
+  ]
+}

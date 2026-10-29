@@ -18,15 +18,17 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile({"local", "auth-test"})
 public class AuthenticationController implements AuthenticationApi {
     private final AuthenticateUser users;
+    private final LoginAttemptLimiter limits;
     private final SessionAudit audit;
     private final SessionAuthenticationStrategy sessions;
     private final SecurityContextRepository contexts;
     private final HttpServletRequest request;
     private final HttpServletResponse response;
 
-    public AuthenticationController(AuthenticateUser users, SessionAudit audit, SessionAuthenticationStrategy sessions,
+    public AuthenticationController(AuthenticateUser users, LoginAttemptLimiter limits, SessionAudit audit, SessionAuthenticationStrategy sessions,
             SecurityContextRepository contexts, HttpServletRequest request, HttpServletResponse response) {
         this.users = users;
+        this.limits = limits;
         this.audit = audit;
         this.sessions = sessions;
         this.contexts = contexts;
@@ -42,23 +44,28 @@ public class AuthenticationController implements AuthenticationApi {
 
     @Override
     public ResponseEntity<Void> login(AuthLoginRequest credentials) {
-        TenantUser user = users.authenticate(credentials.getEmail(), credentials.getPassword());
-        var authentication = UsernamePasswordAuthenticationToken.authenticated(user, null, user.authorities());
-        sessions.onAuthentication(authentication, request, response);
-        try {
-            audit.record(user, "SESSION_STARTED");
-            var context = SecurityContextHolder.createEmptyContext();
-            context.setAuthentication(authentication);
-            SecurityContextHolder.setContext(context);
-            contexts.saveContext(context, request, response);
-            return ResponseEntity.noContent().build();
-        } catch (RuntimeException failure) {
-            var session = request.getSession(false);
-            if (session != null) {
-                session.invalidate();
+        PasswordPolicy.validateLogin(credentials.getPassword());
+        EmailAddress email = new EmailAddress(credentials.getEmail());
+        try (var attempt = limits.reserve(email, request.getRemoteAddr())) {
+            TenantUser user = users.authenticate(email.canonical(), credentials.getPassword());
+            var authentication = UsernamePasswordAuthenticationToken.authenticated(user, null, user.authorities());
+            sessions.onAuthentication(authentication, request, response);
+            try {
+                audit.record(user, "SESSION_STARTED");
+                var context = SecurityContextHolder.createEmptyContext();
+                context.setAuthentication(authentication);
+                SecurityContextHolder.setContext(context);
+                contexts.saveContext(context, request, response);
+                attempt.success();
+                return ResponseEntity.noContent().build();
+            } catch (RuntimeException failure) {
+                var session = request.getSession(false);
+                if (session != null) {
+                    session.invalidate();
+                }
+                SecurityContextHolder.clearContext();
+                throw failure;
             }
-            SecurityContextHolder.clearContext();
-            throw failure;
         }
     }
 }

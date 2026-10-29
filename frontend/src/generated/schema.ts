@@ -527,6 +527,17 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            /** @description Validated login attempts temporarily limited (RATE_LIMITED); retry after1..60seconds. Cookie replacement does not reset the budget. */
+            429: {
+                headers: {
+                    /** @description Whole seconds until retry; bounded between1and60 */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     issueInvitation: {

@@ -1,0 +1,62 @@
+desc: New anonymous cookies cannot reset a canonical email login budget
+concurrency: debt-api-acceptance
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+secrets: [csrfHeaders]
+steps:
+  unique:
+    bind:
+      email: "'rate-' + faker.UUID() + '@example.test'"
+  csrf01: &csrf
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      csrfHeaders: "{'X-CSRF-TOKEN': current.res.body.csrfToken}"
+    test: current.res.status == 200
+  failure01: &failure
+    api:
+      /api/auth/login:
+        post:
+          headers: '{{ csrfHeaders }}'
+          body:
+            application/json:
+              email: '{{ email }}'
+              password: Incorrect fictional password
+    test: current.res.status == 401 && current.res.body.code == 'UNAUTHENTICATED'
+  csrf02: *csrf
+  failure02: *failure
+  csrf03: *csrf
+  failure03: *failure
+  csrf04: *csrf
+  failure04: *failure
+  csrf05: *csrf
+  failure05: *failure
+  csrf06: *csrf
+  failure06: *failure
+  csrf07: *csrf
+  failure07: *failure
+  csrf08: *csrf
+  failure08: *failure
+  csrf09: *csrf
+  failure09: *failure
+  csrf10: *csrf
+  failure10: *failure
+  csrf11: *csrf
+  limited:
+    api:
+      /api/auth/login:
+        post:
+          headers: '{{ csrfHeaders }}'
+          body:
+            application/json:
+              email: '{{ email }}'
+              password: Incorrect fictional password
+    test: |
+      current.res.status == 429 && current.res.body.code == 'RATE_LIMITED'
+      && int(current.res.headers['Retry-After'][0]) >= 1 && int(current.res.headers['Retry-After'][0]) <= 60

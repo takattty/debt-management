@@ -6,7 +6,11 @@ runners:
     endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
     openapi3: ../../contracts/openapi.yaml
     useCookie: true
-    # Deliberately invalid JSON field types must reach the server; response validation remains enabled.
+  invalid:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+    # Only invalid types/path values bypass request validation; all responses remain validated.
     skipValidateRequest: true
 vars:
   alphaAuth: ${RUNN_ALPHA_AUTHORIZATION:-Basic YWxwaGEtYWRtaW46ZGVidF9sb2NhbA==}
@@ -44,7 +48,7 @@ steps:
     test: current.res.status == 200
   invalidCreate:
     loop: 4
-    api:
+    invalid:
       /api/customers:
         post:
           headers:
@@ -77,7 +81,7 @@ steps:
     test: current.res.status == 201 && current.res.body.version == 0
   invalidVersions:
     loop: 4
-    api:
+    invalid:
       /api/customers/{{ customerId }}:
         put:
           headers:
@@ -90,7 +94,7 @@ steps:
               version: '{{ vars.invalidVersion[i] }}'
     test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
   invalidUuid:
-    api:
+    invalid:
       /api/customers/not-a-uuid:
         put:
           headers:

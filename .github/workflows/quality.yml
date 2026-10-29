@@ -28,45 +28,18 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
-        if: hashFiles('backend/build.gradle.kts') != ''
         with:
           distribution: temurin
           java-version: '25.0.1+8.0.LTS'
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        if: hashFiles('frontend/package.json') != ''
         with:
           node-version: '24.19.0'
       - name: Validate OpenAPI contract
-        if: hashFiles('contracts/openapi.yaml') != ''
         run: npx --yes --package=@redocly/cli@2.72.1 redocly lint contracts/openapi.yaml --config contracts/redocly.yaml
       - name: Install pinned E2E browser
-        if: hashFiles('scripts/verify.sh') != ''
         run: cd frontend && npm ci && npx playwright install --with-deps chromium
-      - name: Verify applicable bootstrap stage
-        run: |
-          if [ -x scripts/verify.sh ]; then
-            scripts/verify.sh
-          else
-            git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check HEAD^ HEAD
-            node --test .github/scripts/review-gate.test.cjs
-            if [ -f scripts/failure-loop.py ]; then
-              python3 scripts/failure-loop.py check
-              python3 -m unittest discover -s tests
-            fi
-            if [ -f backend/build.gradle.kts ]; then
-              (cd backend && ./gradlew --no-daemon check bootJar)
-            fi
-            if [ -f frontend/package.json ]; then
-              npm --prefix frontend ci
-              npm --prefix frontend run check:api
-              npm --prefix frontend run test:api-drift
-              npm --prefix frontend run lint
-              npm --prefix frontend run typecheck
-              npm --prefix frontend run test:unit
-              npm --prefix frontend run build
-            fi
-            echo 'Partial bootstrap: screen-to-DB E2E becomes mandatory with the runtime PR.'
-          fi
+      - name: Run all mandatory quality checks
+        run: scripts/verify.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: failure()
         with:

@@ -40,3 +40,5 @@ principal から決まる。CSRF 欠落の負例は logout 後に置き、拒否
 明示して送り、失効を確認する。
 
 3 runbooks、37 defined steps、loop を展開して39 HTTP response assertions。
+
+CIのqualityはbootstrapの部分検証fallbackを廃止し、scripts/verify.shを必須実行する。verifier消失や非実行権限を部分成功に置き換えない。

@@ -79,6 +79,7 @@ tasks.wrapper {
 
 openApiGenerate {
     generatorName = "spring"
+    templateDir = rootProject.file("openapi-templates").absolutePath
     inputSpec = rootProject.file("../contracts/openapi.yaml").absolutePath
     outputDir = layout.buildDirectory.dir("generated/openapi").get().asFile.absolutePath
     apiPackage = "com.example.debt.generated.api"

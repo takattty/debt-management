@@ -123,6 +123,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a one-use manual link for a member in the current tenant
+         * @description ADMIN only. Tenant is fixed from the current DB membership. The fragment URL is returned once; no email is sent. It expires after24hours. Existing global email conflicts return a generic409 without identifying another tenant. This incremental API exposes issuance only; anonymous inspection and acceptance are added by the next PR.
+         */
+        post: operations["issueInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -181,6 +201,23 @@ export interface components {
              * @description No trim/normalization; maximum512UTF-8bytes. Creation policy is separate from login verification.
              */
             password: string;
+        };
+        InvitationIssueRequest: {
+            /** @description ASCII email; surrounding whitespace stripped and lowercased by the domain */
+            email: string;
+            /** @enum {string} */
+            role: "ADMIN" | "ACCOUNTANT";
+        };
+        InvitationIssuedResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /**
+             * Format: password
+             * @description Sensitive relative fragment URL /accept-invitation#token=...; returned once. Password format redacts generated DTO diagnostics; response value remains readable for manual sharing.
+             */
+            acceptanceUrl: string;
         };
     };
     responses: {
@@ -412,6 +449,42 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    issueInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description One-time secret fragment URL; Cache-Control:no-store */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationIssuedResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Invitation cannot be issued (INVITATION_UNAVAILABLE); no tenant membership details */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
 }

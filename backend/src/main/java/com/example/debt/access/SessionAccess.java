@@ -4,6 +4,7 @@ import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
@@ -42,6 +43,7 @@ public class SessionAccess {
             CsrfTokenRepository csrf, SecurityContextRepository contexts) throws Exception {
         return http.authorizeHttpRequests(requests -> requests
                         .requestMatchers("/api/csrf", "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/invitations").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .securityContext(context -> context.securityContextRepository(contexts).requireExplicitSave(true))
                 .requestCache(AbstractHttpConfigurer::disable)

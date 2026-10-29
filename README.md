@@ -1,11 +1,10 @@
 # debt-management
 
-BtoB向けマルチテナント債権管理SaaS。個人開発でAI-DLCによる設計・実装・独立レビュー・自動検証の開発ループを検証する。
+BtoB向けマルチテナント債権管理。要件の入口は [Issue #1](https://github.com/takattty/debt-management/issues/1)。
 
-設計・実装はCodex Cloudで進める。開発者のMacの常時起動には依存しない。
+このPRは設計と段階別CIを整えます。アプリは依存PRで追加します。
 
-技術構成：React / TypeScript / Java 25 / Spring / PostgreSQL / Docker / GitHub Actions。
+- [要件](docs/requirements.md)・[業務例](docs/business-examples.md)・[設計](docs/design.md)・[ロードマップ](docs/roadmap.md)
+- [GitHub merge gate設定案](docs/github-gate.md)
 
-合意済み要件と初回Cloudタスクの受入条件は、リポジトリのbootstrap Issueを参照する。
-
-現在はCloudへの引継ぎ段階であり、アプリの実装・CI・レビュー・自動mergeは未整備。
+開発はCloud。React / TypeScript / Java25 / Spring / PostgreSQL、Gradle Kotlin DSL、OpenAPI契約駆動を使用します。設計→契約→BE→FE→自己改善→実行基盤を小さな依存PRで積み、最終基盤PRで実API/DBのheadless E2Eを含む全検証を必須にします。基盤全体の完了条件を満たすまではIssue #1を閉じません。

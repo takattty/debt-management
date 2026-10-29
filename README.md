@@ -45,3 +45,13 @@ Chromiumがない環境では `cd frontend && npm ci && npx playwright install -
 Root / FE / BE の AGENTS.mdと `.agents/skills/delivery-loop/SKILL.md` に従います。実装と独立レビューは別コンテキスト、仕様・ADR・Issue・対象SHAをレビューへ渡します。必須チェック・独立レビュー・Issue受入条件・merge gateの実効性が揃うまでmergeしません。
 
 停止後は [検証・再開記録](docs/runtime-evidence.md) とIssue #1の最新コメントから復元します。常時稼働Coordinatorや `/goal`、停止後自動再起動の可用性は未検証です。
+
+## HTTP API tests with runn
+
+API受入テストはrunn 1.11.1を使用します。Linux/Darwinのamd64/arm64公式assetのSHA256を固定し、workspace cacheへ取得します。Goの事前導入は不要です。
+
+```sh
+RUNN_BASE_URL=http://127.0.0.1:8088 scripts/runn.sh run --scopes read:parent backend/runn/*.yml
+```
+
+3シナリオ39HTTPリクエストで、認証/CSRF/tenant/重複/version/JSON型/Unicode/取消されたsessionを検証します。OpenAPIレスポンス検証は全runnerで有効。read:parentはbook外の契約fileを読む最小scopeです。`verify.sh`は今回起動した8080に固定し、このAPI検証後に画面E2Eを実行します。

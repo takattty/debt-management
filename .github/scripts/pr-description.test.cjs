@@ -50,6 +50,16 @@ test('tables without outer pipes still require filled values', () => {
   assert.deepEqual(validateDescription(replaceTable('検証 | 結果\n--- | ---\n単体 | 6件成功')), []);
 });
 
+test('unclosed comments and raw HTML code blocks cannot supply visible headings', () => {
+  assert.equal(validateDescription(`<!--\n${valid}`).length, requiredSections.length);
+  for (const tag of ['pre', 'script', 'style', 'textarea']) {
+    assert.equal(validateDescription(`<${tag}>\n${valid}\n</${tag}>`).length, requiredSections.length);
+  }
+  assert.deepEqual(validateDescription(valid.replace('## 概要', '## **概要**')), []);
+  const literal = valid.replace('## 何をやったか\n具体的な変更と根拠。', '## 何をやったか\nHTMLの`<!--`を文字として扱います。');
+  assert.deepEqual(validateDescription(literal), []);
+});
+
 test('CLI validates a file or PR event, and fails closed without exposing failed input', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-description-'));
   try {

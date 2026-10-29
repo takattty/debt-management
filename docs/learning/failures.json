@@ -114,6 +114,18 @@
           "summary": "外側pipeを省いたMarkdown表の空欄を内容ありと判定した",
           "evidence": ".github/scripts/pr-description.test.cjs",
           "recorded_at": "2026-10-29T23:31:10+00:00"
+        },
+        {
+          "event": "pr-description-unclosed-html-comment",
+          "summary": "修正後も未閉じHTMLコメント内の見出しで検査が誤成功し独自解析の限界が再発した",
+          "evidence": ".github/scripts/pr-description.test.cjs",
+          "recorded_at": "2026-10-29T23:38:24+00:00"
+        },
+        {
+          "event": "pr-description-raw-html-pre",
+          "summary": "raw HTML pre内の見出しを表示された見出しと誤判定した",
+          "evidence": ".github/scripts/pr-description.test.cjs",
+          "recorded_at": "2026-10-29T23:38:24+00:00"
         }
       ],
       "resolutions": [
@@ -124,6 +136,14 @@
           "guard": ".github/scripts/pr-description.test.cjs",
           "event_count": 2,
           "resolved_at": "2026-10-29T23:31:10+00:00"
+        },
+        {
+          "cause": "個別修正を重ねた独自Markdown解析ではコメントとraw HTMLの構文境界を正しく扱えなかった",
+          "prevention": "独自lexerを廃止して固定marked18.1.2の構文木を使用する。コードHTMLと未閉じコメントを除外し回帰例を維持する",
+          "verification": "独立reviewで発見したfence/table/unclosedcomment/preの全例を拒否しNode13tests成功。inlinecode内のコメント文字は許容、固定依存audit0件",
+          "guard": ".github/scripts/pr-description.test.cjs",
+          "event_count": 4,
+          "resolved_at": "2026-10-29T23:38:24+00:00"
         }
       ]
     },

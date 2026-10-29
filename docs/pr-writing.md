@@ -28,6 +28,8 @@ PRを開く前に、最終差分を見て[テンプレート](../.github/pull_re
 node .github/scripts/pr-description.cjs --file work/pr-body.md
 ```
 
+初回は `npm --prefix .github/scripts ci --ignore-scripts --cache work/npm-cache` で固定依存を用意する。Markdownはmarked 18.1.2の構文木で解析し、コード・HTML・未閉じコメント内の見出しを数えない。依存版とintegrityはlockfileへ固定し、protected gateはmainのlockfileからinstallしてPRのpackageやinstall scriptを実行しない。
+
 GitHub CLIには `scripts/gh-repo.sh owner/repository ... --body-file work/pr-body.md` で渡す。連携toolには構造化したbody引数で渡し、本文をshell commandへ直接展開しない。
 
 - `quality`はPRイベントの本文を検査する。見出しの欠落・重複、空欄、TODOだけの節、未記入表、コメント/コード内だけの見出しを拒否する。

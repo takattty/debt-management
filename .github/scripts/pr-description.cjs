@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const { lexer } = require('marked');
 
 const requiredSections = [
   '概要', '何をやったか', 'なぜそれをやったか', '何をやらなかったか',
@@ -7,53 +8,39 @@ const requiredSections = [
 
 // Check structure only. Correctness of the explanation and evidence remains a review responsibility.
 function validateDescription(body) {
-  const text = (body ?? '').replace(/<!--[\s\S]*?-->/g, '');
   const sections = new Map();
   let current;
-  let fence;
-  for (const line of text.split(/\r?\n/)) {
-    const delimiter = line.match(/^\s{0,3}(`{3,}|~{3,})(.*)$/);
-    if (delimiter) {
-      if (!fence) fence = delimiter[1];
-      else if (fence[0] === delimiter[1][0] && delimiter[1].length >= fence.length && !delimiter[2].trim()) fence = undefined;
-      continue;
-    }
-    if (fence) continue;
-    const heading = line.match(/^##\s+(.+?)\s*#*\s*$/);
-    if (heading) {
-      current = heading[1];
+  for (const token of lexer(body ?? '', { gfm: true })) {
+    if (token.type === 'heading' && token.depth <= 2) {
+      current = token.depth === 2 ? visibleText(token.tokens).trim() : undefined;
+      if (!current) continue;
       const entries = sections.get(current) ?? [];
       entries.push([]);
       sections.set(current, entries);
     } else if (current) {
-      sections.get(current).at(-1).push(line);
+      sections.get(current).at(-1).push(token);
     }
   }
   return requiredSections.flatMap(name => {
     const entries = sections.get(name) ?? [];
     if (entries.length !== 1) return [`「${name}」の見出しを1つ記載してください。`];
-    const lines = entries[0];
-    const cells = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(value => value.trim());
-    const separator = line => line.includes('|') && cells(line).every(value => /^:?-+:?$/.test(value));
-    const values = [];
-    let inTable = false;
-    for (let index = 0; index < lines.length; index++) {
-      const line = lines[index];
-      if (line.includes('|') && separator(lines[index + 1] ?? '')) {
-        inTable = true;
-        index++;
-      } else if (inTable && line.includes('|')) {
-        // Row labels alone are not completed table values, with or without outer pipes.
-        values.push(...cells(line).slice(1));
-      } else {
-        inTable = false;
-        values.push(line);
-      }
-    }
-    const content = values.map(line => line.replace(/^\s*[-*+]\s*(?:\[[ xX]\]\s*)?/, '').replace(/<[^>]*>/g, '').replace(/[`*_#]/g, '').trim())
-      .filter(line => line && !/^(?:(?:TODO|TBD|未記入|未記載|ここに記載)(?:\s*[:：].*)?|\.\.\.|…)[。.!！]?$/i.test(line));
+    const content = entries[0].flatMap(contentValues).map(value => value.trim())
+      .filter(line => line && !/^\[[ xX]\]$/.test(line)
+        && !/^(?:(?:TODO|TBD|未記入|未記載|ここに記載)(?:\s*[:：].*)?|\.\.\.|…)[。.!！]?$/i.test(line));
     return content.length ? [] : [`「${name}」の内容を記載してください。`];
   });
+}
+
+function visibleText(tokens = []) {
+  return tokens.map(token => token.type === 'html' ? '' : token.tokens ? visibleText(token.tokens) : token.text ?? '').join('');
+}
+
+function contentValues(token) {
+  if (['html', 'code', 'space', 'hr'].includes(token.type)) return [];
+  if (token.type === 'table') return token.rows.flatMap(row => row.slice(1).map(cell => visibleText(cell.tokens)));
+  if (token.type === 'list') return token.items.flatMap(item => item.tokens.flatMap(contentValues));
+  if (token.type === 'blockquote') return token.tokens.flatMap(contentValues);
+  return [token.tokens ? visibleText(token.tokens) : token.text ?? ''];
 }
 
 if (require.main === module) {

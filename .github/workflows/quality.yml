@@ -36,7 +36,9 @@ jobs:
           node-version: '24.19.0'
       - name: Validate readable PR description
         if: github.event_name == 'pull_request'
-        run: node .github/scripts/pr-description.cjs --event "$GITHUB_EVENT_PATH"
+        run: |
+          npm --prefix .github/scripts ci --ignore-scripts --cache work/npm-cache
+          node .github/scripts/pr-description.cjs --event "$GITHUB_EVENT_PATH"
       - name: Validate OpenAPI contract
         run: npx --yes --package=@redocly/cli@2.72.1 redocly lint contracts/openapi.yaml --config contracts/redocly.yaml
       - name: Install pinned E2E browser

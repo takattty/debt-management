@@ -18,4 +18,5 @@ test('latest exact-commit attestation and explicit findings govern acceptance', 
   assert.equal(evaluate([review(1, 'blocked'), review(2)], sha), true);
   assert.equal(evaluate([review(2), { ...review(3), state: 'CHANGES_REQUESTED' }], sha), false);
   assert.equal(evaluate([{ ...review(1), body: '<!-- independent-review: {invalid} -->' }], sha), false);
+  assert.equal(evaluate([review(1), { ...review(2), body: '<!-- independent-review: {invalid} -->' }], sha), false);
 });

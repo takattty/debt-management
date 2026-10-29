@@ -52,7 +52,7 @@ DB の複合一意制約、Tenant を含む外部キー、transaction、version 
 
 ## CSV とエラー UX
 
-固定形式の案は UTF-8、ヘッダー必須、金額は区切りなし整数、日付は `YYYY-MM-DD`。顧客は `customer_code,customer_name`、請求は `customer_code,invoice_number,invoice_date,due_date,amount`、架空銀行明細は `transaction_id,transfer_date,payer_name,amount` を起点にする。列の確定と対応可否は実装 Issue で文書とサンプルを合わせる。
+2026-10-29合意の固定形式は UTF-8（BOM可）、ヘッダー必須、金額は税込の円整数（区切りなし）、日付は `YYYY-MM-DD`。顧客は `customer_code,customer_name`、請求は `customer_code,invoice_number,issue_date,due_date,amount`、架空銀行明細は `transaction_id,transfer_date,payer_name,amount` を基本列とする。実装Issueではこの合意に沿って文書とサンプルを合わせる。
 
 エラー DTO は `rowNumber,field,inputValue,reason,correction` を持つ。画面の該当箇所と CSV ダウンロードを同じ結果から生成する。ダウンロード時の spreadsheet formula injection、HTML 表示時の escaping、ファイルサイズ・行数・フィールド長の上限を検証する。利用者に内部例外や SQL を修正方法として見せない。
 

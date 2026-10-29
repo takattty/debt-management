@@ -1,28 +1,37 @@
 name: Independent review
+# This workflow is trusted only after installation on protected default branch.
+# It never checks out or executes pull-request code.
 on:
-  pull_request:
-  pull_request_review:
-    types: [submitted, edited, dismissed]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 permissions:
   contents: read
   pull-requests: read
+  statuses: write
 jobs:
-  independent-review:
+  attest-review:
+    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
       - run: node --test .github/scripts/review-gate.test.cjs
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
         with:
           script: |
-            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
-            if (pr.head.sha !== context.payload.pull_request.head.sha) {
-              core.setFailed('The head changed; a current review run is required.');
-              return;
-            }
-            const reviews = await github.paginate(github.rest.pulls.listReviews, { ...context.repo, pull_number: pr.number });
+            const number = context.payload.pull_request?.number ?? context.payload.issue.number;
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: number });
+            if (pr.state !== 'open') return;
+            const reviews = await github.paginate(github.rest.pulls.listReviews, { ...context.repo, pull_number: number });
             const { evaluate } = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/review-gate.cjs`);
-            if (!evaluate(reviews, pr.head.sha)) core.setFailed('Missing explicit independent review with zero blocking findings for the current head SHA.');
+            const passed = evaluate(reviews, pr.head.sha);
+            await github.rest.repos.createCommitStatus({ ...context.repo, sha: pr.head.sha,
+              context: 'independent-review', state: passed ? 'success' : 'failure',
+              description: passed ? 'Exact-head independent review has zero blocking findings.' : 'Missing or blocking independent review for current head.',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/pull/${number}#pullrequestreview` });
+            if (!passed) core.setFailed('Current head has no passing independent review.');

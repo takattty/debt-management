@@ -36,6 +36,9 @@ jobs:
         if: hashFiles('frontend/package.json') != ''
         with:
           node-version: '24.19.0'
+      - name: Validate OpenAPI contract
+        if: hashFiles('contracts/openapi.yaml') != ''
+        run: npx --yes --package=@redocly/cli@2.72.1 redocly lint contracts/openapi.yaml --config contracts/redocly.yaml
       - name: Install pinned E2E browser
         if: hashFiles('scripts/verify.sh') != ''
         run: cd frontend && npm ci && npx playwright install --with-deps chromium
@@ -55,6 +58,8 @@ jobs:
             fi
             if [ -f frontend/package.json ]; then
               npm --prefix frontend ci
+              npm --prefix frontend run check:api
+              npm --prefix frontend run test:api-drift
               npm --prefix frontend run lint
               npm --prefix frontend run typecheck
               npm --prefix frontend run test:unit

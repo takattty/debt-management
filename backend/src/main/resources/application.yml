@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: debt-management
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/debt}
+    username: ${DB_USERNAME:debt}
+    password: ${DB_PASSWORD}
+  flyway:
+    enabled: true
+server:
+  error:
+    include-message: never
+    include-stacktrace: never

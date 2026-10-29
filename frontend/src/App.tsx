@@ -3,6 +3,7 @@ import { api, ApiError, type Customer, type Session } from './api';
 import InvitationPanel from './InvitationPanel';
 import AcceptInvitation from './AcceptInvitation';
 import CustomerImportPanel from './CustomerImportPanel';
+import CustomerDirectory from './CustomerDirectory';
 import type { InvitationEntry } from './invitation-entry';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '処理に失敗しました。もう一度お試しください。';
@@ -129,10 +130,7 @@ function Workspace() {
             {error && <p className="error" role="alert">{error}</p>}
             {notice && <p className="success" role="status">{notice}</p>}
           </section>
-          <section className="panel list-panel" aria-labelledby="list-title">
-            <div className="list-heading"><h2 id="list-title">登録済みの顧客</h2><span>{customers.length} 件</span></div>
-            {customers.length === 0 ? <div className="empty-state"><span aria-hidden="true">▦</span><h3>顧客はまだ登録されていません</h3><p>上のフォームから、最初の取引先を登録してください。</p></div> : <div className="table-scroll"><table><thead><tr><th scope="col">顧客コード</th><th scope="col">顧客名</th></tr></thead><tbody>{customers.map((customer) => <tr key={customer.id}><td className="customer-code">{customer.code}</td><td>{customer.name}</td></tr>)}</tbody></table></div>}
-          </section>
+          <CustomerDirectory customers={customers} session={session} busy={busy} onBusyChange={setBusy} onFailure={reportWorkspaceFailure} onReload={async () => { const records = await api.listCustomers(); setCustomers(records); return records; }} />
         </>}
         <footer className="content-foot">顧客情報は所属する契約企業の中で共有されます。</footer>
       </div>

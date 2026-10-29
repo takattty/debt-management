@@ -37,6 +37,9 @@ export const api = {
   createCustomer: (csrf: Csrf, body: CustomerCreateInput) => request(
     { path: '/api/customers', method: 'POST' }, csrf, body,
   ),
+  updateCustomer: (csrf: Csrf, id: string, body: operations['updateCustomer']['requestBody']['content']['application/json']) => request(
+    { path: '/api/customers/{id}', method: 'PUT', url: `/api/customers/${encodeURIComponent(id)}` }, csrf, body,
+  ),
   logout: (csrf: Csrf) => request({ path: '/api/logout', method: 'POST' }, csrf),
   issueInvitation: (csrf: Csrf, body: operations['issueInvitation']['requestBody']['content']['application/json']) => request(
     { path: '/api/invitations', method: 'POST' }, csrf, body,
@@ -119,9 +122,10 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       403: code === 'ACCESS_DENIED' ? 'この操作を行う権限がありません。管理者にご確認ください。'
         : code === 'CSRF_INVALID' ? 'ログインの有効期限が切れました。もう一度ログインしてください。'
           : '操作を続けられません。画面を再読み込みして、もう一度お試しください。',
-      404: '取込内容を表示できません。CSVをもう一度プレビューしてください。',
+      404: importing ? '取込内容を表示できません。CSVをもう一度プレビューしてください。' : '顧客が見つかりません。編集を閉じて一覧を確認してください。',
       409: invitation ? '招待を処理できませんでした。管理者にご確認ください。'
-        : importing ? '取込内容が変わっています。状態を確認して、CSVをもう一度プレビューしてください。' : 'この顧客コードは登録済みです。別のコードを入力してください。',
+        : importing ? '取込内容が変わっています。状態を確認して、CSVをもう一度プレビューしてください。'
+          : code === 'VERSION_CONFLICT' ? '他の担当者が更新しました。最新内容を取得し、入力中の内容と比較してから更新してください。' : 'この顧客コードは登録済みです。別のコードを入力してください。',
       413: 'CSVファイルは10MiB以下にしてください。ファイルを分けて、もう一度プレビューしてください。',
       429: invitation ? '操作が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。'
         : 'ログイン試行が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。',

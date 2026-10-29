@@ -1,6 +1,6 @@
 # Receivables implementation plan — Issue #3
 
-Status: 設計案。CSV codecは #23、受動ImportBatch metadata/DB制約は #25で統合済み。HTTP API・業務confirm・画面は未公開。Issue #1/#3、requirements R01〜05/R12/R18〜22、EX-I01〜08、ADR-0001/0002を根拠とする。
+Status: 段階導入中。CSV codecは #23、受動ImportBatch metadata/DB制約は #25で統合済み。顧客CSVのtemplate/preview/保存状態・行・error取得/downloadを最初のAPI sliceとし、業務confirmと画面を後続sliceへ分ける。Issue #1/#3、requirements R01〜05/R12/R18〜22、EX-I01〜11、ADR-0001/0002を根拠とする。
 前提: #2のemail session/role/tenant/auditが成立済み。全PRで既存BE/FE単体・統合・runn API・E2Eを含む必須CIと同SHA独立レビューを維持する。
 
 ## 合意済みの業務判断
@@ -56,6 +56,7 @@ DBはbigint、Javaはchecked integer。APIの各金額はJSで正確に扱える
 - header名・順序は固定。重複/不足/余分列を一覧で示す。UTF-8の不正byteを置換せず拒否し、先頭BOMのみ許可する。
 - RFC4180のquoted field、comma、escaped quote、CRLF/LFを解析する。headerのみはEMPTY_IMPORT、途中の空白行は欠落fieldとして拒否し、無断skipしない。末尾の通常改行は追加行に数えない。
 - 業務fieldの改行/制御文字は拒否する案。quoted newlineを正しく解析した後、元ファイルの開始物理行をrowNumberとして修正箇所を示す。
+- 顧客fieldは制御文字を除いたうえで既存CustomerValuesの規則を適用する。前後空白は個別登録と同様にstripし、大小文字・Unicodeを正規化しない。不正NULは保存・表示用snapshotで制御文字記号`␀`に置換し、500を出さず元の行・項目を示す。
 - 固定日付はstrict ISO LocalDate。JPYは桁区切り/小数/指数表記/通貨記号を拒否し、B03の業務検証を別レイヤーで適用する。
 - upload上限10MiB、データ10,000行、cell 2,048 code pointsを技術初期値とし、stream解析で先に制限する。月1万枚はSLAではない。
 - field errorの入力値は先頭200 code pointsまで保持し、切詰め表示を明示。全errorsを保存し、画面は50件ずつ、件数と位置を示す。
@@ -92,6 +93,7 @@ quoteだけではspreadsheet formula injectionを防げない。数式文字列�
 
 | Method/path | Contractの要点 |
 | --- | --- |
+| GET /api/imports/customers/template | UTF-8 BOM付きheaderのみ。架空の業務行を実登録させない |
 | POST /api/imports/customers/preview | multipart file→201 ImportPreview{batchId,version,status,totalRows,errorCount,expiresAt} |
 | POST /api/imports/invoices/preview | 同上。tenant/body actorを受け付けない |
 | GET /api/imports/{id} | statusと元の確定結果。別tenantは404 |
@@ -101,7 +103,7 @@ quoteだけではspreadsheet formula injectionを防げない。数式文字列�
 | POST /api/imports/{id}/confirm | {version}だけ→200 ImportResult。再送も同じresult。行差替え拒否 |
 | GET /api/receivables?customerId=&dueFrom=&dueTo=&status=&cursor=&limit= | active/uncollectedをdefault、安定順序(due_date,id)、最大100/page |
 | GET /api/invoices/{id} | version/現行snapshot/状態。別tenant404 |
-| PUT /api/invoices/{id} | {version,customerId,issueDate,dueDate,amount,reason}、番号方針はB02次第 |
+| PUT /api/invoices/{id} | {version,customerId,issueDate,dueDate,amount,reason}、番号は変更入力に含めない |
 | POST /api/invoices/{id}/cancel | {version,reason}、再取消409、古いversion409 |
 | GET /api/invoices/{id}/history | revision/operation/reason/actor/time、bounded page |
 

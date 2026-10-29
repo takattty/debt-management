@@ -26,14 +26,14 @@ Reviewerは対象SHA・検査範囲・実行した検証・findings/未検証事
 
 Actionsはpublic repositoryの標準 `ubuntu-24.04` runnerのみ。workflowは最小contents:readで動作し、有料APIやlarger runnerを使わない。
 
-## 小さなbootstrap PR
-
-### 現行の本文検査と同SHAの扱い
+## 現行の本文検査と同SHAの扱い
 
 全open PRのうち、保護されたdefault branch（main）をbaseとするPRが判定対象。本文は[PRとコメントの書き方](pr-writing.md)の必須7節を検査し、`edited`イベントでも再評価する。
 commit statusはSHAに結び付くため、同じhead SHAを持つmain向けPRを集約し、全PRの本文・独立レビュー・relayが合格した場合だけsuccessにする。別baseのPRはstatusを書き込まない。
 判定中に本文・head・対象PRの集合が変化した場合はpendingを維持し、後続イベントで再評価する。`closed`も再評価対象。merge直前には最新本文とレビューを読み直し、非同期イベントの完了を待つ。
 これらの判定はprotected mainのコードで行い、書込権限でPRのコードを実行しない。実GitHub上の本文編集による失効・修復の実証はIssue #1へ保存する。
+
+## 小さなbootstrap PR
 
 設計＋CI、OpenAPI契約、BE、FE、自己改善、実行基盤に分け、前段branchをbaseとする。まだ存在しないアプリのテストを成功したと報告せず、各段階で存在するコードを検証する。最終実行基盤PRでは全lint/type/unit/API/実PG/E2Eを必須とし、基盤全体の受入条件はその成功と独立レビュー・gate実証が揃うまで未完了。生成lock/types/wrapperはgenerated属性で表示を畳めるようにする。
 

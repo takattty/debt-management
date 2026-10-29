@@ -23,4 +23,12 @@ class CustomerValuesTest {
         assertThatThrownBy(() -> new CustomerValues(null, "name"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+    @Test
+    void countsSupplementaryUnicodeCodePointsForDomainLimits() {
+        assertThat(new CustomerValues("𠮷".repeat(50), "𠮷".repeat(200)).name()).isEqualTo("𠮷".repeat(200));
+        assertThatThrownBy(() -> new CustomerValues("𠮷".repeat(51), "架空"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new CustomerValues("C001", "𠮷".repeat(201)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

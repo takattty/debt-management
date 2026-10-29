@@ -14,6 +14,7 @@ import com.example.debt.generated.model.ApiError;
 import com.example.debt.generated.model.CustomerResponse;
 import jakarta.validation.Validator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -140,6 +141,65 @@ class CustomerApiTest {
                         .content("{\"code\":\"C-SCHEMA\",\"name\":\"架空契約\",\"version\":0}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
         assertThat(service.list(DevelopmentAccess.ALPHA).getFirst().version()).isZero();
+    }
+
+    @Test
+    void rejectsJsonTypeCoercionWithoutWritingCustomerOrAudit() throws Exception {
+        List<String> invalidCreates = List.of(
+                "{\"code\":42,\"name\":\"架空\"}",
+                "{\"code\":false,\"name\":\"架空\"}",
+                "{\"code\":\"C001\",\"name\":42}",
+                "{\"code\":\"C001\",\"name\":0.5}");
+        for (String body : invalidCreates) {
+            mvc.perform(post("/api/customers").with(httpBasic("alpha-admin", "debt_local")).with(csrf())
+                            .contentType("application/json").content(body))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        }
+        assertThat(jdbc.sql("SELECT count(*) FROM customer").query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_event").query(Long.class).single()).isZero();
+        Customer customer = service.create(DevelopmentAccess.ALPHA, "alpha-admin", new CustomerValues("C001", "original"));
+        List<String> invalidUpdates = List.of(
+                "{\"code\":\"C001\",\"name\":\"changed\",\"version\":0.5}",
+                "{\"code\":\"C001\",\"name\":\"changed\",\"version\":\"0\"}",
+                "{\"code\":\"C001\",\"name\":\"changed\",\"version\":true}",
+                "{\"code\":42,\"name\":\"changed\",\"version\":0}");
+        for (String body : invalidUpdates) {
+            mvc.perform(put("/api/customers/" + customer.id()).with(httpBasic("alpha-admin", "debt_local")).with(csrf())
+                            .contentType("application/json").content(body))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        }
+        assertThat(service.list(DevelopmentAccess.ALPHA)).containsExactly(customer);
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_event").query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void acceptsSupplementaryUnicodeThroughSchemaLimitsAndRejectsOverflowWithoutWrites() throws Exception {
+        var mapper = JsonMapper.builder().build();
+        for (int length : List.of(30, 50)) {
+            int nameLength = length == 30 ? 110 : 200;
+            String body = mapper.writeValueAsString(Map.of("code", "𠮷".repeat(length), "name", "𠮷".repeat(nameLength)));
+            var created = mvc.perform(post("/api/customers").with(httpBasic("alpha-admin", "debt_local")).with(csrf())
+                            .contentType("application/json").content(body))
+                    .andExpect(status().isCreated()).andReturn();
+            var customer = mapper.readValue(created.getResponse().getContentAsString(), CustomerResponse.class);
+            assertThat(validator.validate(customer)).isEmpty();
+            assertThat(customer.getName()).isEqualTo("𠮷".repeat(nameLength));
+        }
+        for (var values : List.of(Map.of("code", "𠮷".repeat(51), "name", "架空"),
+                Map.of("code", "C-overflow", "name", "𠮷".repeat(201)))) {
+            mvc.perform(post("/api/customers").with(httpBasic("alpha-admin", "debt_local")).with(csrf())
+                            .contentType("application/json").content(mapper.writeValueAsString(values)))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        }
+        assertThat(jdbc.sql("SELECT count(*) FROM customer").query(Long.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_event").query(Long.class).single()).isEqualTo(2);
+        var customer = service.list(DevelopmentAccess.ALPHA).getFirst();
+        var overflowUpdate = Map.of("code", customer.code(), "name", "𠮷".repeat(201), "version", 0);
+        mvc.perform(put("/api/customers/" + customer.id()).with(httpBasic("alpha-admin", "debt_local")).with(csrf())
+                        .contentType("application/json").content(mapper.writeValueAsString(overflowUpdate)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        assertThat(service.list(DevelopmentAccess.ALPHA).getFirst()).isEqualTo(customer);
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_event").query(Long.class).single()).isEqualTo(2);
     }
 
     @Test

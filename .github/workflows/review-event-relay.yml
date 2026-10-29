@@ -1,0 +1,12 @@
+name: Review event relay
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+permissions:
+  contents: read
+jobs:
+  notify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - run: echo 'Review event received. Trusted default-branch consumer will fetch the current reviews.'

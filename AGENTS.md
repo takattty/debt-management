@@ -30,7 +30,9 @@
 5. 修正後は必要な再検証・再レビューを行い、最新 SHA に証拠をそろえる。
 6. GitHub の強制可能な gate の実効性を故意の失敗例で確認し、Issue の条件が満たされたときだけ merge する。
 
-`repository.allow_auto_merge=false` が初期状態。契約、権限、branch protection が不足する場合は merge せず、Issue に阻害要因を保存する。チェックの削除・無効化で成功にしない。GitHub Actions の利用枠・超過課金設定を確認できるまでは、Cloud 内の検証を進め、Actions の実行を保留する。
+Public/Freeと標準Linux Actions利用はユーザー確認済み。2026-10-29にallow_auto_merge=true、active main ruleset・bypassなし・必須quality/independent-review・strict最新baseを実API確認し、失敗時拒否も実証した。チェックを無効化せず維持する。拒否済み設定/billing/status APIは権限変更の証拠なく再試行しない。新しい有料サービス/larger runnerは導入しない。
+
+GitHub CLIは `scripts/gh-repo.sh owner/repository command ...` でrepositoryを必須指定する。証拠のworkファイルは `python3 scripts/read-evidence.py work/name.log` で所有worktreeを解決し、同名が複数なら `--worktree` を明示する。複数treeを扱うCoordinatorはhelper自身もactive code checkoutの絶対pathで呼び、古い証拠ownerのcheckoutに新helperがあると仮定しない。別treeの操作/読込を一つのcwd依存commandへ混在させない。
 
 ## PR と API 契約
 

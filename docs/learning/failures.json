@@ -260,6 +260,24 @@
           "summary": "別treeの証拠をUIの相対workで読み不在assertionとなった",
           "evidence": "docs/learning/README.md",
           "recorded_at": "2026-10-29T17:31:11+00:00"
+        },
+        {
+          "event": "gh-run-without-repo-outside-checkout",
+          "summary": "手順guard解決後もcheckout外cwdからgh runをrepo省略で実行し取得が失敗した",
+          "evidence": "scripts/gh-repo.sh",
+          "recorded_at": "2026-10-29T17:51:39+00:00"
+        },
+        {
+          "event": "docker-log-relative-to-closeout-tree",
+          "summary": "別tree所有のDockerログをcloseoutの相対workで読んで不在になり再発した",
+          "evidence": "scripts/read-evidence.py",
+          "recorded_at": "2026-10-29T18:04:10+00:00"
+        },
+        {
+          "event": "evidence-helper-in-older-checkout",
+          "summary": "新helper未導入の古い証拠checkoutからhelper相対pathを呼び起動前に失敗した",
+          "evidence": "scripts/read-evidence.py",
+          "recorded_at": "2026-10-29T18:08:18+00:00"
         }
       ],
       "resolutions": [
@@ -270,6 +288,30 @@
           "guard": "docs/learning/README.md",
           "event_count": 2,
           "resolved_at": "2026-10-29T17:31:11+00:00"
+        },
+        {
+          "cause": "相対pathに加えGitHub CLIの暗黙repository推測もcwdへ依存し手順guardだけでは再発した",
+          "prevention": "worktree/証拠の所有先を検査しGitHub CLIは必須repo引数wrapperで実行する。省略は起動前拒否する",
+          "verification": "checkout外cwdと誤継承selectorの回帰2件含むPython9件成功。checkout外から実GitHub quality29成功を正しく取得した",
+          "guard": "docs/learning/README.md",
+          "event_count": 3,
+          "resolved_at": "2026-10-29T17:51:42+00:00"
+        },
+        {
+          "cause": "repo指定guardに加え証拠読込も暗黙cwdに依存したままで別treeのcommandを混在させ再発した",
+          "prevention": "GitHubrepo必須wrapperと証拠所有先resolverを使い、同名証拠は読まず明示ownerを要求する。異なる所有先はcommandを分ける",
+          "verification": "Python12件成功、checkout外repo選択と証拠unique/ambiguous/親path拒否を検証。実Docker最終ログを正しい所有treeから自動解決して読めた",
+          "guard": "docs/learning/README.md",
+          "event_count": 4,
+          "resolved_at": "2026-10-29T18:04:10+00:00"
+        },
+        {
+          "cause": "helperと証拠の所有checkoutまで同じと仮定し新helperを古いsnapshot側で起動した",
+          "prevention": "active code checkoutのhelper絶対pathを呼び、証拠owner解決とDocker操作は別commandで明示する",
+          "verification": "active helperから証拠を自動解決して実Dockerの業務E2E5/native2成功を取得。Docker停止再起動は別ownerの専用commandで実行した",
+          "guard": "docs/learning/README.md",
+          "event_count": 5,
+          "resolved_at": "2026-10-29T18:08:19+00:00"
         }
       ]
     }

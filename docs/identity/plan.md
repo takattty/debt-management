@@ -70,6 +70,7 @@ InvitationAccepted / MemberInvited / SessionStarted / SessionEnded は監査上�
 - CSRF は session に結び付け、login・招待照会/受諾・logoutを含む全POSTへ適用。login後は新 token を取得する。
 - CORS は同一 origin のみ。CSRF token や X-Requested-With だけを認証の代替にしない。
 - 認証失敗は未登録/誤passwordを区別しない401、dummy hash検証を行う。短時間の試行制限を設け429を検証する。
+  試行制限・429は初回のlocalhost専用sliceでは未実装であり、後続PRで追加する。現在のlogin契約は429を保証しない。
 - 招待invalid/expired/usedは同じ公開エラー。受諾時email競合も他Tenantの所属情報を返さない。
 - 共有リンクは `/accept-invitation#token=...`。FEがfragmentから読んでhistory.replaceStateで消し、tokenはPOST本文のみ送る。
   Referrer-Policy:no-referrer、第三者scriptなし、localStorage不使用。管理者は自分で共有先を確認する。

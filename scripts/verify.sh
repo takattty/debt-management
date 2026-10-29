@@ -25,6 +25,7 @@ export LOCAL_SEED_PASSWORD="${LOCAL_SEED_PASSWORD:-debt_local_demo_2026}"
 export SPRING_PROFILES_ACTIVE=local
 (cd backend && ./gradlew --no-daemon check bootJar)
 npm --prefix frontend ci
+npm --prefix frontend audit --audit-level=high
 npm --prefix frontend run check:api
 npm --prefix frontend run test:api-drift
 npm --prefix frontend run lint

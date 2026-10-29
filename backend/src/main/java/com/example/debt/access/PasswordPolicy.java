@@ -7,6 +7,7 @@ public final class PasswordPolicy {
 
     public static void validateLogin(String password) {
         if (password == null || password.isEmpty() || password.codePointCount(0, password.length()) > 128
+                || !StandardCharsets.UTF_8.newEncoder().canEncode(password)
                 || password.getBytes(StandardCharsets.UTF_8).length > 512) {
             throw new IllegalArgumentException("Invalid password length");
         }

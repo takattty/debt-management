@@ -23,6 +23,6 @@ public class AuthenticateUser {
         if (account.isEmpty() || !matches || !account.get().enabled()) {
             throw new LoginRejected();
         }
-        return account.get().principal();
+        return TenantUser.from(account.get());
     }
 }

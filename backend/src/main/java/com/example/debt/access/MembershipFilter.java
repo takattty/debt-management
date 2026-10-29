@@ -33,7 +33,7 @@ public class MembershipFilter extends OncePerRequestFilter {
                 errors.write(response, 401, "UNAUTHENTICATED", "もう一度ログインしてください。");
                 return;
             }
-            var user = account.get().principal();
+            var user = TenantUser.from(account.get());
             SecurityContextHolder.getContext().setAuthentication(
                     UsernamePasswordAuthenticationToken.authenticated(user, null, user.authorities()));
         }

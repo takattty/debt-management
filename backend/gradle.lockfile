@@ -53,6 +53,7 @@ org.apache.xbean:xbean-reflect:3.7=checkstyle
 org.apiguardian:apiguardian-api:1.1.2=testCompileClasspath
 org.assertj:assertj-core:3.27.6=testCompileClasspath,testRuntimeClasspath
 org.awaitility:awaitility:4.3.0=testCompileClasspath,testRuntimeClasspath
+org.bouncycastle:bcprov-jdk18on:1.83=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.checkerframework:checker-qual:3.52.0=productionRuntimeClasspath,runtimeClasspath,testRuntimeClasspath
 org.checkerframework:checker-qual:3.52.1=checkstyle
 org.codehaus.plexus:plexus-classworlds:2.6.0=checkstyle

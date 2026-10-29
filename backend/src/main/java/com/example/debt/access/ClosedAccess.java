@@ -8,7 +8,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 /** Fail closed until real membership and authentication are implemented. */
 @Configuration
-@Profile("!dev")
+@Profile("!local & !auth-test")
 public class ClosedAccess {
     @Bean
     SecurityFilterChain closedSecurity(HttpSecurity http, AccessErrors errors) throws Exception {

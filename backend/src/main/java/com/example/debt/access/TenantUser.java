@@ -1,19 +1,18 @@
 package com.example.debt.access;
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
 
-public class TenantUser extends User {
-    private final UUID tenantId;
-
-    public TenantUser(String username, String password, UUID tenantId) {
-        super(username, password, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
-        this.tenantId = tenantId;
+/** A request snapshot; membership is reloaded from the database before every protected request. */
+public record TenantUser(UUID userId, UUID tenantId, String email, UserRole role) implements Serializable {
+    public List<SimpleGrantedAuthority> authorities() {
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
-    public UUID tenantId() {
-        return tenantId;
+    @Override
+    public String toString() {
+        return "TenantUser[userId=" + userId + ", role=" + role + "]";
     }
 }

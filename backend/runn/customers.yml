@@ -1,6 +1,9 @@
 desc: Real HTTP customer lifecycle, tenant boundaries and CSRF session invalidation
 concurrency: debt-api-acceptance
-labels: [api, customers, security]
+labels:
+- api
+- customers
+- security
 runners:
   alpha:
     endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
@@ -13,195 +16,274 @@ runners:
   invalid:
     endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
     openapi3: ../../contracts/openapi.yaml
-    # Missing credentials/CSRF deliberately exercise server rejection; validate every response.
     skipValidateRequest: true
 vars:
-  alphaAuth: ${RUNN_ALPHA_AUTHORIZATION:-Basic YWxwaGEtYWRtaW46ZGVidF9sb2NhbA==}
-  betaAuth: ${RUNN_BETA_AUTHORIZATION:-Basic YmV0YS1hZG1pbjpkZWJ0X2xvY2Fs}
-secrets: [vars.alphaAuth, vars.betaAuth, alphaToken, betaToken, alphaCookie]
+  password: ${LOCAL_SEED_PASSWORD}
+secrets:
+- vars.password
+- alphaToken
+- betaToken
+- alphaCookie
+- betaCookie
+- alphaAnonymousToken
+- betaAnonymousToken
+- alphaAnonymousCookie
+- betaAnonymousCookie
 steps:
   unique:
     bind:
-      customerCode: "'R-' + faker.UUID()"
+      customerCode: '''R-'' + faker.UUID()'
   unauthenticated:
     invalid:
       /api/customers:
         get:
           body: null
+          useCookie: false
     test: current.res.status == 401 && current.res.body.code == 'UNAUTHENTICATED'
+  alphaCsrf:
+    alpha:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      alphaAnonymousToken: current.res.body.csrfToken
+      alphaAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200 && len(alphaAnonymousToken) > 0
+  alphaLogin:
+    alpha:
+      /api/auth/login:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ alphaAnonymousToken }}'
+            Cookie: JSESSIONID={{ alphaAnonymousCookie }}
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: '{{ vars.password }}'
+          useCookie: false
+    bind:
+      alphaCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204 && len(alphaCookie) > 0 && alphaCookie != alphaAnonymousCookie
   alphaSession:
     alpha:
       /api/session:
         get:
           useCookie: false
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body: null
     bind:
       alphaToken: current.res.body.csrfToken
-      alphaCookie: current.res.cookies.JSESSIONID.Value
-    test: |
-      current.res.status == 200 && current.res.body.username == 'alpha-admin'
-      && current.res.body.csrfHeaderName == 'X-CSRF-TOKEN' && len(alphaToken) > 0 && len(alphaCookie) > 0
+    test: current.res.status == 200 && current.res.body.email == 'alpha-admin@example.test' && current.res.body.role
+      == 'ADMIN' && current.res.body.csrfHeaderName == 'X-CSRF-TOKEN' && len(alphaToken) > 0
+  betaCsrf:
+    beta:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      betaAnonymousToken: current.res.body.csrfToken
+      betaAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200 && len(betaAnonymousToken) > 0
+  betaLogin:
+    beta:
+      /api/auth/login:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ betaAnonymousToken }}'
+            Cookie: JSESSIONID={{ betaAnonymousCookie }}
+          body:
+            application/json:
+              email: beta-admin@example.test
+              password: '{{ vars.password }}'
+          useCookie: false
+    bind:
+      betaCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204 && len(betaCookie) > 0 && betaCookie != betaAnonymousCookie
   betaSession:
     beta:
       /api/session:
         get:
           headers:
-            Authorization: '{{ vars.betaAuth }}'
+            Cookie: JSESSIONID={{ betaCookie }}
           body: null
+          useCookie: false
     bind:
       betaToken: current.res.body.csrfToken
-    test: current.res.status == 200 && current.res.body.username == 'beta-admin' && len(betaToken) > 0
+    test: current.res.status == 200 && current.res.body.email == 'beta-admin@example.test' && current.res.body.role
+      == 'ADMIN' && len(betaToken) > 0
   create:
     alpha:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ alphaToken }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body:
             application/json:
               code: '{{ customerCode }}'
               name: 架空API顧客
+          useCookie: false
     bind:
       customerId: current.res.body.id
-    test: |
-      current.res.status == 201 && len(customerId) == 36
-      && current.res.body.code == customerCode && current.res.body.name == '架空API顧客'
-      && current.res.body.version == 0 && current.res.headers.Location[0] == '/api/customers/' + customerId
+    test: 'current.res.status == 201 && len(customerId) == 36
+
+      && current.res.body.code == customerCode && current.res.body.name == ''架空API顧客''
+
+      && current.res.body.version == 0 && current.res.headers.Location[0] == ''/api/customers/'' + customerId
+
+      '
   listAlpha:
     alpha:
       /api/customers:
         get:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body: null
-    test: |
-      current.res.status == 200
+          useCookie: false
+    test: 'current.res.status == 200
+
       && len(filter(current.res.body, {#.id == customerId && #.code == customerCode && #.version == 0})) == 1
+
+      '
   duplicate:
     alpha:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ alphaToken }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body:
             application/json:
               code: '{{ customerCode }}'
               name: Must not replace original
+          useCookie: false
     test: current.res.status == 409 && current.res.body.code == 'DUPLICATE_CUSTOMER_CODE'
   isolatedBeta:
     beta:
       /api/customers:
         get:
           headers:
-            Authorization: '{{ vars.betaAuth }}'
             X-Tenant-Id: 11111111-1111-1111-1111-111111111111
+            Cookie: JSESSIONID={{ betaCookie }}
           body: null
-    test: |
-      current.res.status == 200 && len(filter(current.res.body, {#.id == customerId || #.code == customerCode})) == 0
+          useCookie: false
+    test: 'current.res.status == 200 && len(filter(current.res.body, {#.id == customerId || #.code == customerCode}))
+      == 0
+
+      '
   sameCodeBeta:
     beta:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.betaAuth }}'
             X-CSRF-TOKEN: '{{ betaToken }}'
+            Cookie: JSESSIONID={{ betaCookie }}
           body:
             application/json:
               code: '{{ customerCode }}'
               name: 架空Beta顧客
+          useCookie: false
     test: current.res.status == 201 && current.res.body.id != customerId && current.res.body.code == customerCode
   crossTenantUpdate:
     beta:
       /api/customers/{{ customerId }}:
         put:
           headers:
-            Authorization: '{{ vars.betaAuth }}'
             X-CSRF-TOKEN: '{{ betaToken }}'
+            Cookie: JSESSIONID={{ betaCookie }}
           body:
             application/json:
               code: '{{ customerCode }}'
               name: Must not overwrite Alpha
               version: 0
+          useCookie: false
     test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'
   update:
     alpha:
       /api/customers/{{ customerId }}:
         put:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ alphaToken }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body:
             application/json:
               code: '{{ customerCode }}'
               name: 架空API顧客改訂
               version: 0
+          useCookie: false
     test: current.res.status == 200 && current.res.body.id == customerId && current.res.body.version == 1
   staleVersion:
     alpha:
       /api/customers/{{ customerId }}:
         put:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ alphaToken }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body:
             application/json:
               code: '{{ customerCode }}'
               name: Stale update rejected
               version: 0
+          useCookie: false
     test: current.res.status == 409 && current.res.body.code == 'VERSION_CONFLICT'
   unchangedAfterConflict:
     alpha:
       /api/customers:
         get:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body: null
-    test: |
-      current.res.status == 200
-      && len(filter(current.res.body, {#.id == customerId && #.name == '架空API顧客改訂' && #.version == 1})) == 1
-  logout:
-    alpha:
-      /api/logout:
-        post:
-          headers:
-            Authorization: '{{ vars.alphaAuth }}'
-            X-CSRF-TOKEN: '{{ alphaToken }}'
-          body:
-            application/json: {}
-    test: current.res.status == 204 && current.res.rawBody == ''
+          useCookie: false
+    test: 'current.res.status == 200
+
+      && len(filter(current.res.body, {#.id == customerId && #.name == ''架空API顧客改訂'' && #.version == 1})) == 1
+
+      '
   csrfRequired:
     invalid:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body:
             application/json:
               code: '{{ customerCode }}'
               name: CSRF rejected fixture
-    test: current.res.status == 403 && current.res.body.code == 'ACCESS_DENIED'
+          useCookie: false
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
+  logout:
+    alpha:
+      /api/logout:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ alphaToken }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body:
+            application/json: {}
+          useCookie: false
+    test: current.res.status == 204 && current.res.rawBody == ''
   oldTokenRejected:
     invalid:
       /api/customers:
         post:
           headers:
-            Authorization: '{{ vars.alphaAuth }}'
             X-CSRF-TOKEN: '{{ alphaToken }}'
-            Cookie: 'JSESSIONID={{ alphaCookie }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body:
             application/json:
               code: '{{ customerCode }}-after'
               name: Old session rejected
-    test: current.res.status == 403 && current.res.body.code == 'ACCESS_DENIED'
+          useCookie: false
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
   unauthenticatedAfterLogout:
     invalid:
       /api/customers:
         get:
           headers:
-            Cookie: 'JSESSIONID={{ alphaCookie }}'
+            Cookie: JSESSIONID={{ alphaCookie }}
           body: null
+          useCookie: false
     test: current.res.status == 401 && current.res.body.code == 'UNAUTHENTICATED'

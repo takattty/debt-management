@@ -23,5 +23,6 @@ class ClosedAccessTest {
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/session").with(user("unexpected").roles("ADMIN")))
                 .andExpect(status().isForbidden());
+        mvc.perform(get("/api/csrf")).andExpect(status().isForbidden());
     }
 }

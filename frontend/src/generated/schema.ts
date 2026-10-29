@@ -13,8 +13,7 @@ export interface paths {
         };
         /**
          * Read the authenticated user and issue a CSRF token
-         * @description CSRF token は現在の session に結び付く。レスポンスの csrfHeaderName と csrfToken を使い、
-         *     ブラウザーは同時に発行される JSESSIONID cookie を保持する。
+         * @description 認証済み User の DB 所属、role、現在の CSRF token を返す。session に古い所属情報だけを保持しても、その値は権限根拠にしない。
          */
         get: operations["getSession"];
         put?: never;
@@ -36,8 +35,7 @@ export interface paths {
         put?: never;
         /**
          * Invalidate the CSRF session
-         * @description CSRF 検証と認証後に session を無効化する。クライアントも保持する Basic credentials と
-         *     CSRF token を破棄する。有効な Basic credentials を再送すれば再認証できる。
+         * @description CSRF 検証後に session と SecurityContext を失効する。旧 cookie と token は再利用できない。
          */
         post: operations["logout"];
         delete?: never;
@@ -88,12 +86,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Issue an anonymous CSRF session token */
+        get: operations["getCsrf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Authenticate persisted user and rotate the session
+         * @description 成功時は204。以前の session ID と CSRF token を再利用せず、GET /api/session から新しい token を取得する。失敗は未登録emailと誤passwordで区別しない。
+         */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         SessionResponse: {
-            username: string;
+            /** Format: uuid */
+            userId: string;
+            /** Format: email */
+            email: string;
+            /** @enum {string} */
+            role: "ADMIN" | "ACCOUNTANT";
+            /** Format: uuid */
+            tenantId: string;
             csrfToken: string;
             /** @example X-CSRF-TOKEN */
             csrfHeaderName: string;
@@ -126,6 +168,20 @@ export interface components {
             field: string;
             message: string;
         };
+        CsrfResponse: {
+            csrfToken: string;
+            /** @example X-CSRF-TOKEN */
+            csrfHeaderName: string;
+        };
+        AuthLoginRequest: {
+            /** @description ASCII email; surrounding whitespace stripped and lowercased for lookup */
+            email: string;
+            /**
+             * Format: password
+             * @description No trim/normalization; maximum512UTF-8bytes. Creation policy is separate from login verification.
+             */
+            password: string;
+        };
     };
     responses: {
         /** @description Invalid fields or malformed JSON (VALIDATION_ERROR or INVALID_REQUEST) */
@@ -137,7 +193,7 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
-        /** @description Missing or invalid credentials (UNAUTHENTICATED) */
+        /** @description Missing/expired session or invalid login credentials (UNAUTHENTICATED); login never distinguishes unknown email from wrong password */
         Unauthorized: {
             headers: {
                 [name: string]: unknown;
@@ -146,7 +202,7 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
-        /** @description Missing/invalid CSRF token or API access denied (ACCESS_DENIED) */
+        /** @description CSRF token/session mismatch (CSRF_INVALID) or authenticated permission/API access denial (ACCESS_DENIED). These codes distinguish stale session handling from role restrictions. */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -310,6 +366,52 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+        };
+    };
+    getCsrf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSRF token and HttpOnly session cookie */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsrfResponse"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Authenticated; session cookie rotated; no response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
 }

@@ -2,6 +2,28 @@
   "schema_version": 1,
   "failures": [
     {
+      "key": "bfcache-secret-replay",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "native-history-invitation-link",
+          "summary": "native BFCacheの履歴復元で発行済みbearerリンクが再表示された",
+          "evidence": "frontend/browser/bfcache.test.mjs",
+          "recorded_at": "2026-10-29T17:41:47+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "component stateだけに依存しpagehideで秘密DOMとReact stateを破棄していなかった",
+          "prevention": "pagehide同期unmountとDOM破棄、persisted復帰時fresh bootstrapを行いCIでnative BFCacheを必須検証する",
+          "verification": "旧review probe再表示trueに対し修正版false。native2ケースはpersisted trueと秘密非表示を確認、unit31と実業務E2E5も成功",
+          "guard": "frontend/browser/bfcache.test.mjs",
+          "event_count": 1,
+          "resolved_at": "2026-10-29T17:41:47+00:00"
+        }
+      ]
+    },
+    {
       "key": "github-integration-permissions",
       "status": "resolved",
       "events": [
@@ -220,6 +242,34 @@
           "guard": "scripts/fetch-main.sh",
           "event_count": 2,
           "resolved_at": "2026-10-29T14:14:55+00:00"
+        }
+      ]
+    },
+    {
+      "key": "worktree-path-assumption",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "new-worktree-cwd-before-creation",
+          "summary": "未作成のworktreeをcwdに指定し作成command自身が起動できなかった",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T17:31:11+00:00"
+        },
+        {
+          "event": "premerge-proof-relative-to-ui-tree",
+          "summary": "別treeの証拠をUIの相対workで読み不在assertionとなった",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T17:31:11+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "実行cwdとworktreeごとの検証物所有先を暗黙に同一と扱った",
+          "prevention": "既存cwdからworktreeを作成してHEAD確認後に使い、他treeの証拠は所有先絶対pathで読む",
+          "verification": "正しいcwdでtree作成後DockerE2E2件と停止再起動が成功。premerge27証拠を所有先絶対pathで再読し対象SHA一致を確認",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T17:31:11+00:00"
         }
       ]
     }

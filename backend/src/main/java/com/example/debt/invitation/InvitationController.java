@@ -3,6 +3,10 @@ package com.example.debt.invitation;
 import com.example.debt.access.CurrentUser;
 import com.example.debt.access.UserRole;
 import com.example.debt.generated.api.InvitationsApi;
+import com.example.debt.generated.model.InvitationAcceptRequest;
+import com.example.debt.generated.model.InvitationAcceptedResponse;
+import com.example.debt.generated.model.InvitationInspectRequest;
+import com.example.debt.generated.model.InvitationInspectionResponse;
 import com.example.debt.generated.model.InvitationIssueRequest;
 import com.example.debt.generated.model.InvitationIssuedResponse;
 import java.time.ZoneOffset;
@@ -30,4 +34,19 @@ public class InvitationController implements InvitationsApi {
         return ResponseEntity.status(201).cacheControl(CacheControl.noStore()).header("Referrer-Policy", "no-referrer").body(result);
     }
 
+    @Override
+    public ResponseEntity<InvitationInspectionResponse> inspectInvitation(InvitationInspectRequest request) {
+        var preview = invitations.inspect(request.getToken());
+        var result = new InvitationInspectionResponse(preview.tenantDisplayName(), preview.maskedEmail(),
+                InvitationInspectionResponse.RoleEnum.fromValue(preview.role().name()), preview.expiresAt().atOffset(ZoneOffset.UTC));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("Referrer-Policy", "no-referrer").body(result);
+    }
+
+    @Override
+    public ResponseEntity<InvitationAcceptedResponse> acceptInvitation(InvitationAcceptRequest request) {
+        var accepted = invitations.accept(request.getToken(), request.getEmail(), request.getPassword());
+        var result = new InvitationAcceptedResponse(accepted.userId(), accepted.email(),
+                InvitationAcceptedResponse.RoleEnum.fromValue(accepted.role().name()));
+        return ResponseEntity.status(201).cacheControl(CacheControl.noStore()).header("Referrer-Policy", "no-referrer").body(result);
+    }
 }

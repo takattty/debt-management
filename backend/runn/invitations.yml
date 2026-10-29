@@ -1,0 +1,400 @@
+desc: Admin invites another admin, who invites an accountant through one-use manual links
+concurrency: debt-api-acceptance
+labels:
+- api
+- invitations
+- security
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+  invalid:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+    skipValidateRequest: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+secrets:
+- vars.password
+- ownerCookie
+- ownerToken
+- ownerAnonymousCookie
+- ownerAnonymousToken
+- recipientCookie
+- recipientToken
+- recipientAnonymousCookie
+- recipientAnonymousToken
+- newAdminCookie
+- newAdminToken
+- newAdminAnonymousCookie
+- newAdminAnonymousToken
+- accountantCookie
+- accountantToken
+- accountantAnonymousCookie
+- accountantAnonymousToken
+- adminInvitationToken
+- accountantInvitationToken
+- steps.issueAdmin.res.body.acceptanceUrl
+- steps.newAdminIssuesAccountant.res.body.acceptanceUrl
+steps:
+  unique:
+    bind:
+      adminEmail: '''runn-admin-'' + faker.UUID() + ''@example.test'''
+      accountantEmail: '''runn-accountant-'' + faker.UUID() + ''@example.test'''
+  ownerCsrf:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      ownerAnonymousToken: current.res.body.csrfToken
+      ownerAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  ownerLogin:
+    api:
+      /api/auth/login:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ ownerAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ ownerAnonymousToken }}'
+    bind:
+      ownerCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  ownerSession:
+    api:
+      /api/session:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ ownerCookie }}
+    bind:
+      ownerToken: current.res.body.csrfToken
+    test: current.res.status == 200 && current.res.body.role == 'ADMIN'
+  issueAdmin:
+    api:
+      /api/invitations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: '{{ adminEmail }}'
+              role: ADMIN
+          headers:
+            Cookie: JSESSIONID={{ ownerCookie }}
+            X-CSRF-TOKEN: '{{ ownerToken }}'
+    bind:
+      adminInvitationId: current.res.body.id
+      adminInvitationToken: split(current.res.body.acceptanceUrl, '#token=')[1]
+    test: current.res.status == 201 && split(current.res.body.acceptanceUrl, '#token=')[0] == '/accept-invitation'
+      && current.res.headers['Cache-Control'][0] == 'no-store'
+  recipientCsrf:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      recipientCookie: current.res.cookies.JSESSIONID.Value
+      recipientToken: current.res.body.csrfToken
+    test: current.res.status == 200
+  inspectAdmin:
+    api:
+      /api/invitations/inspect:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: '{{ adminInvitationToken }}'
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+            X-CSRF-TOKEN: '{{ recipientToken }}'
+    test: current.res.status == 200 && current.res.body.role == 'ADMIN' && current.res.body.maskedEmail == '***@example.test'
+      && !('email' in current.res.body) && !('tenantId' in current.res.body)
+  malformed:
+    api:
+      /api/invitations/inspect:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: malformed
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+            X-CSRF-TOKEN: '{{ recipientToken }}'
+    bind:
+      invalidInvitationError: current.res.body
+    test: current.res.status == 400 && current.res.body.code == 'INVITATION_INVALID'
+  unknown:
+    api:
+      /api/invitations/inspect:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: '{{ repeat(''A'',43) }}'
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+            X-CSRF-TOKEN: '{{ recipientToken }}'
+    test: current.res.status == 400 && compare(current.res.body, invalidInvitationError)
+  acceptCsrfRequired:
+    invalid:
+      /api/invitations/accept:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: '{{ adminInvitationToken }}'
+              email: '{{ adminEmail }}'
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
+  cannotOverrideRoleOrTenant:
+    invalid:
+      /api/invitations/accept:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: '{{ adminInvitationToken }}'
+              email: '{{ adminEmail }}'
+              password: '{{ vars.password }}'
+              role: ACCOUNTANT
+              tenantId: 22222222-2222-2222-2222-222222222222
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+            X-CSRF-TOKEN: '{{ recipientToken }}'
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  wrongEmail:
+    api:
+      /api/invitations/accept:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: '{{ adminInvitationToken }}'
+              email: '{{ accountantEmail }}'
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+            X-CSRF-TOKEN: '{{ recipientToken }}'
+    test: current.res.status == 400 && compare(current.res.body, invalidInvitationError)
+  acceptAdmin:
+    api:
+      /api/invitations/accept:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: '{{ adminInvitationToken }}'
+              email: '{{ adminEmail }}'
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+            X-CSRF-TOKEN: '{{ recipientToken }}'
+    bind:
+      createdAdminId: current.res.body.userId
+    test: current.res.status == 201 && current.res.body.email == adminEmail && current.res.body.role == 'ADMIN'
+  acceptDoesNotLogin:
+    api:
+      /api/session:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+    test: current.res.status == 401 && current.res.body.code == 'UNAUTHENTICATED'
+  used:
+    api:
+      /api/invitations/inspect:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: '{{ adminInvitationToken }}'
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+            X-CSRF-TOKEN: '{{ recipientToken }}'
+    test: current.res.status == 400 && compare(current.res.body, invalidInvitationError)
+  newAdminLogin:
+    api:
+      /api/auth/login:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: '{{ adminEmail }}'
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ recipientCookie }}
+            X-CSRF-TOKEN: '{{ recipientToken }}'
+    bind:
+      newAdminCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  newAdminSession:
+    api:
+      /api/session:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ newAdminCookie }}
+    bind:
+      newAdminToken: current.res.body.csrfToken
+    test: current.res.status == 200 && current.res.body.userId == createdAdminId && current.res.body.role == 'ADMIN'
+      && current.res.body.tenantId == '11111111-1111-1111-1111-111111111111'
+  newAdminIssuesAccountant:
+    api:
+      /api/invitations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: '{{ accountantEmail }}'
+              role: ACCOUNTANT
+          headers:
+            Cookie: JSESSIONID={{ newAdminCookie }}
+            X-CSRF-TOKEN: '{{ newAdminToken }}'
+    bind:
+      accountantInvitationToken: split(current.res.body.acceptanceUrl, '#token=')[1]
+    test: current.res.status == 201
+  accountantCsrf:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      accountantAnonymousCookie: current.res.cookies.JSESSIONID.Value
+      accountantAnonymousToken: current.res.body.csrfToken
+    test: current.res.status == 200
+  inspectAccountant:
+    api:
+      /api/invitations/inspect:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: '{{ accountantInvitationToken }}'
+          headers:
+            Cookie: JSESSIONID={{ accountantAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ accountantAnonymousToken }}'
+    test: current.res.status == 200 && current.res.body.role == 'ACCOUNTANT'
+  acceptAccountant:
+    api:
+      /api/invitations/accept:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              token: '{{ accountantInvitationToken }}'
+              email: '{{ accountantEmail }}'
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ accountantAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ accountantAnonymousToken }}'
+    test: current.res.status == 201 && current.res.body.role == 'ACCOUNTANT'
+  accountantLogin:
+    api:
+      /api/auth/login:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: '{{ accountantEmail }}'
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ accountantAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ accountantAnonymousToken }}'
+    bind:
+      accountantCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  accountantSession:
+    api:
+      /api/session:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ accountantCookie }}
+    bind:
+      accountantToken: current.res.body.csrfToken
+    test: current.res.status == 200 && current.res.body.role == 'ACCOUNTANT' && current.res.body.tenantId == '11111111-1111-1111-1111-111111111111'
+  accountantCannotInvite:
+    api:
+      /api/invitations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: must-not-create@example.test
+              role: ADMIN
+          headers:
+            Cookie: JSESSIONID={{ accountantCookie }}
+            X-CSRF-TOKEN: '{{ accountantToken }}'
+    test: current.res.status == 403 && current.res.body.code == 'ACCESS_DENIED'
+  accountantSessionPreserved:
+    api:
+      /api/session:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ accountantCookie }}
+    test: current.res.status == 200 && current.res.body.role == 'ACCOUNTANT'
+  existingGlobalEmail:
+    api:
+      /api/invitations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: beta-admin@example.test
+              role: ADMIN
+          headers:
+            Cookie: JSESSIONID={{ ownerCookie }}
+            X-CSRF-TOKEN: '{{ ownerToken }}'
+    test: current.res.status == 409 && current.res.body.code == 'INVITATION_UNAVAILABLE' && !(current.res.rawBody
+      contains 'beta-admin@example.test')
+  accountantLogout:
+    api:
+      /api/logout:
+        post:
+          useCookie: false
+          body:
+            application/json: {}
+          headers:
+            Cookie: JSESSIONID={{ accountantCookie }}
+            X-CSRF-TOKEN: '{{ accountantToken }}'
+    test: current.res.status == 204
+  newAdminLogout:
+    api:
+      /api/logout:
+        post:
+          useCookie: false
+          body:
+            application/json: {}
+          headers:
+            Cookie: JSESSIONID={{ newAdminCookie }}
+            X-CSRF-TOKEN: '{{ newAdminToken }}'
+    test: current.res.status == 204
+  ownerLogout:
+    api:
+      /api/logout:
+        post:
+          useCookie: false
+          body:
+            application/json: {}
+          headers:
+            Cookie: JSESSIONID={{ ownerCookie }}
+            X-CSRF-TOKEN: '{{ ownerToken }}'
+    test: current.res.status == 204

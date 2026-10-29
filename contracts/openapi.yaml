@@ -27,7 +27,138 @@ tags:
   description: Anonymous CSRF and email/password session login
 - name: Invitations
   description: Administrator-issued one-use manual invitation links
+- name: Imports
+  description: Immutable tenant-scoped CSV previews and explicit all-or-nothing confirmation
 paths:
+  /api/imports/customers/template:
+    get:
+      tags: [Imports]
+      operationId: downloadCustomerImportTemplate
+      summary: Download the UTF-8 BOM customer CSV header
+      description: Header only. Columns are customer_code,customer_name. Surrounding field whitespace is stripped as in manual customer registration; case and Unicode are not normalized.
+      responses:
+        '200':
+          description: Fixed-format CSV template
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+              description: Attachment filename customers-template.csv
+          content:
+            text/csv:
+              schema: {type: string, format: binary}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/imports/customers/preview:
+    post:
+      tags: [Imports]
+      operationId: previewCustomerImport
+      summary: Store a customer CSV preview without creating any customer
+      description: New customers only. Existing or repeated customer codes invalidate the entire batch. Syntax and row errors are saved for correction; a preview expires after 24 hours. Maximum 10MiB and 10000 data records.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201':
+          description: Immutable valid or invalid preview; business rows remain unchanged
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImportBatchResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '413':
+          description: Multipart upload exceeds its bounded size
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+  /api/imports/{id}:
+    parameters:
+    - {$ref: '#/components/parameters/ImportId'}
+    get:
+      tags: [Imports]
+      operationId: getImportBatch
+      summary: Read the stored preview or confirmed result
+      description: A different tenant or unsupported import kind returns 404. Reads remain available after preview expiry for correction and outcome recovery.
+      responses:
+        '200':
+          description: Current server-side batch state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImportBatchResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/ImportNotFound'}
+  /api/imports/{id}/rows:
+    parameters:
+    - {$ref: '#/components/parameters/ImportId'}
+    - {$ref: '#/components/parameters/ImportCursor'}
+    - {$ref: '#/components/parameters/ImportLimit'}
+    get:
+      tags: [Imports]
+      operationId: listImportRows
+      summary: Read an immutable preview page in original record order
+      responses:
+        '200':
+          description: At most limit rows; nextCursor is zero at the end
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImportRowsPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/ImportNotFound'}
+  /api/imports/{id}/errors:
+    parameters:
+    - {$ref: '#/components/parameters/ImportId'}
+    - {$ref: '#/components/parameters/ImportCursor'}
+    - {$ref: '#/components/parameters/ImportLimit'}
+    get:
+      tags: [Imports]
+      operationId: listImportErrors
+      summary: Read all correction details through bounded pages
+      responses:
+        '200':
+          description: At most limit errors; nextCursor is zero at the end
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImportErrorsPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/ImportNotFound'}
+  /api/imports/{id}/errors.csv:
+    parameters:
+    - {$ref: '#/components/parameters/ImportId'}
+    get:
+      tags: [Imports]
+      operationId: downloadImportErrors
+      summary: Download the complete spreadsheet-safe error snapshot
+      description: UTF-8 BOM CSV with row_number,field,input_value,input_truncated,reason,correction. This report is for correction guidance, not a re-import file. Formula-like values are neutralized.
+      responses:
+        '200':
+          description: All stored errors, matching the paginated error API
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+              description: Attachment filename import-errors.csv
+          content:
+            text/csv:
+              schema: {type: string, format: binary}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/ImportNotFound'}
   /api/session:
     get:
       tags:
@@ -340,6 +471,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
 components:
+  parameters:
+    ImportId:
+      name: id
+      in: path
+      required: true
+      description: Server-issued batch ID
+      schema: {type: string, format: uuid}
+    ImportCursor:
+      name: cursor
+      in: query
+      description: Last record or error number from the preceding page; zero starts the snapshot
+      schema: {type: integer, minimum: 0, maximum: 2147483646, default: 0}
+    ImportLimit:
+      name: limit
+      in: query
+      description: Maximum items per page
+      schema: {type: integer, minimum: 1, maximum: 100, default: 50}
   securitySchemes:
     csrfToken:
       type: apiKey
@@ -358,6 +506,11 @@ components:
       description: Authenticated server-side servlet session; HttpOnly, SameSite=Lax, Path=/; local HTTP only permits
         Secure=false
   responses:
+    ImportNotFound:
+      description: Batch not found in the authenticated tenant
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
     BadRequest:
       description: Invalid fields or malformed JSON (VALIDATION_ERROR or INVALID_REQUEST)
       content:
@@ -379,6 +532,59 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
   schemas:
+    ImportBatchResponse:
+      type: object
+      required: [id, kind, status, version, rowCount, errorCount, createdAt, expiresAt, confirmedAt, confirmedCount]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {type: string, enum: [CUSTOMER]}
+        status: {type: string, enum: [PREVIEW_VALID, PREVIEW_INVALID, CONFIRMED]}
+        version: {type: integer, format: int64, minimum: 0}
+        rowCount: {type: integer, minimum: 0, maximum: 10000}
+        errorCount: {type: integer, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        confirmedAt: {type: string, format: date-time, nullable: true}
+        confirmedCount: {type: integer, minimum: 0, maximum: 10000}
+    ImportRowResponse:
+      type: object
+      required: [recordNumber, rowNumber, customerCode, customerName, valid]
+      properties:
+        recordNumber: {type: integer, minimum: 1, maximum: 10000}
+        rowNumber: {type: integer, minimum: 2}
+        customerCode: {type: string, maxLength: 2048}
+        customerName: {type: string, maxLength: 2048}
+        valid: {type: boolean}
+    ImportErrorResponse:
+      type: object
+      required: [errorNumber, rowNumber, field, inputValue, inputTruncated, reasonCode, reason, correction]
+      properties:
+        errorNumber: {type: integer, minimum: 1}
+        rowNumber: {type: integer, minimum: 1}
+        field: {type: string, minLength: 1, maxLength: 100}
+        inputValue: {type: string, maxLength: 200}
+        inputTruncated: {type: boolean}
+        reasonCode: {type: string, minLength: 1}
+        reason: {type: string, minLength: 1}
+        correction: {type: string, minLength: 1}
+    ImportRowsPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/ImportRowResponse'}
+        nextCursor: {type: integer, minimum: 0}
+    ImportErrorsPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/ImportErrorResponse'}
+        nextCursor: {type: integer, minimum: 0}
     SessionResponse:
       type: object
       required:

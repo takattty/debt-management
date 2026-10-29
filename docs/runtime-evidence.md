@@ -58,3 +58,11 @@
 7. bootstrap承認/固定pin/実イベント/否定検証を確認。最新SHAでquality・独立レビュー・blocking0・受入条件を揃えてからmerge。初期変数/例外を除去し、#2〜#6へ進む。
 
 生ログはignored work配下。重要結果/阻害/再開はIssueとtracked evidenceへ残し、Cloudの作業領域だけに依存しない。
+
+## 導入後の実証追記
+
+初期説明の未達記述は初期snapshotであり、以後の実結果は以下。PR #9はユーザー固定pin承認後に実bootstrap status/quality成功、head/base/latestreviewを確認し737c01eへmerge。ユーザーがpin変数を削除し、経路はPR #16でb9f48e6へ削除した。通常gateは#16同一SHAで未review→failure、明示review→success、review編集→failure、merge405、再review→successを自動event経路で確認。#18はreviewだけsuccess・qualityだけfailureの状態でquality名を示す405拒否、未merge閉鎖。必須checks/ルールを削除していない。
+
+repo.allow_auto_merge=trueをread確認。#12はGitHub AutoMergeEnabledEvent(UTC15:17:19)を記録し、check待機中auto_merge設定と未mergeを実観測、その後必須成功でUTC15:18:34にGitHubがafd2d916へmergeした。rootが条件未達で強制mergeした事実はない。CodeRabbitはユーザーがuninstallし、新規PRのcheckから消えた。
+
+CIの最終mandatory化とrunnはPR #17、latest472b552のrun40895337491成功でBE13/FE5/runn3books39HTTP/E2E1/metadata-policy2/Python5/生成drift1を実ログ確認、同SHA独立review5699802391がpass。後続でSHAが変わればそのCI/再reviewを別途揃える。#1のCloud別task委譲/実停止再起動は引き続き未実証で、software gate成功と区別する。

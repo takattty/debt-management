@@ -12,10 +12,12 @@
 
 ```sh
 scripts/build-local.sh
+cp .env.example .env
+# .env の LOCAL_SEED_PASSWORD を設定してから起動
 docker compose up --build -d
 ```
 
-http://localhost:8088 を開きます。架空アカウントは `alpha-admin@example.test` / `beta-admin@example.test` / `alpha-accountant@example.test`、架空fixtureのパスワードは `debt_local_demo_2026`。`.env.example` を `.env` にコピーして変更できます。メールアドレス/パスワードでDBユーザーを認証し、HttpOnly cookieとCSRFを使用します。架空ユーザーのseedは明示したlocal profileとLOCAL_SEED_PASSWORDが必要です。local以外はfail closedです。招待はIssue #2の次PRで実装します。
+http://localhost:8088 を開きます。架空アカウントは `alpha-admin@example.test` / `beta-admin@example.test` / `alpha-accountant@example.test`、パスワードは `.env` の `LOCAL_SEED_PASSWORD` に明示した値です。未設定・空文字ではComposeが起動を拒否します。メールアドレス/パスワードでDBユーザーを認証し、HttpOnly cookieとCSRFを使用します。架空ユーザーのseedは明示したlocal profileとLOCAL_SEED_PASSWORDが必要です。local以外はfail closedです。招待はIssue #2の次PRで実装します。
 
 ```sh
 docker compose down

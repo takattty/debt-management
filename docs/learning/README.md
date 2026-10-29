@@ -28,3 +28,5 @@ python3 scripts/failure-loop.py resolve --key github-integration-permission --ca
 - 失敗を解決済みとして記録したことは、業務機能や merge gate の完了を意味しない。実際の検証と独立レビューは対象 commit に別途結び付ける。
 
 mainの取得では `scripts/fetch-main.sh` を使い、明示先refとremote SHA一致を確認する。宛先なしfetchが成功してもorigin/mainが更新されるとは限らない。
+
+GitHub metadata取得は応答ごとの契約を確認する。PRのhead/baseはREST pulls/{number}のhead.sha/base.shaを用いる。combined statusはcreatorを省略するため、発行者確認はcommits/{sha}/statusesを用いる。gh pr viewのJSON選択肢はGraphQL全fieldと同じではなく、未対応field名を推測して反復しない。metadata不足ではmergeを止め、guard条件を緩めず正しいendpointへ直す。

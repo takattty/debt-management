@@ -8,8 +8,9 @@ async function login(page: Page, username: string) {
 }
 
 test('customer registration survives reload, rejects duplicates and isolates tenants through real API/DB', async ({ page, browser }) => {
-  const code = `E2E-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-  const customerName = `架空テスト商事 ${code}`;
+  const unique = `E2E-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+  const code = unique + '𠮷'.repeat(50 - Array.from(unique).length);
+  const customerName = unique + '𠮷'.repeat(200 - Array.from(unique).length);
   await page.goto('/');
   await login(page, 'alpha-admin');
   await page.getByLabel('顧客コード', { exact: false }).fill(code);

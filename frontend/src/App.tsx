@@ -79,8 +79,8 @@ export default function App() {
           <section className="panel" aria-labelledby="register-title">
             <div className="panel-heading"><span className="step-number">＋</span><div><h2 id="register-title">顧客を登録</h2><p>顧客コードは契約企業内で重複しない値を指定してください。</p></div></div>
             <form className="customer-form" onSubmit={register}>
-              <label htmlFor="code">顧客コード <span className="required">必須</span><input id="code" required maxLength={50} placeholder="例：CUST-001" value={code} onChange={(event) => setCode(event.target.value)} disabled={busy} /></label>
-              <label htmlFor="customer-name">顧客名 <span className="required">必須</span><input id="customer-name" required maxLength={200} placeholder="例：株式会社サンプル" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} /></label>
+              <label htmlFor="code">顧客コード <span className="required">必須</span><input id="code" required placeholder="例：CUST-001" value={code} onChange={(event) => setCode(event.target.value)} disabled={busy} /></label>
+              <label htmlFor="customer-name">顧客名 <span className="required">必須</span><input id="customer-name" required placeholder="例：株式会社サンプル" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} /></label>
               <button className="primary-button" disabled={busy}>{busy ? '登録中…' : '顧客を登録'}</button>
             </form>
             {error && <p className="error" role="alert">{error}</p>}

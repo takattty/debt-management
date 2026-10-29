@@ -22,6 +22,12 @@
           "summary": "commit status書込みもintegration権限で403",
           "evidence": "docs/github-gate.md",
           "recorded_at": "2026-10-29T13:06:04+00:00"
+        },
+        {
+          "event": "bootstrap-variable-delete-403",
+          "summary": "合意済み初期変数の削除APIもintegrationのVariables権限不足で403",
+          "evidence": "https://github.com/takattty/debt-management/pull/16",
+          "recorded_at": "2026-10-29T14:10:49+00:00"
         }
       ],
       "resolutions": [
@@ -32,6 +38,14 @@
           "guard": "docs/github-gate.md",
           "event_count": 3,
           "resolved_at": "2026-10-29T13:06:04+00:00"
+        },
+        {
+          "cause": "settings/status/variablesの権限はmetadata.adminと別で、付与されていない",
+          "prevention": "拒否済みendpointは認証権限の変更証拠まで再試行せず、解除はユーザーUI操作へ渡す",
+          "verification": "削除API403を記録し、ユーザーが変数削除を報告。初期base失効と経路除去PRを進めた",
+          "guard": "docs/github-gate.md",
+          "event_count": 4,
+          "resolved_at": "2026-10-29T14:10:49+00:00"
         }
       ]
     },
@@ -60,6 +74,34 @@
           "guard": "frontend/.npmrc",
           "event_count": 2,
           "resolved_at": "2026-10-29T13:23:27+00:00"
+        }
+      ]
+    },
+    {
+      "key": "stale-main-tracking-ref",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "post-bootstrap-fetch-without-destination",
+          "summary": "main取得は成功したがorigin/mainは初期SHAのままだった",
+          "evidence": "docs/runtime-evidence.md",
+          "recorded_at": "2026-10-29T14:14:52+00:00"
+        },
+        {
+          "event": "cleanup-fetch-reused-stale-tracking-ref",
+          "summary": "同じ取得方法を繰返し初期treeからcleanupを作成して対象file不在になった",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T14:14:52+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "明示sourceだけのfetchは設定次第でFETCH_HEADのみ更新しremote tracking refを更新しない",
+          "prevention": "fetch-main.shで宛先refを明示し、ls-remoteのSHAと一致するまでbaseとして使わない",
+          "verification": "同じrepoでold87bから737c01eへorigin/main更新とremote一致を確認しcleanup再作成に成功",
+          "guard": "scripts/fetch-main.sh",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T14:14:55+00:00"
         }
       ]
     }

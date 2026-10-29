@@ -50,6 +50,34 @@
       ]
     },
     {
+      "key": "github-metadata-shape",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "combined-status-omits-creator",
+          "summary": "combined statusの簡略DTOにcreatorがあると仮定してpremergeが安全側に停止した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T15:47:15+00:00"
+        },
+        {
+          "event": "cli-json-baserefoid-unsupported",
+          "summary": "gh pr viewのJSON選択にGraphQLと同じbaseRefOidを指定して失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T15:47:15+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "似たAPI/CLIでも返却DTOと選択可能fieldが異なるのに同じ契約と仮定した",
+          "prevention": "metadata取得をRESTの実在fieldに統一し、creatorはlist statusesで確認、未知fieldは失敗を維持しendpointを修正する",
+          "verification": "list statusesでgithub-actions botとsuccessを実確認し、premergeのhead/base/review/quality検査を通過してPR16を正しくmergeできた",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T15:47:15+00:00"
+        }
+      ]
+    },
+    {
       "key": "npm-cache-location",
       "status": "resolved",
       "events": [

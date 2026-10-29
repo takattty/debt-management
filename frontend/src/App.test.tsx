@@ -66,4 +66,27 @@ describe('Customer workspace', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('空白だけでは登録できません');
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it('preserves supplementary Japanese characters through input, request and display', async () => {
+    const code = '𠮷'.repeat(50);
+    const name = '𠮷'.repeat(200);
+    const fetch = vi.fn().mockResolvedValueOnce(ok(session)).mockResolvedValueOnce(ok([])).mockResolvedValueOnce(ok({ id: 'unicode', code, name, version: 0 }, 201));
+    vi.stubGlobal('fetch', fetch);
+    render(<App />);
+    const user = await login();
+    const codeInput = await screen.findByLabelText(/顧客コード/);
+    const nameInput = screen.getByLabelText(/顧客名/);
+    expect(codeInput).not.toHaveAttribute('maxlength');
+    expect(nameInput).not.toHaveAttribute('maxlength');
+    await user.click(codeInput);
+    await user.paste(code);
+    await user.click(nameInput);
+    await user.paste(name);
+    expect(codeInput).toHaveValue(code);
+    expect(nameInput).toHaveValue(name);
+    await user.click(screen.getByRole('button', { name: '顧客を登録' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('登録しました');
+    expect(fetch).toHaveBeenLastCalledWith('/api/customers', expect.objectContaining({ body: JSON.stringify({ code, name }) }));
+    expect(within(screen.getByRole('table')).getByText(name)).toBeVisible();
+  });
 });

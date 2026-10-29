@@ -27,6 +27,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
+      - name: Deliberate quality failure for merge-gate verification
+        run: exit 1
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         if: hashFiles('backend/build.gradle.kts') != ''
         with:

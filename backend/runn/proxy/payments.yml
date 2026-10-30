@@ -1,0 +1,196 @@
+desc: Production Nginx preserves payment preview corrections, size errors and immutable confirmation
+concurrency: debt-api-acceptance
+labels: [api, imports, payments, proxy]
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8096}
+    openapi3: ../../../contracts/openapi.yaml
+    useCookie: false
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+  fixture: json://../../../work/proxy-payment-metadata.json
+secrets: [vars.password, anonymousToken, anonymousCookie, cookie, token]
+steps:
+  csrf:
+    api:
+      /api/csrf:
+        get: {body: null}
+    bind:
+      anonymousToken: current.res.body.csrfToken
+      anonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  login:
+    api:
+      /api/auth/login:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ anonymousCookie }}', X-CSRF-TOKEN: '{{ anonymousToken }}'}
+          body:
+            application/json: {email: alpha-accountant@example.test, password: '{{ vars.password }}'}
+    bind: {cookie: current.res.cookies.JSESSIONID.Value}
+    test: current.res.status == 204
+  session:
+    api:
+      /api/session:
+        get:
+          headers: &auth {Cookie: 'JSESSIONID={{ cookie }}'}
+          body: null
+    bind: {token: current.res.body.csrfToken}
+    test: current.res.status == 200
+  invalidPreview:
+    api:
+      /api/imports/payments/preview:
+        post:
+          headers: &write {Cookie: 'JSESSIONID={{ cookie }}', X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            multipart/form-data: {file: ../../../work/proxy-payment-invalid.csv}
+    bind: {bad: current.res.body.id}
+    test: current.res.status == 201 && current.res.body.kind == 'PAYMENT' && current.res.body.status == 'PREVIEW_INVALID' && current.res.body.rowCount == 2 && current.res.body.errorCount == 2 && current.res.body.confirmedCount == 0
+  originalRows:
+    api:
+      /api/imports/{{ bad }}/payment-rows?limit=100:
+        get: {headers: *auth, body: null}
+    test: current.res.status == 200 && len(current.res.body.items) == 2 && current.res.body.items[0].valid && !current.res.body.items[1].valid && current.res.body.items[1].transferDate == '2026-02-30' && current.res.body.items[1].amount == '0'
+  originalErrors:
+    api:
+      /api/imports/{{ bad }}/errors:
+        get: {headers: *auth, body: null}
+    test: current.res.status == 200 && len(current.res.body.items) == 2 && current.res.body.items[0].rowNumber == 3 && current.res.body.items[0].field == 'transfer_date' && current.res.body.items[1].field == 'amount' && current.res.body.items[1].inputValue == '0' && current.res.body.items[1].correction != ''
+  invalidConfirm:
+    api:
+      /api/imports/{{ bad }}/confirm:
+        post:
+          headers: *write
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 409 && current.res.body.code == 'IMPORT_INVALID'
+  exactFileLimit:
+    api:
+      /api/imports/payments/preview:
+        post:
+          headers: *write
+          body:
+            multipart/form-data: {file: ../../../work/proxy-file-exact.csv}
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_INVALID' && current.res.body.errorCount > 0
+  backendFileLimit:
+    api:
+      /api/imports/payments/preview:
+        post:
+          headers: *write
+          body:
+            multipart/form-data: {file: ../../../work/proxy-file-limit.csv}
+    test: current.res.status == 413 && current.res.body.code == 'IMPORT_SIZE_LIMIT'
+  nginxRequestLimit:
+    api:
+      /api/imports/payments/preview:
+        post:
+          headers: *write
+          body:
+            multipart/form-data: {file: ../../../work/proxy-request-limit.csv}
+    test: current.res.status == 413 && current.res.body.code == 'IMPORT_SIZE_LIMIT'
+  repair:
+    api:
+      /api/imports/payments/preview:
+        post:
+          headers: *write
+          body:
+            multipart/form-data: {file: ../../../work/proxy-payment-valid.csv}
+    bind: {good: current.res.body.id}
+    test: current.res.status == 201 && current.res.body.kind == 'PAYMENT' && current.res.body.status == 'PREVIEW_VALID' && current.res.body.rowCount == 2 && current.res.body.errorCount == 0 && current.res.body.confirmedCount == 0
+  repairedRows:
+    api:
+      /api/imports/{{ good }}/payment-rows?limit=100:
+        get: {headers: *auth, body: null}
+    test: current.res.status == 200 && len(current.res.body.items) == 2 && current.res.body.items[0].valid && current.res.body.items[1].valid && current.res.body.items[0].amount == '100000' && current.res.body.items[1].amount == '200000'
+  startPreviewSearch:
+    bind: {previewPageSuffix: '""'}
+  noPartialPaymentSearch:
+    loop:
+      count: 10000
+      interval: 0
+      until: 'current.res.status == 200 && (len(previewPaymentMatches) > 0 || current.res.body.nextCursor == null)'
+    api:
+      /api/payments?limit=1{{ previewPageSuffix }}:
+        get: {headers: *auth, body: null}
+    bind:
+      previewPaymentMatches: 'filter(current.res.body.items, {#.transactionId == vars.fixture.firstTransactionId || #.transactionId == vars.fixture.secondTransactionId})'
+      previewPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+  previewsDidNotWritePayments:
+    test: len(previewPaymentMatches) == 0 && steps.noPartialPaymentSearch.res.body.nextCursor == null
+  confirm:
+    api:
+      /api/imports/{{ good }}/confirm:
+        post:
+          headers: *write
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 200 && current.res.body.status == 'CONFIRMED' && current.res.body.confirmedCount == 2
+  resend:
+    api:
+      /api/imports/{{ good }}/confirm:
+        post:
+          headers: *write
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 200 && compare(current.res.body, steps.confirm.res.body)
+  reloadConfirmedBatch:
+    api:
+      /api/imports/{{ good }}:
+        get: {headers: *auth, body: null}
+    test: current.res.status == 200 && compare(current.res.body, steps.confirm.res.body)
+  startFirstSearch:
+    bind: {firstPageSuffix: '""'}
+  firstPaymentSearch:
+    loop:
+      count: 10000
+      interval: 0
+      until: 'current.res.status == 200 && (len(firstPaymentMatches) == 1 || current.res.body.nextCursor == null)'
+    api:
+      /api/payments?limit=1{{ firstPageSuffix }}:
+        get: {headers: *auth, body: null}
+    bind:
+      firstPaymentMatches: 'filter(current.res.body.items, {#.sourceBatchId == good && #.transactionId == vars.fixture.firstTransactionId})'
+      firstPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+  firstPersisted:
+    test: len(firstPaymentMatches) == 1 && firstPaymentMatches[0].amount == 100000 && firstPaymentMatches[0].unallocatedAmount == 100000 && firstPaymentMatches[0].transferDate == '2026-10-01' && firstPaymentMatches[0].payerName == '架空のNginx入金A'
+  startSecondSearch:
+    bind: {secondPageSuffix: '""'}
+  secondPaymentSearch:
+    loop:
+      count: 10000
+      interval: 0
+      until: 'current.res.status == 200 && (len(secondPaymentMatches) == 1 || current.res.body.nextCursor == null)'
+    api:
+      /api/payments?limit=1{{ secondPageSuffix }}:
+        get: {headers: *auth, body: null}
+    bind:
+      secondPaymentMatches: 'filter(current.res.body.items, {#.sourceBatchId == good && #.transactionId == vars.fixture.secondTransactionId})'
+      secondPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+  secondPersisted:
+    test: len(secondPaymentMatches) == 1 && secondPaymentMatches[0].amount == 200000 && secondPaymentMatches[0].unallocatedAmount == 200000 && secondPaymentMatches[0].transferDate == '2026-10-02' && secondPaymentMatches[0].payerName == '架空のNginx入金B'
+  duplicatePreview:
+    api:
+      /api/imports/payments/preview:
+        post:
+          headers: *write
+          body:
+            multipart/form-data: {file: ../../../work/proxy-payment-valid.csv}
+    bind: {duplicate: current.res.body.id}
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_INVALID' && current.res.body.originalBatchId == good
+  duplicateConfirm:
+    api:
+      /api/imports/{{ duplicate }}/confirm:
+        post:
+          headers: *write
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 409 && current.res.body.code == 'IMPORT_ALREADY_CONFIRMED' && current.res.body.errors[0].message == good
+  originalInvalidPreviewRetained:
+    api:
+      /api/imports/{{ bad }}/payment-rows?limit=100:
+        get: {headers: *auth, body: null}
+    test: current.res.status == 200 && compare(current.res.body, steps.originalRows.res.body)
+  originalConfirmationRetained:
+    api:
+      /api/imports/{{ good }}:
+        get: {headers: *auth, body: null}
+    test: current.res.status == 200 && compare(current.res.body, steps.confirm.res.body)

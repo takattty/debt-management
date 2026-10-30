@@ -1386,6 +1386,34 @@
           "resolved_at": "2026-10-30T16:02:42+00:00"
         }
       ]
+    },
+    {
+      "key": "runn-reserved-expression-name",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "collection-candidates-matches-20261030",
+          "summary": "旧collection候補検索でmatchesを変数参照し予約演算子のlexerエラーとなった実観測を既存rawlogと修正commitから確認",
+          "evidence": "docs/learning/runn-expression-identifiers.md",
+          "recorded_at": "2026-10-30T12:07:26+00:00"
+        },
+        {
+          "event": "proxy-payments-matches-20261030",
+          "summary": "新proxy入金検索もmatches参照で同じlexerエラーとなった。APIとNginxの障害ではない",
+          "evidence": "docs/learning/runn-expression-identifiers.md",
+          "recorded_at": "2026-10-30T12:07:26+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "Expr予約演算子matchesをbind識別子に使い、listでは評価されないloop式を実行まで未検証だった",
+          "prevention": "用途付きpaymentMatchesへbindと参照を一括変更し、予約語無しを確認。listと別にpinned runnのbind/loop実評価probeを通す",
+          "verification": "新bookに裸のmatchesが無いことを確認し、pinned runnのpaymentMatches bind/loop probeが1scenario0failureで成功。HTTP再実行はこのcheck後に実施する",
+          "guard": "docs/learning/runn-expression-identifiers.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T12:07:26+00:00"
+        }
+      ]
     }
   ]
 }

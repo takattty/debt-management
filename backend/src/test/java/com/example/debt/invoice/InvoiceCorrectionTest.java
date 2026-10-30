@@ -88,6 +88,27 @@ class InvoiceCorrectionTest {
     }
 
     @Test
+    void correctionsPreserveSupportedIsoDatesInResponsesRevisionsAndAudit() throws Exception {
+        var dates = List.of("0001-01-01", "1500-03-01", "1582-10-04", "1582-10-05", "1582-10-10", "1582-10-15", "9999-12-31");
+        for (int version = 0; version < dates.size(); version++) {
+            String date = dates.get(version);
+            String request = body(version, 110000L, "日付の訂正").replace("2026-10-29", date).replace("2026-11-30", date);
+            mvc.perform(put("/api/invoices/" + invoice).session(alpha).with(csrf().asHeader()).contentType("application/json").content(request))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.issueDate").value(date)).andExpect(jsonPath("$.dueDate").value(date));
+            mvc.perform(get("/api/invoices/" + invoice).session(alpha)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.issueDate").value(date)).andExpect(jsonPath("$.dueDate").value(date));
+            var snapshot = queries.history(user.tenantId(), invoice, version, 100).items().getFirst().snapshot();
+            assertThat(snapshot.issueDate().toString()).isEqualTo(date);
+            assertThat(snapshot.dueDate().toString()).isEqualTo(date);
+            assertThat(jdbc.sql("SELECT issue_date::text || '/' || due_date::text FROM invoice WHERE tenant_id=? AND id=?")
+                    .params(user.tenantId(), invoice).query(String.class).single()).isEqualTo(date + "/" + date);
+            assertThat(jdbc.sql("SELECT (details->'after'->>'issueDate') || '/' || (details->'after'->>'dueDate') FROM audit_event "
+                    + "WHERE tenant_id=? AND entity_id=? AND action='INVOICE_CORRECTED' AND (details->'after'->>'version')::bigint=?")
+                    .params(user.tenantId(), invoice, version + 1).query(String.class).single()).isEqualTo(date + "/" + date);
+        }
+    }
+
+    @Test
     void correctionUpdatesOutstandingAndAppendsHistoryWithoutChangingNumberOrInitialFacts() throws Exception {
         var original = queries.get(user.tenantId(), invoice, false);
         mvc.perform(put("/api/invoices/" + invoice).session(alpha).with(csrf().asHeader()).contentType("application/json")

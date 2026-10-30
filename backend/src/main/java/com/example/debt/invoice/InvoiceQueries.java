@@ -1,6 +1,7 @@
 package com.example.debt.invoice;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -23,7 +24,7 @@ public class InvoiceQueries {
                 """ + (lock ? " FOR UPDATE OF i" : "")).param("tenant", tenant).param("id", id).query((result, row) ->
                         new InvoiceState(result.getObject("id", UUID.class), result.getObject("customer_id", UUID.class),
                                 result.getString("code"), result.getString("name"), result.getString("invoice_number"),
-                                result.getDate("issue_date").toLocalDate(), result.getDate("due_date").toLocalDate(), result.getLong("amount_jpy"),
+                                result.getObject("issue_date", LocalDate.class), result.getObject("due_date", LocalDate.class), result.getLong("amount_jpy"),
                                 result.getLong("version"), result.getString("status"), result.getObject("source_batch_id", UUID.class),
                                 result.getTimestamp("created_at").toInstant(), result.getTimestamp("updated_at").toInstant(),
                                 result.getTimestamp("cancelled_at") == null ? null : result.getTimestamp("cancelled_at").toInstant()))

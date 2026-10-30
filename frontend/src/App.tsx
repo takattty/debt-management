@@ -6,6 +6,7 @@ import CsvImportPanel from './CsvImportPanel';
 import CustomerDirectory from './CustomerDirectory';
 import ReceivablesPanel from './ReceivablesPanel';
 import type { InvitationEntry } from './invitation-entry';
+import { isBlankText } from './text-input';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '処理に失敗しました。もう一度お試しください。';
 const roleNames: Record<Session['role'], string> = { ADMIN: '管理者', ACCOUNTANT: '経理担当者' };
@@ -73,13 +74,13 @@ function Workspace() {
     event.preventDefault();
     if (!session) return;
     setError(''); setNotice('');
-    if (!code.trim() || !name.trim()) {
+    if (isBlankText(code) || isBlankText(name)) {
       setError('顧客コードと顧客名を入力してください。空白だけでは登録できません。');
       return;
     }
     setBusy(true);
     try {
-      const created = await api.createCustomer(session, { code: code.trim(), name: name.trim() });
+      const created = await api.createCustomer(session, { code, name });
       setCustomers((records) => [...records, created]);
       setCode(''); setName(''); setNotice(`${created.name}を登録しました。`);
     } catch (failure) { reportWorkspaceFailure(failure); }

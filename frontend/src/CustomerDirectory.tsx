@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Customer, type Session } from './api';
+import { isBlankText } from './text-input';
 
 type Props = {
   customers: Customer[];
@@ -53,10 +54,10 @@ function CustomerEditor({ customer, session, busy: workspaceBusy, onBusyChange, 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (locked || needsReload || saved || (latest && !acknowledged)) return;
-    if (!code.trim() || !name.trim()) { setError('顧客コードと顧客名を入力してください。空白だけでは更新できません。'); return; }
+    if (isBlankText(code) || isBlankText(name)) { setError('顧客コードと顧客名を入力してください。空白だけでは更新できません。'); return; }
     working(true); setError('');
     let updated: Customer;
-    try { updated = await api.updateCustomer(session, customer.id, { code: code.trim(), name: name.trim(), version }); }
+    try { updated = await api.updateCustomer(session, customer.id, { code, name, version }); }
     catch (failure) {
       if (failure instanceof ApiError && (failure.code === 'VERSION_CONFLICT' || failure.status === 404 || failure.status === 0 || failure.status >= 500)) setNeedsReload(true);
       report(failure); working(false); return;

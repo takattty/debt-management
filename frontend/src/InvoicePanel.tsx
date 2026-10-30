@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Customer, type Invoice, type InvoiceHistory, type Session } from './api';
 import InvoiceCancellation from './InvoiceCancellation';
 import { formatJstTimestamp } from './timestamp-presentation';
+import { isBlankText } from './text-input';
 
 type Props = { id: string; customers: Customer[]; session: Session; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void; onChanged: () => Promise<void>; onClose: () => void };
 const yen = (amount: number) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(amount);
@@ -64,12 +65,13 @@ function InvoiceEditor({ initial, ...props }: Props & { initial: Initial }) {
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (blocked) return;
-    if (!customerId || !issueDate || !dueDate || dueDate < issueDate || !/^[1-9]\d*$/.test(amount) || !Number.isSafeInteger(Number(amount)) || !reason.trim()) {
+    if (!customerId || !issueDate || !dueDate || dueDate < issueDate || !/^[1-9]\d*$/.test(amount) || !Number.isSafeInteger(Number(amount)) || isBlankText(reason)) {
       setError('顧客、請求日以降の支払期日、正の円整数の金額、訂正理由を入力してください。'); return;
     }
+    if ([...reason].length > 1000) { setError('訂正理由は1000文字以内で入力してください。'); return; }
     working(true); setError(''); setNotice('');
     try {
-      const updated = await api.correctInvoice(props.session, props.id, { version: current.version, customerId, issueDate, dueDate, amount: Number(amount), reason: reason.trim() });
+      const updated = await api.correctInvoice(props.session, props.id, { version: current.version, customerId, issueDate, dueDate, amount: Number(amount), reason });
       setCurrent(updated); setReason(''); setComparison(false); setAcknowledged(false);
       setNeedsReload(true);
       const page = await api.listInvoiceHistory(props.id); setHistory(page.items); setCursor(page.nextCursor);
@@ -99,7 +101,7 @@ function InvoiceEditor({ initial, ...props }: Props & { initial: Initial }) {
       <fieldset disabled={busy || !mutable}><legend>入力中の訂正内容</legend>
         <label htmlFor="invoice-customer">訂正後の顧客<select id="invoice-customer" required value={customerId} onChange={(event) => { setCustomerId(event.target.value); setAcknowledged(false); }}>{props.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.code} — {customer.name}</option>)}</select></label>
         <div className="customer-edit-fields"><label htmlFor="invoice-issue">訂正後の請求日<input id="invoice-issue" type="date" required value={issueDate} onChange={(event) => { setIssueDate(event.target.value); setAcknowledged(false); }} /></label><label htmlFor="invoice-due">訂正後の支払期日<input id="invoice-due" type="date" required min={issueDate} value={dueDate} onChange={(event) => { setDueDate(event.target.value); setAcknowledged(false); }} /></label><label htmlFor="invoice-amount">訂正後の請求額（円）<input id="invoice-amount" inputMode="numeric" required value={amount} onChange={(event) => { setAmount(event.target.value); setAcknowledged(false); }} /></label></div>
-        <label htmlFor="invoice-reason">訂正理由<input id="invoice-reason" required maxLength={1000} value={reason} onChange={(event) => { setReason(event.target.value); setAcknowledged(false); }} /></label>
+        <label htmlFor="invoice-reason">訂正理由<input id="invoice-reason" required value={reason} onChange={(event) => { setReason(event.target.value); setAcknowledged(false); }} /></label>
         {comparison && <label className="confirmation-check"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />最新の登録内容と履歴を確認し、入力中の内容で訂正する</label>}
       </fieldset>
       <div className="button-row"><button className="primary-button" disabled={blocked}>訂正を保存</button><button type="button" className="secondary-button" disabled={busy} onClick={reload}>最新内容・処理結果を取得</button><button type="button" className="secondary-button" disabled={busy} onClick={props.onClose}>請求を閉じる</button></div>

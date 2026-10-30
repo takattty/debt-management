@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Customer, type Invoice, type InvoiceHistory, type Session } from './api';
+import InvoiceCancellation from './InvoiceCancellation';
 
 type Props = { id: string; customers: Customer[]; session: Session; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void; onChanged: () => Promise<void>; onClose: () => void };
 const yen = (amount: number) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(amount);
@@ -68,10 +69,10 @@ function InvoiceEditor({ initial, ...props }: Props & { initial: Initial }) {
     working(true); setError(''); setNotice('');
     try {
       const updated = await api.correctInvoice(props.session, props.id, { version: current.version, customerId, issueDate, dueDate, amount: Number(amount), reason: reason.trim() });
-      setCurrent(updated); setReason(''); setComparison(false); setAcknowledged(false); setNotice('請求を訂正しました。');
+      setCurrent(updated); setReason(''); setComparison(false); setAcknowledged(false);
       setNeedsReload(true);
       const page = await api.listInvoiceHistory(props.id); setHistory(page.items); setCursor(page.nextCursor);
-      await props.onChanged(); setNeedsReload(false);
+      await props.onChanged(); setNeedsReload(false); setNotice('請求を訂正しました。');
     } catch (failure) {
       if (!(failure instanceof ApiError) || failure.status === 0 || failure.status >= 500 || failure.status === 404 || failure.status === 409) setNeedsReload(true);
       report(failure);
@@ -88,7 +89,7 @@ function InvoiceEditor({ initial, ...props }: Props & { initial: Initial }) {
     <h2 id="invoice-title">請求の訂正・履歴：{current.invoiceNumber}</h2>
     <p>請求ID：<code>{current.id}</code>（取消後もこのIDで履歴を開けます）</p>
     <h3>現在の登録内容</h3>
-    <dl className="invoice-facts"><dt>状態</dt><dd>{status(current)}</dd><dt>顧客</dt><dd>{current.customerCode} — {current.customerName}</dd><dt>請求日</dt><dd>{current.issueDate}</dd><dt>支払期日</dt><dd>{current.dueDate}</dd><dt>請求額</dt><dd>{yen(current.amount)}</dd><dt>未回収額</dt><dd>{yen(current.outstandingAmount)}</dd><dt>版</dt><dd>{current.version}</dd></dl>
+    <dl className="invoice-facts" aria-label="現在の請求内容"><dt>状態</dt><dd>{status(current)}</dd><dt>顧客</dt><dd>{current.customerCode} — {current.customerName}</dd><dt>請求日</dt><dd>{current.issueDate}</dd><dt>支払期日</dt><dd>{current.dueDate}</dd><dt>請求額</dt><dd>{yen(current.amount)}</dd><dt>未回収額</dt><dd>{yen(current.outstandingAmount)}</dd><dt>版</dt><dd>{current.version}</dd></dl>
     <p>請求書番号は変更できません。訂正できるのは有効で未消込の請求です。消込がある場合は先に対象消込を取り消してください。</p>
     {error && <p className="error" role="alert">{error}</p>}{notice && <p className="success" role="status">{notice}</p>}
     {needsReload && <p>処理結果・最新内容を取得して確認してください。入力中の内容は保持しています。変更は自動再送しません。</p>}
@@ -102,6 +103,11 @@ function InvoiceEditor({ initial, ...props }: Props & { initial: Initial }) {
       </fieldset>
       <div className="button-row"><button className="primary-button" disabled={blocked}>訂正を保存</button><button type="button" className="secondary-button" disabled={busy} onClick={reload}>最新内容・処理結果を取得</button><button type="button" className="secondary-button" disabled={busy} onClick={props.onClose}>請求を閉じる</button></div>
     </form>
+    <InvoiceCancellation invoice={current} session={props.session} busy={busy} onBusyChange={working} onSessionExpired={props.onSessionExpired} onUncertain={() => setNeedsReload(true)} onUpdated={async (invoice) => {
+      setCurrent(invoice); setAcknowledged(false); setComparison(true); setNotice('');
+      const page = await api.listInvoiceHistory(props.id); setHistory(page.items); setCursor(page.nextCursor);
+      await props.onChanged(); setNeedsReload(false);
+    }} />
     <h3>請求の全履歴（原本から順に表示）</h3>
     <div className="table-scroll"><table aria-label="請求履歴"><thead><tr><th>操作・版</th><th>記録日時・担当者</th><th>理由</th><th>その時点の請求内容</th><th>元の取込ID</th></tr></thead><tbody>{history.map((entry) => <tr key={entry.revision}><td>{entry.operation === 'CREATED' ? '登録時の原本' : entry.operation === 'CORRECTED' ? '訂正' : '取消'}<br />版 {entry.snapshot.version}</td><td><time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString('ja-JP')}</time><br />担当者ID：{entry.actorUserId}</td><td>{entry.reason ?? 'CSV確定による登録'}</td><td>{entry.snapshot.invoiceNumber}<br />{entry.snapshot.customerCode} — {entry.snapshot.customerName}<br />請求日 {entry.snapshot.issueDate} / 支払期日 {entry.snapshot.dueDate}<br />{yen(entry.snapshot.amount)} / {status(entry.snapshot)}</td><td>{entry.snapshot.sourceBatchId}</td></tr>)}</tbody></table></div>
     <p>{history.length}件の履歴を表示中。{cursor === null ? 'すべての履歴を表示しています。' : '続きの履歴があります。'}</p><button type="button" className="secondary-button" disabled={busy || cursor === null} onClick={moreHistory}>履歴の次の50件</button>

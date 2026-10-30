@@ -43,6 +43,9 @@ export const api = {
   correctInvoice: (csrf: Csrf, id: string, body: operations['correctInvoice']['requestBody']['content']['application/json']) => request(
     { path: '/api/invoices/{id}', method: 'PUT', url: invoiceUrl(id) }, csrf, body,
   ),
+  cancelInvoice: (csrf: Csrf, id: string, body: operations['cancelInvoice']['requestBody']['content']['application/json']) => request(
+    { path: '/api/invoices/{id}/cancel', method: 'POST', url: `${invoiceUrl(id)}/cancel` }, csrf, body,
+  ),
   listReceivables: (query: ReceivablesQuery = {}) => {
     const parameters = new URLSearchParams();
     Object.entries(query).forEach(([key, value]) => { if (value !== undefined) parameters.set(key, String(value)); });

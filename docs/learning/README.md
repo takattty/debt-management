@@ -6,6 +6,8 @@
 
 ## CLI
 
+runn・画面E2Eは各testのID・顧客filter・keysetで自fixtureを選び、tenant全体の先頭順や空件数を仮定しない。既存データを削除せず、同じDBで複数回検証する。JUnitの専用架空DBにおける明示的なfixture初期化とは区別する。
+
 scriptを初めて実行するときもsource名を推測しない。先のcallで `rg --files scripts` のcatalogを観測し、次callで観測済みpathを実行する。容量検査の実名を未確認のまま別名で実行した再発に対し、読込だけだったguardを実行時にも拡張した。
 
 repository root で実行する。

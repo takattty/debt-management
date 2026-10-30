@@ -77,7 +77,7 @@ export interface paths {
         };
         /**
          * Browse invoices by status in stable due-date and ID order
-         * @description Bounded tenant-scoped keyset page. ACTIVE is the compatible default; CANCELLED shows cancelled originals and ALL includes both states. Keep the selected status/customer/due filters when following nextCursor. Settlement is not enabled in this slice, so active outstandingAmount equals amount; cancelled outstandingAmount is zero while amount retains the original invoice value. Balances are never editable inputs.
+         * @description Bounded tenant-scoped keyset page. ACTIVE is the compatible default; CANCELLED shows cancelled originals and ALL includes both states. Keep the selected status/customer/due filters when following nextCursor. Active outstandingAmount subtracts current cash allocations and explicit fees from the original amount using the same SQL snapshot as version; reversed operations are excluded. Cancelled outstandingAmount is zero while amount retains the original invoice value. Balances are never editable inputs.
          */
         get: operations["listReceivables"];
         put?: never;
@@ -185,7 +185,7 @@ export interface paths {
         };
         /**
          * List immutable incoming payments in stable transfer-date and ID order
-         * @description Bounded keyset page of confirmed receipts. No allocation ledger exists in this slice, so unallocatedAmount equals amount only until the real ledger is introduced. Balances are never editable inputs. Date filters are inclusive; invalid dates, reversed bounds and malformed cursors return 400.
+         * @description Bounded keyset page of confirmed receipts. unallocatedAmount subtracts current cash allocations from the original amount; explicit fees do not consume payment cash and reversed operations are excluded. Original facts and balances share one SQL snapshot. Balances are never editable inputs. Date filters are inclusive; invalid dates, reversed bounds and malformed cursors return 400.
          */
         get: operations["listPayments"];
         put?: never;
@@ -859,7 +859,7 @@ export interface components {
             amount: number;
             /**
              * Format: int64
-             * @description Equals amount only while allocation ledger is absent; must be derived from active cash allocations when reconciliation is implemented.
+             * @description Original payment amount minus active cash allocations. Explicit fees do not consume cash; whole-operation reversals exclude their original allocations.
              */
             unallocatedAmount: number;
             /** Format: uuid */

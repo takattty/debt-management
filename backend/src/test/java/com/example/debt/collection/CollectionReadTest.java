@@ -141,6 +141,15 @@ class CollectionReadTest {
 
     @Test
     void csrfTenantStaleVersionAndDisabledActorsCannotChangeSharedState() throws Exception {
+        assertThatThrownBy(() -> jdbc.sql("INSERT INTO collection_state(tenant_id,invoice_id) VALUES (?,?)")
+                .params(AuthFixtures.ALPHA, foreign).update()).isInstanceOf(DataAccessException.class);
+        assertThatThrownBy(() -> transaction.executeWithoutResult(state -> {
+            jdbc.sql("INSERT INTO collection_state(tenant_id,invoice_id) VALUES (?,?)").params(AuthFixtures.ALPHA, overdue).update();
+            jdbc.sql("UPDATE collection_state SET version=1,latest_note='Fictional foreign actor' WHERE tenant_id=? AND invoice_id=?")
+                    .params(AuthFixtures.ALPHA, overdue).update();
+            jdbc.sql("INSERT INTO collection_event(tenant_id,invoice_id,version,kind,note,actor_user_id,held) VALUES (?,?,1,'NOTE','Fictional foreign actor',?,false)")
+                    .params(AuthFixtures.ALPHA, overdue, AuthFixtures.BETA_ADMIN).update();
+        })).isInstanceOf(DataAccessException.class);
         mvc.perform(post("/api/collections/" + overdue + "/actions").session(alpha).contentType("application/json").content(noteBody(0, "拒否", null)))
                 .andExpect(status().isForbidden());
         mvc.perform(post("/api/collections/" + foreign + "/actions").session(alpha).with(csrf().asHeader()).contentType("application/json").content(noteBody(0, "越境", null)))

@@ -42,6 +42,8 @@ CHROMIUM_PATH=/usr/bin/chromium scripts/verify.sh
 
 Chromiumがない環境では `cd frontend && npm ci && npx playwright install --with-deps chromium` を実行し、CHROMIUM_PATHを指定せず検証します。CloudのGradle proxy/CA設定は `scripts/toolchain-env.sh` が既存の非秘密pathを使用します。証明書検証は無効化しません。Docker非対応Cloudの直接PG起動スクリプト `scripts/postgres-cloud.sh` は用意していますが、この環境はDocker対応のためfallback実行は未検証です。
 
+品質検証では標準LinuxのDocker socketを使い、本番Nginxを通すrunnも必須実行します。1万行CSV・10MiBのファイル境界・proxy側の容量超過を検証し、413はJSONで返します。ファイル上限は10MiB、request上限はmultipartの余白を含め11MiBです。
+
 `verify.sh` はBE lint/compile/unit/実PG統合、FE生成整合・drift否定・lint/type/unit/build・依存audit、runnの実HTTP API、実API＋DBへ接続するheadless E2E、production buildのnative BFCache検証をすべて実行します。BFCache検証は既定ブラウザーのcache無効化を外し、実際の履歴復帰と秘密の非表示を確認します。必須スクリプト欠落や前段失敗はquality失敗です。GitHub Actionsも同じentryを省略せず実行し、public repositoryの標準Linux runnerだけを使用します。Cloudの成功とGitHubの成功を区別して記録します。
 
 ## 継続・レビュー・merge

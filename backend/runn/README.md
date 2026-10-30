@@ -68,3 +68,5 @@ requestId再送・payload変更拒否、古い版、CSRF、全体取消/二重�
 独立した手数料だけの確定と対象請求が欠けた取消も拒否する。
 入金はtransactionIdでkeyset走査し、請求は自fixtureのcustomerIdで選ぶ。
 実行済みrecordを削除せず同じDBで再実行できる。内部ledger probeとは別の必須公開command受入である。
+
+`collections.yml` は明示基準日・実残高・取消済み0・tenant 分離を通常 CI glob で確認する。自 fixture の顧客と全ページで請求を選び、同じ DB に既存記録を残して反復できる。

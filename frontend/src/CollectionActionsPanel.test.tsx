@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import CollectionActionsPanel from './CollectionActionsPanel';
@@ -9,6 +9,7 @@ const item: CollectionCase = { invoiceId: 'invoice', customerId: 'customer', cus
 const event = { version: 1, kind: 'NOTE' as const, note: '連絡した', nextActionDate: null, reason: null, actorUserId: session.userId, actorLabel: session.email, occurredAt: '2026-01-31T15:00:00Z', held: false, holdReason: null };
 const draft: CollectionDraft = { invoiceId: 'invoice', asOf: item.asOf, customerName: item.customerName, outstandingAmount: 10000, subject: '件名', body: '架空商事 御中\n期日2026-01-31、未回収10,000円', held: false, holdReason: null };
 const props = () => ({ item, session, busy: false, onBusyChange: vi.fn(), onSessionExpired: vi.fn(), onRefresh: vi.fn().mockResolvedValue(undefined) });
+const actionResult = { invoiceId: item.invoiceId, version: 1, held: false, holdReason: null, latestNote: event.note, nextActionDate: null, event };
 
 describe('collection actions', () => {
   it('retains the current plan and sends an explicit null when the user clears it', async () => {
@@ -16,6 +17,66 @@ describe('collection actions', () => {
     const user = userEvent.setup(); render(<CollectionActionsPanel {...props()} />); expect(screen.getByLabelText('次回対応日（空欄で予定を解除）')).toHaveValue('2026-02-05');
     await user.type(screen.getByLabelText('対応メモ（共有）'), '連絡した'); await user.clear(screen.getByLabelText('次回対応日（空欄で予定を解除）')); await user.click(screen.getByRole('button', { name: '対応メモを記録' }));
     expect(save).toHaveBeenCalledWith(session, item.invoiceId, { version: 0, note: '連絡した', nextActionDate: null });
+  });
+  it('uses the latest server schedule for a pristine date after a refresh', async () => {
+    const save = vi.spyOn(api, 'recordCollectionAction').mockResolvedValue(actionResult);
+    const user = userEvent.setup(); const shared = props();
+    const view = render(<CollectionActionsPanel {...shared} item={{ ...item, nextActionDate: null }} />);
+    view.rerender(<CollectionActionsPanel {...shared} item={{ ...item, version: 1, nextActionDate: '2026-11-09' }} />);
+    expect(screen.getByLabelText('次回対応日（空欄で予定を解除）')).toHaveValue('2026-11-09');
+    await user.type(screen.getByLabelText('対応メモ（共有）'), '予定は変更せず対応を追記');
+    await user.click(screen.getByRole('button', { name: '対応メモを記録' }));
+    expect(save).toHaveBeenCalledWith(session, item.invoiceId, { version: 1, note: '予定は変更せず対応を追記', nextActionDate: '2026-11-09' });
+  });
+  it.each(['2026-11-11', ''])('keeps the edited date %j across a conflict until explicitly compared', async (edited) => {
+    const save = vi.spyOn(api, 'recordCollectionAction').mockRejectedValueOnce(new ApiError(409, '版競合')).mockResolvedValue(actionResult);
+    vi.spyOn(api, 'listCollectionHistory').mockResolvedValue({ items: [{ ...event, actorUserId: 'other', nextActionDate: '2026-11-09' }], nextCursor: null });
+    const user = userEvent.setup(); const shared = props();
+    const latest = { ...item, version: 1, nextActionDate: '2026-11-09' };
+    const refresh = async () => { view.rerender(<CollectionActionsPanel {...shared} item={latest} onRefresh={refresh} />); };
+    const view = render(<CollectionActionsPanel {...shared} onRefresh={refresh} />);
+    fireEvent.change(screen.getByLabelText('次回対応日（空欄で予定を解除）'), { target: { value: edited } });
+    await user.type(screen.getByLabelText('対応メモ（共有）'), '本人の入力を保持'); await user.click(screen.getByRole('button', { name: '対応メモを記録' }));
+    await user.click(screen.getByRole('button', { name: 'GETで結果・最新状況を確認' }));
+    expect(screen.getByLabelText('次回対応日（空欄で予定を解除）')).toHaveValue(edited);
+    expect(screen.getByText(/現在の登録予定：2026-11-09/)).toBeVisible();
+    expect(save).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('checkbox')); await user.click(screen.getByRole('button', { name: '最新の版で再確認に戻る' }));
+    await user.click(screen.getByRole('button', { name: '対応メモを記録' }));
+    expect(save).toHaveBeenLastCalledWith(session, item.invoiceId, { version: 1, note: '本人の入力を保持', nextActionDate: edited || null });
+    view.rerender(<CollectionActionsPanel {...shared} item={{ ...item, version: 2, nextActionDate: '2026-11-12' }} onRefresh={refresh} />);
+    expect(screen.getByLabelText('次回対応日（空欄で予定を解除）')).toHaveValue('2026-11-12');
+  });
+  it('can explicitly replace an edited date with the latest server schedule', async () => {
+    const user = userEvent.setup(); const shared = props(); const view = render(<CollectionActionsPanel {...shared} />);
+    fireEvent.change(screen.getByLabelText('次回対応日（空欄で予定を解除）'), { target: { value: '2026-11-11' } });
+    view.rerender(<CollectionActionsPanel {...shared} item={{ ...item, version: 1, nextActionDate: '2026-11-09' }} />);
+    await user.click(screen.getByRole('button', { name: '現在の登録予定を使う' }));
+    expect(screen.getByLabelText('次回対応日（空欄で予定を解除）')).toHaveValue('2026-11-09');
+    view.rerender(<CollectionActionsPanel {...shared} item={{ ...item, version: 2, nextActionDate: '2026-11-12' }} />);
+    expect(screen.getByLabelText('次回対応日（空欄で予定を解除）')).toHaveValue('2026-11-12');
+  });
+  it('counts and sends the full supplementary-character limits without UTF-16 truncation', async () => {
+    const save = vi.spyOn(api, 'recordCollectionAction').mockResolvedValue(actionResult);
+    const hold = vi.spyOn(api, 'holdCollection').mockResolvedValue(actionResult);
+    const user = userEvent.setup(); render(<CollectionActionsPanel {...props()} />);
+    const note = '𠮷'.repeat(5000); const reason = '😀'.repeat(1000);
+    fireEvent.change(screen.getByLabelText('対応メモ（共有）'), { target: { value: note } });
+    expect(screen.getByText('5,000 / 5,000文字')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '対応メモを記録' }));
+    expect(save).toHaveBeenCalledWith(session, item.invoiceId, { version: 0, note, nextActionDate: item.nextActionDate });
+    fireEvent.change(screen.getByLabelText('保留・解除の理由'), { target: { value: reason } });
+    expect(screen.getByText('1,000 / 1,000文字')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '理由を記録して保留' }));
+    expect(hold).toHaveBeenCalledWith(session, item.invoiceId, { version: 0, reason });
+  });
+  it.each([{ label: '対応メモ（共有）', size: 5001, button: '対応メモを記録' }, { label: '保留・解除の理由', size: 1001, button: '理由を記録して保留' }])('preserves an over-limit $label for correction and blocks submission', async ({ label, size, button }) => {
+    const save = vi.spyOn(api, 'recordCollectionAction'); const hold = vi.spyOn(api, 'holdCollection');
+    const user = userEvent.setup(); render(<CollectionActionsPanel {...props()} />); const text = '𠮷'.repeat(size);
+    fireEvent.change(screen.getByLabelText(label), { target: { value: text } });
+    expect(screen.getByLabelText(label)).toHaveValue(text); expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: button })).toBeDisabled(); await user.click(screen.getByRole('button', { name: button }));
+    expect(save).not.toHaveBeenCalled(); expect(hold).not.toHaveBeenCalled();
   });
   it('blocks blind retry, preserves drafts and recovers a committed response from GET history', async () => {
     const save = vi.spyOn(api, 'recordCollectionAction').mockRejectedValue(new ApiError(0, '応答不明'));

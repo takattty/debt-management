@@ -444,6 +444,12 @@
           "summary": "証拠readerのartifact引数へ絶対pathを渡しguardに拒否された。読込前に停止した",
           "evidence": "scripts/read-evidence.py",
           "recorded_at": "2026-10-29T23:40:41+00:00"
+        },
+        {
+          "event": "fresh-tree-log-redirection-before-work-dir",
+          "summary": "新worktreeでverifyの外側リダイレクトがwork作成より先に評価されログを開けなかった",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-30T00:11:15+00:00"
         }
       ],
       "resolutions": [
@@ -502,6 +508,14 @@
           "guard": "docs/learning/README.md",
           "event_count": 7,
           "resolved_at": "2026-10-30T00:01:54+00:00"
+        },
+        {
+          "cause": "新checkoutのworkが存在すると仮定してscript実行前に外側のshellリダイレクトを評価した",
+          "prevention": "Cloudの保存付きverifyは外側リダイレクトを使わず専用wrapperに作成と保存を任せる。既存のreaderとnpm prefix所有先規約も維持",
+          "verification": "workのない使い捨てcheckoutからwrapperを実行しlog作成と成功0/失敗23の終了値保持を実確認した",
+          "guard": "docs/learning/README.md",
+          "event_count": 8,
+          "resolved_at": "2026-10-30T00:11:22+00:00"
         }
       ]
     }

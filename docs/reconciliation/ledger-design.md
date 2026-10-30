@@ -45,6 +45,10 @@ DB の deferred 検証も payment state → 対象 invoice UUID 昇順で lock �
 
 ## 読取と有効化 guard
 
+ledger の operation / line / payment state 書込と invoice の金額・状態 UPDATE は、DB trigger で **READ COMMITTED の transaction に限定**する。他 isolation は対象行や可視 allocation の有無にかかわらず statement 開始時に SQLSTATE `25000` で拒否する。readonly の REPEATABLE READ / SERIALIZABLE snapshot は利用できる。transaction policy を全アプリへ強制する設定変更は行わない。
+
+この境界は保存則の前提である。親 row を物理更新しない `FOR UPDATE` だけでは高 isolation の snapshot は新しくならず、先に snapshot を作った RR/S transaction が、後から commit した別 payment の RC 充当を SUM で見落とせる。逆方向の invoice 減額・取消でも同じ欠陥が起きるため、visible allocation がある場合だけ guard する実装にはしない。すべてを SERIALIZABLE に統一した系の挙動を、RC と混在した系の安全性と同一視しない。将来ほかの write isolation を支援する際は、全 writer に共通する物理競合点と実混在回帰を別途設計する。
+
 内部 repository は一 SQL snapshot 内で有効な CONFIRM（REVERSE がないもの）だけを集計し、現金と手数料を分離する。payment version 未作成は COALESCE 0。tenant 条件をすべての参照・集計に付ける。BigInteger domain が保存則を再検証し、DB 制約に反する結果を通常残高として返さない。
 
 `debt.reconciliation.enabled` は無効のまま。次をそろえるまで公開しない：B06/B07 の回答、認証/権限/CSRF/version/idempotency/reason を持つ command、監査と全 batch rollback、invoice 訂正・取消との共通 lock と実 eligibility adapter、実 ledger による既存 GET 残高、候補は人が確定する UX、独立レビュー、実 HTTP と画面→DB の検証。

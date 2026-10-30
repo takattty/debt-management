@@ -45,6 +45,26 @@ CREATE TABLE allocation_line (
 );
 CREATE INDEX allocation_line_invoice ON allocation_line(tenant_id, invoice_id);
 
+-- Row locks do not refresh a REPEATABLE READ / SERIALIZABLE snapshot. A concurrent
+-- READ COMMITTED writer can otherwise remain invisible to the aggregate checks.
+CREATE FUNCTION require_reconciliation_read_committed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'Reconciliation writes require READ COMMITTED isolation' USING ERRCODE = '25000';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+CREATE TRIGGER allocation_operation_write_isolation BEFORE INSERT OR UPDATE OR DELETE ON allocation_operation
+    FOR EACH STATEMENT EXECUTE FUNCTION require_reconciliation_read_committed();
+CREATE TRIGGER allocation_line_write_isolation BEFORE INSERT OR UPDATE OR DELETE ON allocation_line
+    FOR EACH STATEMENT EXECUTE FUNCTION require_reconciliation_read_committed();
+CREATE TRIGGER reconciliation_state_write_isolation BEFORE INSERT OR UPDATE OR DELETE ON reconciliation_payment_state
+    FOR EACH STATEMENT EXECUTE FUNCTION require_reconciliation_read_committed();
+-- Always guard the reverse path, even when an old snapshot sees no allocation.
+CREATE TRIGGER invoice_reconciliation_write_isolation BEFORE UPDATE OF amount_jpy,status ON invoice
+    FOR EACH STATEMENT EXECUTE FUNCTION require_reconciliation_read_committed();
+
 CREATE FUNCTION protect_allocation_history() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     RAISE EXCEPTION 'Allocation history is append-only' USING ERRCODE = '23514';

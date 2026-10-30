@@ -1,0 +1,125 @@
+desc: Collection candidates use explicit business dates and retain tenant-scoped history
+concurrency: debt-api-acceptance
+labels: [api, collections, security]
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+  invalid:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    skipValidateRequest: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+  fixture: json://../../work/runn-collection-metadata.json
+secrets: [vars.password, anonymousToken, anonymousCookie, cookie, token]
+steps:
+  unauthenticated:
+    invalid:
+      /api/collections?asOf=2026-12-01:
+        get: {body: null}
+    test: current.res.status == 401
+  csrf:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      anonymousToken: current.res.body.csrfToken
+      anonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  login:
+    api:
+      /api/auth/login:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ anonymousCookie }}', X-CSRF-TOKEN: '{{ anonymousToken }}'}
+          body:
+            application/json: {email: alpha-accountant@example.test, password: '{{ vars.password }}'}
+    bind: {cookie: current.res.cookies.JSESSIONID.Value}
+    test: current.res.status == 204
+  session:
+    api:
+      /api/session:
+        get: {body: null}
+    bind: {token: current.res.body.csrfToken}
+    test: current.res.status == 200
+  customer:
+    api:
+      /api/customers:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {code: '{{ vars.fixture.customerCode }}', name: 架空の督促確認先}
+    bind: {customerId: current.res.body.id}
+    test: current.res.status == 201
+  preview:
+    api:
+      /api/imports/invoices/preview:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            multipart/form-data: {file: ../../work/runn-collection.csv}
+    bind: {batch: current.res.body.id}
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID'
+  confirm:
+    api:
+      /api/imports/{{ batch }}/confirm:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 200 && current.res.body.confirmedCount == 2
+  invoice:
+    api:
+      /api/receivables?customerId={{ customerId }}&limit=1:
+        get: {body: null}
+    bind:
+      invoiceId: current.res.body.items[0].id
+      amount: current.res.body.items[0].amount
+    test: current.res.status == 200 && current.res.body.items[0].customerCode == vars.fixture.customerCode
+  dueDay:
+    api:
+      /api/collections/{{ invoiceId }}?asOf=2026-11-30:
+        get: {body: null}
+    test: current.res.status == 200 && !current.res.body.eligible && current.res.body.daysOverdue == 0 && current.res.body.outstandingAmount == amount
+  nextDay:
+    api:
+      /api/collections/{{ invoiceId }}?asOf=2026-12-01:
+        get: {body: null}
+    test: current.res.status == 200 && current.res.body.eligible && current.res.body.daysOverdue == 1 && current.res.body.outstandingAmount == amount && !current.res.body.held && current.res.body.version == 0
+  startSearch:
+    bind: {pageSuffix: '""'}
+  candidates:
+    loop:
+      count: 10000
+      interval: 0
+      until: 'current.res.status == 200 && (len(matches) == 1 || current.res.body.nextCursor == null)'
+    api:
+      /api/collections?asOf=2026-12-01&view=ACTIONABLE&limit=100{{ pageSuffix }}:
+        get: {body: null}
+    bind:
+      matches: 'filter(current.res.body.items, {#.invoiceId == invoiceId})'
+      pageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+  ownCandidate:
+    test: len(matches) == 1 && matches[0].customerId == customerId && matches[0].outstandingAmount == amount && matches[0].daysOverdue == 1 && !matches[0].held
+  history:
+    api:
+      /api/collections/{{ invoiceId }}/history:
+        get: {body: null}
+    test: current.res.status == 200 && len(current.res.body.items) == 0 && current.res.body.nextCursor == null
+  missingDate:
+    invalid:
+      /api/collections:
+        get:
+          headers: {Cookie: 'JSESSIONID={{ cookie }}'}
+          body: null
+    test: current.res.status == 400 && current.res.body.code == 'INVALID_REQUEST'
+  timestampDate:
+    invalid:
+      /api/collections?asOf=2026-12-01T00:00:00:
+        get:
+          headers: {Cookie: 'JSESSIONID={{ cookie }}'}
+          body: null
+    test: current.res.status == 400

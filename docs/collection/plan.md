@@ -29,7 +29,7 @@ heldは残高を変更しない。通常ACTIONABLEとHELDを分け、ALLでもhe
 
 ## 対応操作の表現
 
-対応NOTEは共有の記録本文とnextActionDateを保存する。nextActionDateを省略またはnullにすると未設定へ変更する（文面・契約に明記）。HOLD/RELEASEは理由必須、既存note/nextActionDateを維持する。held中もNOTEを記録できる。完済・取消後も事後の対応メモを残せるが、候補には戻さない。保留中への再HOLD、未保留へのRELEASEはstate conflictとし、古いversionも409で返す。
+対応NOTEは共有の記録本文とnextActionDateを保存する。nextActionDateは必須・nullableで、現予定日/変更日/明示nullによる消去を呼出し側が選ぶ。member省略は400でstate/event/auditを変えない。生成DTOは手編集せず、限定RequestBodyAdviceでpresenceも検査する。HOLD/RELEASEは理由必須、既存note/nextActionDateを維持する。held中もNOTEを記録できる。完済・取消後も事後の対応メモを残せるが、候補には戻さない。保留中への再HOLD、未保留へのRELEASEはstate conflictとし、古いversionも409で返す。
 
 ## 文面と業務例
 

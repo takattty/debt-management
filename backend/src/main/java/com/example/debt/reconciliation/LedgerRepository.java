@@ -36,13 +36,8 @@ public class LedgerRepository {
 
     public InvoicePosition invoice(UUID tenant, UUID id) {
         return jdbc.sql("""
-                SELECT i.id,i.version,i.status,i.amount_jpy,COALESCE(a.cash,0) AS cash,COALESCE(a.fee,0) AS fee FROM invoice i
-                LEFT JOIN LATERAL (
-                    SELECT sum(l.cash_jpy) AS cash,sum(l.fee_jpy) AS fee FROM allocation_line l
-                    JOIN allocation_operation o ON o.tenant_id=l.tenant_id AND o.id=l.operation_id
-                    WHERE l.tenant_id=i.tenant_id AND l.invoice_id=i.id AND o.kind='CONFIRM'
-                    AND NOT EXISTS (SELECT 1 FROM allocation_operation r WHERE r.tenant_id=o.tenant_id AND r.reverses_id=o.id)
-                ) a ON true WHERE i.tenant_id=:tenant AND i.id=:id
+                SELECT id,version,status,amount_jpy,active_cash_jpy AS cash,active_fee_jpy AS fee FROM reconciliation_invoice_balance
+                WHERE tenant_id=:tenant AND id=:id
                 """).param("tenant", tenant).param("id", id).query((result, row) -> new InvoicePosition(result.getObject("id", UUID.class),
                         result.getLong("version"), result.getString("status"), new LedgerBalances.Invoice(BigInteger.valueOf(result.getLong("amount_jpy")),
                         result.getBigDecimal("cash").toBigIntegerExact(), result.getBigDecimal("fee").toBigIntegerExact())))

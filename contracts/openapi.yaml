@@ -33,9 +33,92 @@ tags:
   description: Immutable incoming JPY payment facts and bounded tenant-scoped pages
 - name: PayerAliases
   description: Manual tenant-scoped payer-name to customer correspondences without allocation
+- name: Collections
+  description: Tenant-scoped overdue balances and shared follow-up history; no message sending
 - name: Imports
   description: Immutable tenant-scoped CSV previews and explicit all-or-nothing confirmation
 paths:
+  /api/collections:
+    get:
+      tags: [Collections]
+      operationId: listCollections
+      summary: List overdue positive balances using an explicit Tokyo business date
+      description: Uses active cash and explicit fees from the internal ledger. ACTIONABLE excludes held records; HELD shows only held candidates; ALL includes both. Next action dates never silently hide a candidate. Date and invoice ID form the stable keyset order.
+      parameters:
+      - name: asOf
+        in: query
+        required: true
+        schema: {type: string, format: date}
+      - name: view
+        in: query
+        schema: {type: string, enum: [ACTIONABLE, HELD, ALL], default: ACTIONABLE}
+      - name: cursor
+        in: query
+        schema: {type: string, maxLength: 47}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        '200':
+          description: At most limit active, overdue, positive balances
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CollectionsPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/collections/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    get:
+      tags: [Collections]
+      operationId: getCollection
+      summary: Read current collection facts including paid or cancelled invoices
+      parameters:
+      - name: asOf
+        in: query
+        required: true
+        schema: {type: string, format: date}
+      responses:
+        '200':
+          description: Current invoice, real ledger balance and retained follow-up state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CollectionCaseResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
+  /api/collections/{id}/history:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    get:
+      tags: [Collections]
+      operationId: listCollectionHistory
+      summary: Read append-only shared follow-up events even after payoff or cancellation
+      parameters:
+      - name: cursor
+        in: query
+        schema: {type: integer, format: int64, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        '200':
+          description: Follow-up events ordered by their independent version
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CollectionHistoryPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
   /api/invoices/{id}:
     parameters:
     - name: id
@@ -972,6 +1055,57 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
   schemas:
+    CollectionCaseResponse:
+      type: object
+      required: [invoiceId, customerId, customerCode, customerName, invoiceNumber, issueDate, dueDate, invoiceStatus, invoiceVersion, amount, cashAllocated, explicitFees, outstandingAmount, asOf, daysOverdue, eligible, held, holdReason, latestNote, nextActionDate, version]
+      properties:
+        invoiceId: {type: string, format: uuid}
+        customerId: {type: string, format: uuid}
+        customerCode: {type: string}
+        customerName: {type: string}
+        invoiceNumber: {type: string}
+        issueDate: {type: string, format: date}
+        dueDate: {type: string, format: date}
+        invoiceStatus: {type: string, enum: [ACTIVE, CANCELLED]}
+        invoiceVersion: {type: integer, format: int64, minimum: 0}
+        amount: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        cashAllocated: {type: integer, format: int64, minimum: 0, maximum: 9007199254740991}
+        explicitFees: {type: integer, format: int64, minimum: 0, maximum: 9007199254740991}
+        outstandingAmount: {type: integer, format: int64, minimum: 0, maximum: 9007199254740991}
+        asOf: {type: string, format: date, description: Explicit Asia/Tokyo business date}
+        daysOverdue: {type: integer, minimum: 0}
+        eligible: {type: boolean, description: Active and overdue with a positive real outstanding balance; held candidates remain eligible}
+        held: {type: boolean}
+        holdReason: {type: string, maxLength: 1000, nullable: true}
+        latestNote: {type: string, maxLength: 5000, nullable: true}
+        nextActionDate: {type: string, format: date, nullable: true}
+        version: {type: integer, format: int64, minimum: 0, description: Independent collection state version}
+    CollectionsPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/CollectionCaseResponse'}}
+        nextCursor: {type: string, maxLength: 47, nullable: true}
+    CollectionHistoryEntry:
+      type: object
+      required: [version, kind, note, reason, actorUserId, actorLabel, occurredAt, held, holdReason, nextActionDate]
+      properties:
+        version: {type: integer, format: int64, minimum: 1}
+        kind: {type: string, enum: [NOTE, HOLD, RELEASE]}
+        note: {type: string, maxLength: 5000, nullable: true, description: Shared note snapshot following this event}
+        reason: {type: string, maxLength: 1000, nullable: true}
+        actorUserId: {type: string, format: uuid}
+        actorLabel: {type: string, description: Same-tenant human-readable actor label captured at event time}
+        occurredAt: {type: string, format: date-time}
+        held: {type: boolean}
+        holdReason: {type: string, maxLength: 1000, nullable: true}
+        nextActionDate: {type: string, format: date, nullable: true}
+    CollectionHistoryPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/CollectionHistoryEntry'}}
+        nextCursor: {type: integer, format: int64, minimum: 1, nullable: true}
     InvoiceCancelRequest:
       type: object
       additionalProperties: false

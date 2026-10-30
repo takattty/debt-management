@@ -1,5 +1,8 @@
 package com.example.debt.invoice;
 
+import com.example.debt.reconciliation.LedgerReadAmounts;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -14,6 +17,7 @@ public class InvoiceQueries {
     private final JsonMapper json = JsonMapper.builder().build();
     public record Revision(long revision, String operation, String reason, UUID actorUserId, Instant occurredAt,
                            InvoiceState.Facts snapshot, String actorEmail) { }
+    public record View(InvoiceState invoice, long outstanding) { }
     public record History(List<Revision> items, Long nextCursor) { }
 
     public InvoiceQueries(JdbcClient jdbc) { this.jdbc = jdbc; }
@@ -22,14 +26,27 @@ public class InvoiceQueries {
         return jdbc.sql("""
                 SELECT i.*,c.code,c.name FROM invoice i JOIN customer c ON c.tenant_id=i.tenant_id AND c.id=i.customer_id
                 WHERE i.tenant_id=:tenant AND i.id=:id
-                """ + (lock ? " FOR UPDATE OF i" : "")).param("tenant", tenant).param("id", id).query((result, row) ->
-                        new InvoiceState(result.getObject("id", UUID.class), result.getObject("customer_id", UUID.class),
-                                result.getString("code"), result.getString("name"), result.getString("invoice_number"),
-                                result.getObject("issue_date", LocalDate.class), result.getObject("due_date", LocalDate.class), result.getLong("amount_jpy"),
-                                result.getLong("version"), result.getString("status"), result.getObject("source_batch_id", UUID.class),
-                                result.getTimestamp("created_at").toInstant(), result.getTimestamp("updated_at").toInstant(),
-                                result.getTimestamp("cancelled_at") == null ? null : result.getTimestamp("cancelled_at").toInstant()))
+                """ + (lock ? " FOR UPDATE OF i" : "")).param("tenant", tenant).param("id", id)
+                .query((result, row) -> state(result)).optional().orElseThrow(InvoiceNotFound::new);
+    }
+
+    public View view(UUID tenant, UUID id) {
+        return jdbc.sql("""
+                SELECT i.*,c.code,c.name,a.cash,a.fee FROM invoice i
+                JOIN customer c ON c.tenant_id=i.tenant_id AND c.id=i.customer_id
+                """ + LedgerReadAmounts.INVOICE_JOIN + " WHERE i.tenant_id=:tenant AND i.id=:id")
+                .param("tenant", tenant).param("id", id)
+                .query((result, row) -> new View(state(result), LedgerReadAmounts.outstanding(result)))
                 .optional().orElseThrow(InvoiceNotFound::new);
+    }
+
+    private InvoiceState state(ResultSet result) throws SQLException {
+        return new InvoiceState(result.getObject("id", UUID.class), result.getObject("customer_id", UUID.class),
+                result.getString("code"), result.getString("name"), result.getString("invoice_number"),
+                result.getObject("issue_date", LocalDate.class), result.getObject("due_date", LocalDate.class), result.getLong("amount_jpy"),
+                result.getLong("version"), result.getString("status"), result.getObject("source_batch_id", UUID.class),
+                result.getTimestamp("created_at").toInstant(), result.getTimestamp("updated_at").toInstant(),
+                result.getTimestamp("cancelled_at") == null ? null : result.getTimestamp("cancelled_at").toInstant());
     }
 
     public History history(UUID tenant, UUID id, long cursor, int limit) {

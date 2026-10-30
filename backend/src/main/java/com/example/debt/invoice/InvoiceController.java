@@ -30,7 +30,8 @@ public class InvoiceController implements InvoicesApi {
 
     @Override
     public ResponseEntity<InvoiceResponse> getInvoice(UUID id) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response(queries.get(current.require().tenantId(), id, false)));
+        var view = queries.view(current.require().tenantId(), id);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response(view.invoice(), view.outstanding()));
     }
 
     @Override
@@ -59,8 +60,12 @@ public class InvoiceController implements InvoicesApi {
     }
 
     private InvoiceResponse response(InvoiceState state) {
+        return response(state, state.status().equals("ACTIVE") ? state.amount() : 0);
+    }
+
+    private InvoiceResponse response(InvoiceState state, long outstanding) {
         return new InvoiceResponse(state.id(), state.customerId(), state.customerCode(), state.customerName(), state.invoiceNumber(), state.issueDate(), state.dueDate(),
-                state.amount(), state.status().equals("ACTIVE") ? state.amount() : 0, state.version(), InvoiceResponse.StatusEnum.fromValue(state.status()),
+                state.amount(), outstanding, state.version(), InvoiceResponse.StatusEnum.fromValue(state.status()),
                 state.createdAt().atOffset(ZoneOffset.UTC), state.updatedAt().atOffset(ZoneOffset.UTC),
                 state.cancelledAt() == null ? null : state.cancelledAt().atOffset(ZoneOffset.UTC));
     }
@@ -69,7 +74,7 @@ public class InvoiceController implements InvoicesApi {
     public ResponseEntity<ReceivablesPage> listReceivables(UUID customerId, LocalDate dueFrom, LocalDate dueTo, String cursor, Integer limit, String status) {
         var page = service.list(current.require().tenantId(), customerId, dueFrom, dueTo, cursor, limit, status);
         var items = page.items().stream().map(row -> new ReceivableResponse(row.id(), row.customerId(), row.customerCode(), row.customerName(),
-                row.invoiceNumber(), row.issueDate(), row.dueDate(), row.amount(), row.status().equals("ACTIVE") ? row.amount() : 0,
+                row.invoiceNumber(), row.issueDate(), row.dueDate(), row.amount(), row.outstanding(),
                 row.version(), ReceivableResponse.StatusEnum.fromValue(row.status()))).toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new ReceivablesPage(items, page.nextCursor()));
     }

@@ -12,7 +12,7 @@
 
 必須lintのE2E専用AST ruleがhelper以外の直接status selectorを拒否する。既にfilterされた直書き・computed呼出し・静的templateも対象にし、Page/region helper・helper本体・product/unitの許可をNode4testsで検査する。今回の変更は現在mainの既存E2Eのselector移行だけで、金融UI・API契約・backend・生成物は変更しない。
 
-main `7e15391fab7a4fa59470b39b36bf8fb8924047ce` の既存20keys/60events/resolutionsを全件一致で保持し、`playwright-status-selector-ambiguity` の正確な3eventsだけをunionした。証拠は `work/status-main-0911-store-union.json`。他のfinancial準備の失敗keyは含めない。
+現main `803489a2f8ec6730d21fd384bbe9093338e497de` の既存23keys/63events/resolutionsを全件一致で保持し、`playwright-status-selector-ambiguity` の正確な3eventsだけをunionした。結果は24keys/66events。初回7eでの20keys/60events保存に加え、rebase後も `work/status-main-0916-rebase-proof.json` で全既存record一致を確認した。他のfinancial準備の失敗keyは含めない。
 
 ## 検証対象
 
@@ -29,3 +29,7 @@ main `7e15391fab7a4fa59470b39b36bf8fb8924047ce` の既存20keys/60events/resolut
 API setup→同一JAR/DBの正常再起動→browser/nativeを直列実行し、backend/Viteは同親でwaitして正常停止した。固定sleep・429再送・DB cleanupは行っていない。ログ、HTML、結果はphase固有pathへ新規作成し上書きしない。
 
 runtimeには独立レビュー済み `7a311c23d776ae7477a0fda9a083ff589d513a71` のJARを使用する。全tree OIDは `05f9de7f1432795f4092754042fb32b617ee0d82`、JAR SHA256は `e287b2389b23beb92027c82d3bea72ce100ec7f45a90502a8cddf32bbd97777e`。7eと7aのfrontend/contracts差分は0だが、7aにはpayment previewのbackend変更があるため、7eそのもののruntimeと主張しない。専用架空DBでAPI setup後に同一artifact/DBのbackendを正常再起動してbrowser phaseを分離する。
+
+## main更新後のsource照合
+
+PR60 merge後に803489aへrebaseした。テストした39488e9とrebased headのfrontend/AGENT/Skill差分は0。reviewed7aと新main803のbackend/src/main・frontend・contractsも差分0で、実行したJARは新mainと同じproduction入力を持つ。旧39488e9と結果を含むe0b49d4は `prep/playwright-status-feedback-main-tested` へ固定した。再実行結果の流用ではなく、この完全一致を根拠に同じbrowser suiteを再実行しなかった。

@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { createInvoice, sessionHeaders } from './invoice-fixtures';
+import { createInvoice, filterInvoicesForCustomer, sessionHeaders } from './invoice-fixtures';
 
 test('real cancellation requires renewed confirmation after conflict, removes receivables, retains original history and reserves the invoice number', async ({ page }) => {
   const { invoice, customer, invoiceNumber } = await createInvoice(page);
@@ -25,6 +25,8 @@ test('real cancellation requires renewed confirmation after conflict, removes re
   const current = await (await page.request.get(`/api/invoices/${invoice.id}`)).json(); expect(current.status).toBe('CANCELLED'); expect(current.outstandingAmount).toBe(0); expect(current.amount).toBe(120000);
   expect((await (await page.request.get(`/api/receivables?customerId=${customer.id}`)).json()).items).toHaveLength(0);
   await page.reload(); await page.getByRole('button', { name: '債権一覧', exact: true }).click();
+  await filterInvoicesForCustomer(page, customer.id);
+  await expect(page.getByRole('table', { name: '債権一覧' })).toHaveCount(0);
   await page.getByLabel('請求IDで訂正・履歴を開く（取消済みも参照可）').fill(invoice.id); await page.getByRole('button', { name: '請求を開く', exact: true }).click();
   const history = page.getByRole('table', { name: '請求履歴' }); await expect(history).toContainText('登録時の原本'); await expect(history).toContainText('100,000'); await expect(history).toContainText('架空の二重請求を取消'); await expect(history).toContainText('取消済み');
   await page.getByRole('button', { name: '請求CSV取込', exact: true }).click();
@@ -43,5 +45,6 @@ test('lost real cancellation response is recovered from PostgreSQL without a sec
   await page.getByRole('button', { name: '取消の最新内容・処理結果を取得' }).click();
   await expect(page.getByRole('status')).toContainText('再送しません'); await expect(page.getByRole('table', { name: '請求履歴' })).toContainText('架空の通信障害時の取消');
   await expect(page.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled(); expect(cancellations).toBe(1);
+  await expect(page.getByRole('table', { name: '債権一覧' })).toHaveCount(0);
   const current = await (await page.request.get(`/api/invoices/${invoice.id}`)).json(); expect(current.status).toBe('CANCELLED'); expect(current.outstandingAmount).toBe(0); expect(current.version).toBe(invoice.version + 1);
 });

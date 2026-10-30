@@ -8,6 +8,8 @@ export type InvitationIssued = components['schemas']['InvitationIssuedResponse']
 export type ImportBatch = components['schemas']['ImportBatchResponse'];
 export type ImportRow = components['schemas']['ImportRowResponse'];
 export type PaymentImportRow = components['schemas']['PaymentImportRowResponse'];
+export type PaymentCandidate = components['schemas']['PaymentCandidateResponse'];
+export type PaymentCandidates = components['schemas']['PaymentCandidatesPage'];
 export type Payment = components['schemas']['PaymentResponse'];
 export type PaymentsQuery = NonNullable<operations['listPayments']['parameters']['query']>;
 export type ImportError = components['schemas']['ImportErrorResponse'];
@@ -46,6 +48,7 @@ export const api = {
     Object.entries(query).forEach(([key, value]) => { if (value !== undefined) parameters.set(key, String(value)); });
     return request({ path: '/api/payments', method: 'GET', url: `/api/payments?${parameters}` }, undefined);
   },
+  listPaymentCandidates: (id: string, cursor?: string) => request({ path: '/api/payments/{id}/candidates', method: 'GET', url: `/api/payments/${encodeURIComponent(id)}/candidates?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` }, undefined),
   getInvoice: (id: string) => request({ path: '/api/invoices/{id}', method: 'GET', url: invoiceUrl(id) }, undefined),
   listInvoiceHistory: (id: string, cursor = -1) => request({ path: '/api/invoices/{id}/history', method: 'GET', url: `${invoiceUrl(id)}/history?cursor=${cursor}&limit=50` }, undefined),
   correctInvoice: (csrf: Csrf, id: string, body: operations['correctInvoice']['requestBody']['content']['application/json']) => request(

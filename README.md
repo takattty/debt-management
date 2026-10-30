@@ -4,7 +4,9 @@
 
 業務要件の入口: [Issue #1](https://github.com/takattty/debt-management/issues/1)。[要件](docs/requirements.md)、[業務例](docs/business-examples.md)、[設計](docs/design.md)、[後続Issueと順序](docs/roadmap.md)、[検証・再開記録](docs/runtime-evidence.md)。
 
-現在は **メール認証・管理者のメンバー招待・匿名受諾・顧客登録/一覧・更新 API** を実装しています。CSV解析とプレビュー保存の内部モデルもあります。請求CSVの画面/確定、入金・消込、督促、貸付元本は未実装で、開発全体の完了ではありません。商用インフラは対象外です。
+現在利用できるのは **メールアドレス/パスワードのログイン・管理者による手動リンク招待・顧客の登録/一覧/個別編集/新規CSV取込・請求CSVのプレビュー/全件確定・状態/顧客/支払期日での債権一覧・請求の訂正/取消/履歴** です。取消済みの一覧から原本を開き、担当者メールと日本時間で履歴を確認できます。[画面の操作手順と架空CSVサンプル](docs/user-guide.md)を参照してください。
+
+入金・名義対応・消込候補/消込・督促・貸付元本は、このmainの利用可能機能には含めていません。開発全体の完了ではなく、商用インフラも対象外です。
 
 ## 開発用ローカル起動
 
@@ -19,7 +21,7 @@ docker compose up --build -d
 
 http://localhost:8088 を開きます。架空アカウントは `alpha-admin@example.test` / `beta-admin@example.test` / `alpha-accountant@example.test`、パスワードは `.env` の `LOCAL_SEED_PASSWORD` に明示した値です。未設定・空文字ではComposeが起動を拒否します。メールアドレス/パスワードでDBユーザーを認証し、HttpOnly cookieとCSRFを使用します。架空ユーザーのseedは明示したlocal profileだけで実行し、再起動で既存password/roleを上書きしません。local以外はfail closedです。
 
-管理者でログインし「メンバー招待」でメールアドレスと管理者/経理担当者を選びます。発行したリンクは24時間・一回限りで、管理者が手動共有します。localでは同じマシンの別ブラウザープロファイル等で開き、招待先メールと12〜128文字のpasswordで登録後、明示的にログインします。外部メールは送信しません。既に所属するメールを別tenantへ追加できません。リンクは画面を離れると破棄し、受諾fragmentも即座に履歴から除去します。
+管理者は「メンバー招待」でリンクを作成し、相手へ手動共有します。外部メールは送信しません。招待の受諾からログインまでの流れと、有効期限などの制約は[操作手順](docs/user-guide.md#ログインとメンバー招待)を参照してください。
 
 ```sh
 docker compose down
@@ -27,6 +29,8 @@ docker compose down
 ```
 
 build-local は成果物の作成用で、テスト成功の証拠にはなりません。merge前には以下を必ず実施します。
+
+請求・入金を含むCompose起動・停止再作成の実証は、別の準備ブランチ `acceptance/invoice-payment-compose` の `docs/verification/compose-invoice-payment.md` にあります。main以外の後続機能を含む統合候補の記録であり、このmainの入金対応や各PRの受入完了を示すものではありません。
 
 ## Cloud / 開発検証
 

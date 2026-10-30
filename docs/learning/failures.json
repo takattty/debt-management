@@ -218,6 +218,34 @@
       ]
     },
     {
+      "key": "openapi-flow-description-comma",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "collection-command-compile-spec-validation",
+          "summary": "flow mapping内の未quote commaを含むdescriptionが別propertyとして解釈されOpenAPI生成が拒否された",
+          "evidence": "contracts/openapi.yaml",
+          "recorded_at": "2026-10-30T03:08:42+00:00"
+        },
+        {
+          "event": "collection-command-test-before-contract-lint",
+          "summary": "契約lint結果を先に確認せず同じ不正契約から別test buildも起動し同じ生成拒否となった",
+          "evidence": "contracts/openapi.yaml",
+          "recorded_at": "2026-10-30T03:08:42+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "flow mapping内のcommaを含む文章をquoteせず、契約検証完了前に後続buildを開始した",
+          "prevention": "commaを含むdescriptionをquoteし、契約lintを完了して出力確認後に生成とJava buildへ進む手順をguard化する",
+          "verification": "description全体をsinglequoteへ修正しRedocly lintがvalid、TypeScript生成が成功した。Java再buildはこのcheck成功後に行う",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T03:08:42+00:00"
+        }
+      ]
+    },
+    {
       "key": "partial-patch-context",
       "status": "resolved",
       "events": [
@@ -242,6 +270,34 @@
           "guard": "docs/learning/README.md",
           "event_count": 2,
           "resolved_at": "2026-10-29T16:56:54+00:00"
+        }
+      ]
+    },
+    {
+      "key": "required-nullable-notnull-generation",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "collection-explicit-null-note-rejected",
+          "summary": "必須nullable予定日へ生成@NotNullが付き、明示nullによる予定消去が400になった",
+          "evidence": "backend/openapi-templates/README.md",
+          "recorded_at": "2026-10-30T03:15:00+00:00"
+        },
+        {
+          "event": "collection-null-cross-tenant-validation",
+          "summary": "明示nullを含む越境拒否caseも生成@NotNullに先に拒否され、nullable契約との不一致を別caseで観測した",
+          "evidence": "backend/openapi-templates/README.md",
+          "recorded_at": "2026-10-30T03:15:00+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "upstream beanValidation.mustacheがrequiredとnonnullを同一視し、nullable propertyにも@NotNullを生成した",
+          "prevention": "required非nullableだけに@NotNullを生成する局所template差分を追加。必須nullableのJSON presenceは限定Adviceで検査する。生成物は手編集しない",
+          "verification": "7.17.0から再生成しnullable getterの@NotNull不在とrequired非nullable version/noteの@NotNull維持を実assert。明示null/missing/通常必須項目のHTTP回帰を保持して再実行する",
+          "guard": "backend/openapi-templates/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T03:15:00+00:00"
         }
       ]
     },

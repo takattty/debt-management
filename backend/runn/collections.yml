@@ -78,6 +78,7 @@ steps:
     bind:
       invoiceId: current.res.body.items[0].id
       amount: current.res.body.items[0].amount
+      invoiceNumber: current.res.body.items[0].invoiceNumber
     test: current.res.status == 200 && current.res.body.items[0].customerCode == vars.fixture.customerCode
   dueDay:
     api:
@@ -109,6 +110,100 @@ steps:
       /api/collections/{{ invoiceId }}/history:
         get: {body: null}
     test: current.res.status == 200 && len(current.res.body.items) == 0 && current.res.body.nextCursor == null
+  recordNote:
+    api:
+      /api/collections/{{ invoiceId }}/actions:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 0, note: 請求書再送の依頼, nextActionDate: '2026-12-05'}
+    test: current.res.status == 200 && current.res.body.version == 1 && current.res.body.nextActionDate == '2026-12-05' && current.res.body.event.actorLabel == 'alpha-accountant@example.test'
+  missingPlannedDate:
+    invalid:
+      /api/collections/{{ invoiceId }}/actions:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ cookie }}', X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 1, note: 予定日は明示が必要}
+    test: current.res.status == 400
+  planUnchanged:
+    api:
+      /api/collections/{{ invoiceId }}?asOf=2026-12-01:
+        get: {body: null}
+    test: current.res.status == 200 && current.res.body.version == 1 && current.res.body.nextActionDate == '2026-12-05' && current.res.body.latestNote == '請求書再送の依頼'
+  missingHoldReason:
+    invalid:
+      /api/collections/{{ invoiceId }}/hold:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ cookie }}', X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 1}
+    test: current.res.status == 400
+  hold:
+    api:
+      /api/collections/{{ invoiceId }}/hold:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 1, reason: 入金確認待ち}
+    test: current.res.status == 200 && current.res.body.version == 2 && current.res.body.held && current.res.body.holdReason == '入金確認待ち' && current.res.body.nextActionDate == '2026-12-05'
+  heldSearch:
+    bind: {heldPageSuffix: '""'}
+  heldCandidates:
+    loop:
+      count: 10000
+      interval: 0
+      until: 'current.res.status == 200 && (len(heldMatches) == 1 || current.res.body.nextCursor == null)'
+    api:
+      /api/collections?asOf=2026-12-01&view=HELD&limit=100{{ heldPageSuffix }}:
+        get: {body: null}
+    bind:
+      heldMatches: 'filter(current.res.body.items, {#.invoiceId == invoiceId})'
+      heldPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+  ownHeldCandidate:
+    test: len(heldMatches) == 1 && heldMatches[0].held && heldMatches[0].holdReason == '入金確認待ち' && heldMatches[0].outstandingAmount == amount
+  draft:
+    api:
+      /api/collections/{{ invoiceId }}/draft?asOf=2026-12-01:
+        get: {body: null}
+    test: current.res.status == 200 && current.res.body.held && current.res.body.holdReason == '入金確認待ち' && current.res.body.outstandingAmount == amount && current.res.body.body contains invoiceNumber && current.res.body.body contains '架空の督促確認先' && current.res.body.body contains '2026-11-30'
+  release:
+    api:
+      /api/collections/{{ invoiceId }}/release:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 2, reason: 入金状況の確認完了}
+    test: current.res.status == 200 && current.res.body.version == 3 && !current.res.body.held && current.res.body.nextActionDate == '2026-12-05'
+  explicitlyClearPlan:
+    api:
+      /api/collections/{{ invoiceId }}/actions:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 3, note: 担当交代後の対応完了メモ, nextActionDate: null}
+    test: current.res.status == 200 && current.res.body.version == 4 && current.res.body.nextActionDate == null
+  sharedHistory:
+    api:
+      /api/collections/{{ invoiceId }}/history?limit=4:
+        get: {body: null}
+    test: current.res.status == 200 && len(current.res.body.items) == 4 && current.res.body.items[0].kind == 'NOTE' && current.res.body.items[1].kind == 'HOLD' && current.res.body.items[2].kind == 'RELEASE' && current.res.body.items[3].nextActionDate == null && current.res.body.items[3].actorUserId == current.res.body.items[0].actorUserId
+  staleHold:
+    api:
+      /api/collections/{{ invoiceId }}/hold:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 1, reason: 古い画面から保留}
+    test: current.res.status == 409 && current.res.body.code == 'VERSION_CONFLICT'
+  missingCsrf:
+    invalid:
+      /api/collections/{{ invoiceId }}/actions:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ cookie }}'}
+          body:
+            application/json: {version: 4, note: CSRF拒否, nextActionDate: null}
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
   missingDate:
     invalid:
       /api/collections:

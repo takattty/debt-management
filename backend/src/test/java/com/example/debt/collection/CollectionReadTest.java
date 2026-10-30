@@ -3,16 +3,24 @@ package com.example.debt.collection;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.example.debt.access.AuthFixtures;
+import com.example.debt.access.TenantUser;
+import com.example.debt.access.UserAccounts;
 import com.example.debt.reconciliation.LedgerRepository;
 import java.math.BigInteger;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +35,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -38,6 +48,10 @@ class CollectionReadTest {
     @Autowired LedgerRepository ledger;
     @Autowired PlatformTransactionManager transactions;
     @Autowired MockMvc mvc;
+    @Autowired CollectionActions actions;
+    @Autowired CollectionDrafts drafts;
+    @Autowired UserAccounts users;
+    private final JsonMapper json = JsonMapper.builder().build();
     private final UUID customer = UUID.randomUUID();
     private final UUID foreignCustomer = UUID.randomUUID();
     private final UUID payment = UUID.randomUUID();
@@ -76,6 +90,129 @@ class CollectionReadTest {
         jdbc.sql("DELETE FROM invoice WHERE id IN (:ids)").param("ids", invoiceIds).update();
         jdbc.sql("DELETE FROM customer WHERE id IN (?,?)").params(customer, foreignCustomer).update();
         jdbc.sql("DELETE FROM import_batch WHERE id IN (?,?,?)").params(invoiceBatch, foreignBatch, paymentBatch).update();
+    }
+
+    @Test
+    void notePlanHoldAndReasonedReleaseRemainSharedAndDoNotTouchInvoiceOrPaymentFacts() throws Exception {
+        mvc.perform(post("/api/collections/" + overdue + "/actions").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                .content(noteBody(0, "請求書再送の依頼", "2026-12-05"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(1)).andExpect(jsonPath("$.event.actorLabel").value("alpha-accountant@example.test"));
+        mvc.perform(post("/api/collections/" + overdue + "/hold").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                .content("{\"version\":1,\"reason\":\"入金確認待ち\"}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.held").value(true)).andExpect(jsonPath("$.nextActionDate").value("2026-12-05"));
+        mvc.perform(post("/api/collections/" + overdue + "/actions").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                .content(noteBody(2, "担当者交代後の確認", null))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.held").value(true)).andExpect(jsonPath("$.nextActionDate").doesNotExist());
+        mvc.perform(post("/api/collections/" + overdue + "/release").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                .content("{\"version\":3,\"reason\":\"確認が完了したため解除\"}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.held").value(false)).andExpect(jsonPath("$.version").value(4));
+        assertThat(queries.history(AuthFixtures.ALPHA, overdue, 0, 100).items()).extracting(CollectionQueries.Event::kind)
+                .containsExactly("NOTE", "HOLD", "NOTE", "RELEASE");
+        assertThat(queries.get(AuthFixtures.ALPHA, overdue, AS_OF).invoiceVersion()).isZero();
+        assertThat(ledger.payment(AuthFixtures.ALPHA, payment).balance().unallocated()).isEqualTo(BigInteger.valueOf(120000));
+        assertThat(audits()).isEqualTo(4);
+        for (String sql : List.of("DELETE FROM audit_event WHERE tenant_id=? AND entity_id=? AND action LIKE 'COLLECTION_%'",
+                "UPDATE audit_event SET details='{}'::jsonb WHERE tenant_id=? AND entity_id=? AND action LIKE 'COLLECTION_%'")) {
+            assertThatThrownBy(() -> jdbc.sql(sql).params(AuthFixtures.ALPHA, overdue).update()).isInstanceOf(DataAccessException.class);
+        }
+    }
+
+    @Test
+    void nextActionMemberMustBeExplicitAndStrictDatesMalformedJsonAndUnknownFieldsNeverMutate() throws Exception {
+        actions.record(user(), overdue, 0, "元の対応予定", LocalDate.of(2026, 12, 5));
+        for (String body : List.of("{\"version\":1,\"note\":\"missing date\"}", "{\"version\":1,\"nextActionDate\":null}",
+                "{\"note\":\"missing version\",\"nextActionDate\":null}", "{\"version\":null,\"note\":\"null version\",\"nextActionDate\":null}", "{", noteBody(1, " ", null),
+                noteBody(1, "理由", "2026-12-05T00:00:00"), noteBody(1, "理由", "2026-02-30"), noteBody(1, "理由", "0000-01-01"),
+                noteBody(1, "理由", null).replace("null", "[2026,12,5]"),
+                noteBody(1, "理由", null).replace("}", ",\"tenantId\":\"ignored\"}"))) {
+            mvc.perform(post("/api/collections/" + overdue + "/actions").session(alpha).with(csrf().asHeader()).contentType("application/json").content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        var before = queries.get(AuthFixtures.ALPHA, overdue, AS_OF);
+        assertThat(before.version()).isEqualTo(1); assertThat(before.nextActionDate()).isEqualTo(LocalDate.of(2026, 12, 5));
+        assertThat(audits()).isEqualTo(1); assertThat(queries.history(AuthFixtures.ALPHA, overdue, 0, 100).items()).hasSize(1);
+        long version = 1;
+        for (String date : List.of("0001-01-01", "1500-03-01", "1582-10-10", "9999-12-31")) {
+            mvc.perform(post("/api/collections/" + overdue + "/actions").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                    .content(noteBody(version++, "日付境界の予定", date))).andExpect(status().isOk()).andExpect(jsonPath("$.nextActionDate").value(date));
+        }
+    }
+
+    @Test
+    void csrfTenantStaleVersionAndDisabledActorsCannotChangeSharedState() throws Exception {
+        mvc.perform(post("/api/collections/" + overdue + "/actions").session(alpha).contentType("application/json").content(noteBody(0, "拒否", null)))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/collections/" + foreign + "/actions").session(alpha).with(csrf().asHeader()).contentType("application/json").content(noteBody(0, "越境", null)))
+                .andExpect(status().isNotFound());
+        actions.record(user(), overdue, 0, "元の記録", null);
+        mvc.perform(post("/api/collections/" + overdue + "/hold").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                .content("{\"version\":0,\"reason\":\"古い版\"}")).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("VERSION_CONFLICT"));
+        jdbc.sql("UPDATE app_user SET enabled=false WHERE tenant_id=? AND id=?").params(AuthFixtures.ALPHA, AuthFixtures.ALPHA_ACCOUNTANT).update();
+        try { assertThatThrownBy(() -> actions.hold(user(), overdue, 1, "無効化後の操作")).isInstanceOf(AccessDeniedException.class);
+        } finally { jdbc.sql("UPDATE app_user SET enabled=true WHERE tenant_id=? AND id=?").params(AuthFixtures.ALPHA, AuthFixtures.ALPHA_ACCOUNTANT).update(); }
+        assertThat(audits()).isEqualTo(1); assertThat(queries.get(AuthFixtures.ALPHA, overdue, AS_OF).version()).isEqualTo(1);
+    }
+
+    @Test
+    void auditFailureRollsBackStateEventAndLazyInitializationTogether() {
+        jdbc.sql("CREATE FUNCTION reject_collection_audit_fixture() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.action LIKE 'COLLECTION_%' THEN RAISE EXCEPTION 'Fictional collection audit failure'; END IF; RETURN NEW; END $$").update();
+        jdbc.sql("CREATE TRIGGER reject_collection_audit_fixture BEFORE INSERT ON audit_event FOR EACH ROW EXECUTE FUNCTION reject_collection_audit_fixture()").update();
+        try {
+            assertThatThrownBy(() -> actions.record(user(), overdue, 0, "監査rollback確認", LocalDate.of(2026, 12, 5))).isInstanceOf(DataAccessException.class);
+            assertThat(queries.get(AuthFixtures.ALPHA, overdue, AS_OF).version()).isZero();
+            assertThat(queries.history(AuthFixtures.ALPHA, overdue, 0, 100).items()).isEmpty(); assertThat(audits()).isZero();
+        } finally {
+            jdbc.sql("DROP TRIGGER reject_collection_audit_fixture ON audit_event").update(); jdbc.sql("DROP FUNCTION reject_collection_audit_fixture()").update();
+        }
+    }
+
+    @Test
+    void concurrentNotesWithTheSameVersionHaveOneWinnerOneEventAndOneAudit() throws Exception {
+        CountDownLatch ready = new CountDownLatch(2); CountDownLatch start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var tasks = List.<Callable<CollectionQueries.Event>>of(() -> actions.record(user(), overdue, 0, "担当Aの記録", LocalDate.of(2026, 12, 5)),
+                    () -> actions.record(user(), overdue, 0, "担当Bの記録", LocalDate.of(2026, 12, 6))).stream().map(task -> pool.submit(() -> {
+                        try { return (Object) transaction.execute(state -> {
+                            ready.countDown();
+                            try { if (!start.await(10, TimeUnit.SECONDS)) { throw new IllegalStateException("Fixture start timed out"); } return task.call();
+                            } catch (RuntimeException failure) { throw failure;
+                            } catch (Exception failure) { throw new IllegalStateException(failure); }
+                        }); } catch (CollectionActions.Conflict conflict) { return conflict; }
+                    })).toList();
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue(); start.countDown();
+            var results = List.of(tasks.getFirst().get(10, TimeUnit.SECONDS), tasks.getLast().get(10, TimeUnit.SECONDS));
+            assertThat(results.stream().filter(CollectionQueries.Event.class::isInstance)).hasSize(1);
+            assertThat(results.stream().filter(CollectionActions.Conflict.class::isInstance).map(CollectionActions.Conflict.class::cast)).singleElement()
+                    .extracting(Throwable::getMessage).isEqualTo("VERSION_CONFLICT");
+        }
+        assertThat(audits()).isEqualTo(1); assertThat(queries.history(AuthFixtures.ALPHA, overdue, 0, 100).items()).hasSize(1);
+    }
+
+    @Test
+    void draftUsesCurrentExactOutstandingAndHeldReasonWithoutSendingOrInventingHistory() throws Exception {
+        allocate(39560, 440);
+        actions.hold(user(), overdue, 0, "入金確認待ち");
+        long before = audits();
+        var draft = drafts.preview(AuthFixtures.ALPHA, overdue, AS_OF);
+        assertThat(draft.body()).contains("架空の回収先", "2026-11-30", "2026-12-01", "60,000 円", draft.facts().invoiceNumber());
+        assertThat(draft.facts().held()).isTrue(); assertThat(draft.facts().holdReason()).isEqualTo("入金確認待ち");
+        mvc.perform(get("/api/collections/" + overdue + "/draft?asOf=2026-12-01").session(alpha)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.outstandingAmount").value(60000)).andExpect(jsonPath("$.holdReason").value("入金確認待ち"));
+        assertThat(audits()).isEqualTo(before);
+        allocate(60000, 0);
+        mvc.perform(get("/api/collections/" + overdue + "/draft?asOf=2026-12-01").session(alpha)).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COLLECTION_NOT_ELIGIBLE"));
+        actions.record(user(), overdue, 1, "完済後の確認メモ", null);
+        assertThat(queries.history(AuthFixtures.ALPHA, overdue, 0, 100).items()).hasSize(2);
+        assertThat(queries.get(AuthFixtures.ALPHA, overdue, AS_OF).eligible()).isFalse();
+    }
+
+    private TenantUser user() { return TenantUser.from(users.byId(AuthFixtures.ALPHA_ACCOUNTANT).orElseThrow()); }
+    private long audits() { return jdbc.sql("SELECT count(*) FROM audit_event WHERE tenant_id=? AND entity_id=? AND action LIKE 'COLLECTION_%'")
+            .params(AuthFixtures.ALPHA, overdue).query(Long.class).single(); }
+    private String noteBody(long version, String note, String date) {
+        var fields = new java.util.LinkedHashMap<String, Object>(); fields.put("version", version); fields.put("note", note); fields.put("nextActionDate", date);
+        return json.writeValueAsString(fields);
     }
 
     @Test

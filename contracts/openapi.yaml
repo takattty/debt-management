@@ -38,6 +38,139 @@ tags:
 - name: Imports
   description: Immutable tenant-scoped CSV previews and explicit all-or-nothing confirmation
 paths:
+  /api/collections/{id}/actions:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    post:
+      tags: [Collections]
+      operationId: recordCollectionAction
+      summary: Record a shared note and explicitly retained, changed or cleared next action date
+      description: ADMIN and ACCOUNTANT update independent collection state. Notes remain possible after payoff or cancellation. No payment, invoice amount or ledger fact is changed. State, immutable event and audit commit atomically.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CollectionActionRequest'}
+      responses:
+        '200':
+          description: New collection state and its immutable event
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CollectionStateResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
+        '409':
+          description: VERSION_CONFLICT, COLLECTION_ALREADY_HELD or COLLECTION_NOT_HELD
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+  /api/collections/{id}/hold:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    post:
+      tags: [Collections]
+      operationId: holdCollection
+      summary: Hold follow-up with a reason while retaining the note and plan
+      description: ADMIN and ACCOUNTANT update independent collection state. Notes remain possible after payoff or cancellation. No payment, invoice amount or ledger fact is changed. State, immutable event and audit commit atomically.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CollectionReasonRequest'}
+      responses:
+        '200':
+          description: New collection state and its immutable event
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CollectionStateResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
+        '409':
+          description: VERSION_CONFLICT, COLLECTION_ALREADY_HELD or COLLECTION_NOT_HELD
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+  /api/collections/{id}/release:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    post:
+      tags: [Collections]
+      operationId: releaseCollection
+      summary: Release an explicit hold with a reason while retaining the note and plan
+      description: ADMIN and ACCOUNTANT update independent collection state. Notes remain possible after payoff or cancellation. No payment, invoice amount or ledger fact is changed. State, immutable event and audit commit atomically.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CollectionReasonRequest'}
+      responses:
+        '200':
+          description: New collection state and its immutable event
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CollectionStateResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
+        '409':
+          description: VERSION_CONFLICT, COLLECTION_ALREADY_HELD or COLLECTION_NOT_HELD
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+  /api/collections/{id}/draft:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    get:
+      tags: [Collections]
+      operationId: previewCollectionDraft
+      summary: Preview plain text for human review and copying without sending any message
+      description: Uses customer name, invoice number, due date and current real outstanding amount. Held candidates retain hold information. No recipient email master, sending endpoint or sent event is introduced.
+      parameters:
+      - name: asOf
+        in: query
+        required: true
+        schema: {type: string, format: date}
+      responses:
+        '200':
+          description: Copyable subject and body; a human must check the recipient and content
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CollectionDraftResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
+        '409':
+          description: COLLECTION_NOT_ELIGIBLE for non-overdue, paid or cancelled invoices
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
   /api/collections:
     get:
       tags: [Collections]
@@ -1055,6 +1188,44 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
   schemas:
+    CollectionActionRequest:
+      type: object
+      additionalProperties: false
+      required: [version, note, nextActionDate]
+      properties:
+        version: {type: integer, format: int64, minimum: 0}
+        note: {type: string, minLength: 1, maxLength: 5000, description: Shared nonblank note; line breaks and tabs are allowed}
+        nextActionDate: {type: string, format: date, nullable: true, description: 'Required member. Send the current date to retain it, a replacement date to change it, or explicit null to clear it. Missing is rejected without mutation.'}
+    CollectionReasonRequest:
+      type: object
+      additionalProperties: false
+      required: [version, reason]
+      properties:
+        version: {type: integer, format: int64, minimum: 0}
+        reason: {type: string, minLength: 1, maxLength: 1000}
+    CollectionStateResponse:
+      type: object
+      required: [invoiceId, version, held, holdReason, latestNote, nextActionDate, event]
+      properties:
+        invoiceId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 1}
+        held: {type: boolean}
+        holdReason: {type: string, maxLength: 1000, nullable: true}
+        latestNote: {type: string, maxLength: 5000, nullable: true}
+        nextActionDate: {type: string, format: date, nullable: true}
+        event: {$ref: '#/components/schemas/CollectionHistoryEntry'}
+    CollectionDraftResponse:
+      type: object
+      required: [invoiceId, asOf, customerName, outstandingAmount, subject, body, held, holdReason]
+      properties:
+        invoiceId: {type: string, format: uuid}
+        asOf: {type: string, format: date}
+        customerName: {type: string}
+        outstandingAmount: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        subject: {type: string}
+        body: {type: string}
+        held: {type: boolean}
+        holdReason: {type: string, maxLength: 1000, nullable: true}
     CollectionCaseResponse:
       type: object
       required: [invoiceId, customerId, customerCode, customerName, invoiceNumber, issueDate, dueDate, invoiceStatus, invoiceVersion, amount, cashAllocated, explicitFees, outstandingAmount, asOf, daysOverdue, eligible, held, holdReason, latestNote, nextActionDate, version]

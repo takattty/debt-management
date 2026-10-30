@@ -128,6 +128,34 @@
       ]
     },
     {
+      "key": "ledger-stale-isolation-snapshot",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "independent-mixed-isolation-overallocation",
+          "summary": "独立レビューで先行RR/S snapshotが後続RC充当を見落とし、同invoiceへの別payment充当が過剰確定した",
+          "evidence": "docs/reconciliation/ledger-design.md",
+          "recorded_at": "2026-10-30T02:53:32+00:00"
+        },
+        {
+          "event": "independent-mixed-isolation-invoice-update",
+          "summary": "独立レビューで先行RR/S snapshotからの請求減額と取消も後続RC充当を見落とし保存則を破った",
+          "evidence": "backend/src/test/java/com/example/debt/reconciliation/LedgerStorageTest.java",
+          "recorded_at": "2026-10-30T02:53:32+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "FOR UPDATEだけではRR/Sの確立済snapshotを更新せず、物理更新のない親row lock後のSUMが相手RCのcommitを見落とした",
+          "prevention": "ledger operation/line/state書込とinvoice金額状態UPDATEをDB statement triggerで常時READ COMMITTED限定とし、他isolationを可視充当有無に関係なく25000拒否する",
+          "verification": "新専用実PGでRR/S先snapshot・RC別payment60commit後のledger/state/line追記とinvoice減額取消がすべて25000拒否。readonlysnapshotを保持しRC race/reversal/version/immutableを含む10 targeted testsとCheckstyle成功",
+          "guard": "docs/reconciliation/ledger-design.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T02:53:32+00:00"
+        }
+      ]
+    },
+    {
       "key": "nested-select-label",
       "status": "resolved",
       "events": [

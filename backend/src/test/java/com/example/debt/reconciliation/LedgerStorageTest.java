@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +32,7 @@ class LedgerStorageTest {
     @Autowired JdbcClient jdbc;
     @Autowired LedgerRepository ledger;
     @Autowired PlatformTransactionManager transactions;
+    @Autowired DataSource dataSource;
     private TransactionTemplate transaction;
     private final UUID tenant = UUID.randomUUID();
     private final UUID other = UUID.randomUUID();
@@ -182,6 +186,63 @@ class LedgerStorageTest {
         reverse(payment, original);
         jdbc.sql("UPDATE invoice SET amount_jpy=60000 WHERE tenant_id=? AND id=?").params(tenant, first).update();
         assertThat(ledger.invoice(tenant, first).balance().outstanding()).isEqualTo(BigInteger.valueOf(60000));
+    }
+
+    @Test
+    void staleRepeatableReadAndSerializableSnapshotsCannotMutateLedgerOrReduceOrCancelInvoices() throws Exception {
+        transaction.executeWithoutResult(status -> ledger.lockPositions(tenant, payment, List.of()));
+        for (int isolation : List.of(Connection.TRANSACTION_REPEATABLE_READ, Connection.TRANSACTION_SERIALIZABLE)) {
+            UUID committedAllocation;
+            try (var connection = dataSource.getConnection()) {
+                connection.setTransactionIsolation(isolation);
+                connection.setAutoCommit(false);
+                // Establish the old snapshot before a different payment commits its READ COMMITTED allocation.
+                assertThat(activeCash(connection)).isZero();
+                committedAllocation = confirm(secondPayment, List.of(line(first, 60000, 0)));
+                assertThat(activeCash(connection)).isZero(); // Snapshot reads stay valid and unchanged.
+                try (var state = connection.prepareStatement("SELECT version FROM reconciliation_payment_state WHERE tenant_id=? AND payment_id=? FOR UPDATE")) {
+                    state.setObject(1, tenant); state.setObject(2, payment); state.executeQuery().close();
+                }
+                try (var invoice = connection.prepareStatement("SELECT id FROM invoice WHERE tenant_id=? AND id=? ORDER BY id FOR UPDATE")) {
+                    invoice.setObject(1, tenant); invoice.setObject(2, first); invoice.executeQuery().close();
+                }
+                requireIsolationRejection(connection, "UPDATE reconciliation_payment_state SET version=version+1 WHERE tenant_id=? AND payment_id=?", tenant, payment);
+                requireIsolationRejection(connection, """
+                        INSERT INTO allocation_operation(id,tenant_id,payment_id,request_id,kind,payment_version,actor_user_id,reason)
+                        VALUES (?,?,?,?,'CONFIRM',1,?,'Fictional stale snapshot')
+                        """, UUID.randomUUID(), tenant, payment, UUID.randomUUID(), actor);
+                requireIsolationRejection(connection, "INSERT INTO allocation_line VALUES (?,?,?,0,60000,0)", tenant, committedAllocation, second);
+                requireIsolationRejection(connection, "UPDATE invoice SET amount_jpy=50000 WHERE tenant_id=? AND id=?", tenant, first);
+                requireIsolationRejection(connection, "UPDATE invoice SET status='CANCELLED',cancelled_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?", tenant, first);
+                connection.rollback();
+            }
+            assertThat(ledger.invoice(tenant, first).balance().outstanding()).isEqualTo(BigInteger.valueOf(40000));
+            assertThat(ledger.invoice(tenant, first).status()).isEqualTo("ACTIVE");
+            assertThat(ledger.payment(tenant, payment).version()).isZero();
+            reverse(secondPayment, committedAllocation);
+            assertThat(ledger.invoice(tenant, first).balance().outstanding()).isEqualTo(BigInteger.valueOf(100000));
+        }
+    }
+
+    private BigDecimal activeCash(Connection connection) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+                SELECT COALESCE(sum(l.cash_jpy),0) FROM allocation_line l
+                JOIN allocation_operation o ON o.tenant_id=l.tenant_id AND o.id=l.operation_id
+                WHERE l.tenant_id=? AND l.invoice_id=? AND o.kind='CONFIRM'
+                AND NOT EXISTS (SELECT 1 FROM allocation_operation r WHERE r.tenant_id=o.tenant_id AND r.reverses_id=o.id)
+                """)) {
+            statement.setObject(1, tenant); statement.setObject(2, first);
+            try (var result = statement.executeQuery()) { result.next(); return result.getBigDecimal(1); }
+        }
+    }
+
+    private void requireIsolationRejection(Connection connection, String sql, Object... parameters) throws SQLException {
+        var savepoint = connection.setSavepoint();
+        try (var statement = connection.prepareStatement(sql)) {
+            for (int index = 0; index < parameters.length; index++) { statement.setObject(index + 1, parameters[index]); }
+            assertThatThrownBy(statement::executeUpdate).isInstanceOfSatisfying(SQLException.class,
+                    failure -> assertThat(failure.getSQLState()).isEqualTo("25000"));
+        } finally { connection.rollback(savepoint); }
     }
 
     @Test

@@ -19,6 +19,13 @@ public class ConfirmCustomerImport {
         try {
             return transaction.confirm(user, id, version);
         } catch (ImportRejected rejected) {
+            if (rejected.code().equals("IMPORT_REFERENCE_CONFLICT")) {
+                // Under READ COMMITTED an equivalent winner can commit after the transaction's duplicate read
+                // but before its existing-code read. Resolve the original after rollback, just as for a unique-key race.
+                ImportBatch batch = store.get(user.tenantId(), id, false);
+                UUID original = store.confirmedDuplicate(batch);
+                if (original != null) { rejected = transaction.duplicate(original); }
+            }
             transaction.invalidate(user, id, version, rejected.errors());
             throw rejected;
         } catch (DuplicateKeyException conflict) {

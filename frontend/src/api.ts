@@ -9,6 +9,7 @@ export type InvitationIssued = components['schemas']['InvitationIssuedResponse']
 export type ImportBatch = components['schemas']['ImportBatchResponse'];
 export type ImportRow = components['schemas']['ImportRowResponse'];
 export type PaymentImportRow = components['schemas']['PaymentImportRowResponse'];
+export type AllocationConfirmation = operations['confirmAllocation']['requestBody']['content']['application/json'];
 export type PaymentCandidate = components['schemas']['PaymentCandidateResponse'];
 export type PaymentCandidates = components['schemas']['PaymentCandidatesPage'];
 export type Payment = components['schemas']['PaymentResponse'];
@@ -58,6 +59,7 @@ export const api = {
     Object.entries(query).forEach(([key, value]) => { if (value !== undefined) parameters.set(key, String(value)); });
     return request({ path: '/api/payments', method: 'GET', url: `/api/payments?${parameters}` }, undefined);
   },
+  confirmAllocation: (csrf: Csrf, id: string, body: AllocationConfirmation) => request({ path: '/api/payments/{paymentId}/allocations', method: 'POST', url: `/api/payments/${encodeURIComponent(id)}/allocations` }, csrf, body),
   listPaymentCandidates: (id: string, cursor?: string) => request({ path: '/api/payments/{id}/candidates', method: 'GET', url: `/api/payments/${encodeURIComponent(id)}/candidates?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` }, undefined),
   getInvoice: (id: string) => request({ path: '/api/invoices/{id}', method: 'GET', url: invoiceUrl(id) }, undefined),
   listInvoiceHistory: (id: string, cursor = -1) => request({ path: '/api/invoices/{id}/history', method: 'GET', url: `${invoiceUrl(id)}/history?cursor=${cursor}&limit=50` }, undefined),
@@ -168,6 +170,7 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       ? failure.code : undefined;
     const invitation = endpoint.path.startsWith('/api/invitations');
     const importing = endpoint.path.startsWith('/api/imports');
+    const allocating = endpoint.path.startsWith('/api/payments/');
     const invoicing = endpoint.path.startsWith('/api/invoices');
     const aliasing = endpoint.path.startsWith('/api/payer-aliases');
     const messages: Record<number, string> = {
@@ -209,7 +212,8 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       : response.status === 409 ? '他の担当者が変更したか、すでに無効化されています。最新の詳細を取得して確認してください。'
         : response.status === 404 ? '対応または顧客が見つかりません。対応IDと顧客を確認してください。'
           : response.status === 400 ? '名義は200文字以内、無効化理由は500文字以内で入力してください。空白だけの入力や制御文字は使えません。' : undefined : undefined;
-    throw new ApiError(response.status, aliasMessage ?? invoiceMessage ?? importMessage ?? statusMessage ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
+    const allocationMessage = allocating ? response.status === 400 ? '現金・明示した手数料・理由を確認してください。' : response.status === 404 ? '入金または請求が見つかりません。最新内容を確認してください。' : undefined : undefined;
+    throw new ApiError(response.status, allocationMessage ?? aliasMessage ?? invoiceMessage ?? importMessage ?? statusMessage ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
   }
   return response;
 }

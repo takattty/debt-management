@@ -1,3 +1,4 @@
+import AllocationHistoryPanel from './AllocationHistoryPanel';
 import AllocationConfirmation from './AllocationConfirmation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, type Payment, type PaymentCandidate, type PaymentCandidates, type Session } from './api';
@@ -50,6 +51,7 @@ export default function PaymentAllocationPanel({ payment, session, onChanged, on
       </>}
     </>}
     {selected.length > 0 && <section aria-label="選択した請求"><h3>選択した請求（{selected.length}件）</h3><ul>{selected.map((item) => <li key={item.invoiceId}>{item.customerCode} / {item.invoiceNumber} / 未回収 {yen(item.outstandingAmount)} / version {item.expectedInvoiceVersion}<button type="button" disabled={busy} onClick={() => choose(item)}>選択解除 {item.invoiceNumber}</button></li>)}</ul><p>選択だけでは残高は変わりません。</p><AllocationConfirmation key={selected.map((item) => item.invoiceId).join()} paymentId={payment.id} externallyBusy={busy} selected={selected} session={session} onBusyChange={allocationBusy} onSessionExpired={onSessionExpired} onConfirmed={async () => { setPage(await api.listPaymentCandidates(payment.id)); await onChanged(); }} /></section>}
+    {page && <AllocationHistoryPanel paymentId={payment.id} externallyBusy={busy} revision={page?.expectedPaymentVersion ?? ''} session={session} onBusyChange={allocationBusy} onSessionExpired={onSessionExpired} onChanged={async () => { setSelected([]); setPage(await api.listPaymentCandidates(payment.id)); await onChanged(); }} />}
     <div className="button-row"><button type="button" className="secondary-button" disabled={busy} onClick={() => load()}>最新候補を取得して選び直す</button><button type="button" className="text-button" disabled={busy} onClick={onClose}>消込を閉じる</button></div>
   </section>;
 }

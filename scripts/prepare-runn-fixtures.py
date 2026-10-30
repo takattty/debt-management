@@ -61,3 +61,19 @@ for name, header, data in (
         writer = csv.writer(target, lineterminator='\r\n')
         writer.writerow(header)
         writer.writerows(data)
+
+allocation_id = str(uuid.uuid4())
+allocation = {'firstCustomerCode': f'AL-A-{allocation_id}', 'secondCustomerCode': f'AL-B-{allocation_id}',
+              'transactionId': f'ALLOC-{allocation_id}'}
+(root / 'runn-allocation-metadata.json').write_text(json.dumps(allocation), encoding='utf-8')
+for name, header, data in (
+    ('invoices', ['customer_code', 'invoice_number', 'issue_date', 'due_date', 'amount'], [
+        [allocation['firstCustomerCode'], f'AL-I-A-{allocation_id}', '0001-01-01', '9999-12-31', '100000'],
+        [allocation['secondCustomerCode'], f'AL-I-B-{allocation_id}', '0001-01-01', '0001-01-01', '50000']]),
+    ('payment', ['transaction_id', 'transfer_date', 'payer_name', 'amount'], [
+        [allocation['transactionId'], '0001-01-01', 'Fictional allocation receipt', '120000']]),
+):
+    with (root / f'runn-allocation-{name}.csv').open('w', encoding='utf-8-sig', newline='') as target:
+        writer = csv.writer(target, lineterminator='\r\n')
+        writer.writerow(header)
+        writer.writerows(data)

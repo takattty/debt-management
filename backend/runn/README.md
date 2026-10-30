@@ -46,3 +46,11 @@ Binary と checksum は `scripts/runn.sh` で固定する。
 CIのqualityはbootstrapの部分検証fallbackを廃止し、scripts/verify.shを必須実行する。verifier消失や非実行権限を部分成功に置き換えない。
 
 `payment-import.yml`は入金専用template/preview/payment-rows、修正前errorの固定、download、CSRF、tenant越境を実HTTPで検証する。段階2は全件確定・応答再送・重複再取込・bounded入金一覧を検証する。共通rowsは入金に409を返し、入金行はpayment-rowsで読む。消込ledgerは後続段階で、未充当額は未導入の間だけ入金額と同額。
+
+`allocations.yml` は通常CI globで正規CSV/APIから一意の二顧客・二請求・一入金を作り、
+経理担当者による現金/明示手数料の同時確定、顧客横断分割、一部/全額充当、
+requestId再送・payload変更拒否、古い版、CSRF、全体取消/二重取消拒否、
+取消後の再確定と他tenantの404をOpenAPI request/response検証付きで確認する。
+独立した手数料だけの確定と対象請求が欠けた取消も拒否する。
+入金はtransactionIdでkeyset走査し、請求は自fixtureのcustomerIdで選ぶ。
+実行済みrecordを削除せず同じDBで再実行できる。内部ledger probeとは別の必須公開command受入である。

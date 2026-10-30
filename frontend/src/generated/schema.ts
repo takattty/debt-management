@@ -97,7 +97,11 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read immutable payment allocation history with current reversal and invoice versions
+         * @description Tenant-scoped ascending payment-version keyset page. Each entry includes immutable actor UUID, reason, timestamp, requestId and cash/fee lines. Actor email, invoice labels, current invoice/payment versions and reversal linkage are display/current state from the same SQL snapshot; they may change between pages. REVERSE entries show the original confirmation lines. No GET initializes ledger state, locks rows or writes audit. Recover a lost confirmation response by finding its requestId. ADMIN and ACCOUNTANT may read this history.
+         */
+        get: operations["listAllocationHistory"];
         put?: never;
         /**
          * Confirm a human-selected cash allocation with explicit fees
@@ -805,6 +809,52 @@ export interface components {
             items: components["schemas"]["ReceivableResponse"][];
             nextCursor: string | null;
         };
+        AllocationHistoryLine: {
+            /** Format: uuid */
+            invoiceId: string;
+            invoiceNumber: string;
+            /** Format: uuid */
+            customerId: string;
+            customerName: string;
+            observedInvoiceVersion: string;
+            currentInvoiceVersion: string;
+            /** Format: int64 */
+            cashAmount: number;
+            /** Format: int64 */
+            feeAmount: number;
+        };
+        AllocationHistoryEntry: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @enum {string} */
+            kind: "CONFIRM" | "REVERSE";
+            /** Format: uuid */
+            reversesId: string | null;
+            /** Format: uuid */
+            reversedByOperationId: string | null;
+            paymentVersion: string;
+            /** Format: uuid */
+            actorUserId: string;
+            /**
+             * Format: email
+             * @description Current display contact for the immutable actor UUID.
+             */
+            actorEmail: string;
+            reason: string;
+            /** Format: date-time */
+            occurredAt: string;
+            /** @description Original confirmation cash/fee lines, including for REVERSE; observedInvoiceVersion is the version at that original confirmation. */
+            lines: components["schemas"]["AllocationHistoryLine"][];
+        };
+        AllocationHistoryPage: {
+            /** Format: uuid */
+            paymentId: string;
+            expectedPaymentVersion: string;
+            items: components["schemas"]["AllocationHistoryEntry"][];
+            nextCursor: string | null;
+        };
         AllocationInvoiceVersion: {
             /** Format: uuid */
             invoiceId: string;
@@ -1379,6 +1429,44 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listAllocationHistory: {
+        parameters: {
+            query?: {
+                /** @description Exact nextCursor from the preceding page; omit or send an empty value for the first page. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operation history and current versions from one snapshot; nextCursor is null at the end */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllocationHistoryPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Payment not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     confirmAllocation: {

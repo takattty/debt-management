@@ -10,12 +10,12 @@ const invoice: Invoice = { id: 'invoice-a', customerId: customer.id, customerCod
 const original: InvoiceHistory = { revision: 0, operation: 'CREATED', reason: null, actorUserId: session.userId, occurredAt: invoice.createdAt, snapshot: { ...invoice, sourceBatchId: 'original-batch' }, actorEmail: session.email };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
-function setup(options: { conflict?: boolean; lost?: boolean; paged?: boolean; status?: Invoice['status']; allocated?: boolean; denied?: boolean } = {}) {
+function setup(options: { conflict?: boolean; lost?: boolean; paged?: boolean; status?: Invoice['status']; allocated?: boolean; denied?: boolean; occurredAt?: string } = {}) {
   let current = { ...invoice, status: options.status ?? invoice.status, outstandingAmount: options.allocated ? 50000 : invoice.outstandingAmount };
   let writes = 0;
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
-    if (path.includes('/history?')) return json({ items: path.includes('cursor=0&') ? [{ ...original, revision: 1, operation: 'CORRECTED', reason: '架空の過去の訂正' }] : [original], nextCursor: options.paged && !path.includes('cursor=0&') ? 0 : null });
+    if (path.includes('/history?')) return json({ items: path.includes('cursor=0&') ? [{ ...original, revision: 1, operation: 'CORRECTED', reason: '架空の過去の訂正' }] : [{ ...original, occurredAt: options.occurredAt ?? original.occurredAt }], nextCursor: options.paged && !path.includes('cursor=0&') ? 0 : null });
     if (init?.method === 'POST' && path.endsWith('/cancel')) {
       writes++;
       if (options.denied) return json({ code: 'ACCESS_DENIED' }, 403);
@@ -46,6 +46,17 @@ async function draft(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('Invoice correction and immutable history', () => {
+  it('shows the current actor email and JST recorded time while keeping the original audit ID available', async () => {
+    const { user } = setup({ occurredAt: '2026-12-31T15:00:00Z' });
+    const table = await screen.findByRole('table', { name: '請求履歴' });
+    expect(within(table).getByText(/担当者：accountant@example.test/)).toBeVisible();
+    expect(within(table).getByText('2027/01/01 00:00:00（日本時間 / JST）')).toBeVisible();
+    expect(table).toHaveTextContent('2026-10-30'); expect(table).toHaveTextContent('2026-11-30');
+    expect(within(table).getByText(session.userId)).not.toBeVisible();
+    await user.click(within(table).getByText('監査用の担当者ID'));
+    expect(within(table).getByText(session.userId)).toBeVisible();
+  });
+
   it('retains draft on conflict and requires explicit comparison before using the latest version', async () => {
     const { user, fetch } = setup({ conflict: true }); await draft(user);
     await user.click(screen.getByRole('button', { name: '訂正を保存' }));

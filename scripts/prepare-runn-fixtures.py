@@ -46,8 +46,8 @@ for tenant in ('alpha', 'beta'):
         writer.writerows([customer_code, number, '2020-01-01', '2020-01-31', '1000'] for number in numbers)
 (root / 'runn-existing-invoices.json').write_text(json.dumps(baseline), encoding='utf-8')
 
-payments = [[f'PAY-{uuid.uuid4()}', '2026-10-30', '架空入金A', '100000'],
-            [f'PAY-{uuid.uuid4()}', '2026-10-31', '架空入金B', '200000']]
+payments = [[f'PAY-{uuid.uuid4()}', '0001-01-01', '架空入金A', '100000'],
+            [f'PAY-{uuid.uuid4()}', '9999-12-31', '架空入金B', '200000']]
 for name, data in (('valid', payments), ('invalid', [payments[0], [payments[1][0], '2026-02-30', '架空入金B', '0']])):
     with (root / f'runn-payment-{name}.csv').open('w', encoding='utf-8-sig', newline='') as target:
         writer = csv.writer(target, lineterminator='\r\n')

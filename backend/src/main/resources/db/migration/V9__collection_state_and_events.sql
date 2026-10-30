@@ -41,7 +41,7 @@ CREATE TABLE collection_event (
     CHECK ((held AND hold_reason IS NOT NULL AND hold_reason ~ '[^[:space:]]') OR (NOT held AND hold_reason IS NULL)),
     CHECK (note IS NULL OR note ~ '[^[:space:]]'),
     CHECK ((kind='NOTE' AND note IS NOT NULL AND reason IS NULL)
-        OR (kind='HOLD' AND held AND reason=hold_reason AND reason ~ '[^[:space:]]')
+        OR (kind='HOLD' AND held AND reason IS NOT NULL AND reason=hold_reason AND reason ~ '[^[:space:]]')
         OR (kind='RELEASE' AND NOT held AND reason IS NOT NULL AND reason ~ '[^[:space:]]'))
 );
 

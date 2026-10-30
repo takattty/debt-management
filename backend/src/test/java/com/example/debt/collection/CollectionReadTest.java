@@ -152,6 +152,13 @@ class CollectionReadTest {
         assertThat(extreme.daysOverdue()).isEqualTo(3652058);
     }
 
+    @Test
+    void holdEventsRequireTheirOwnExplicitReasonAtTheDatabaseBoundary() {
+        assertThatThrownBy(() -> event("HOLD", null, null, true, "入金確認待ち", null)).isInstanceOf(DataAccessException.class);
+        assertThat(queries.get(AuthFixtures.ALPHA, overdue, AS_OF).version()).isZero();
+        assertThat(queries.history(AuthFixtures.ALPHA, overdue, 0, 100).items()).isEmpty();
+    }
+
     private UUID allocate(long cash, long fee) {
         return transaction.execute(status -> {
             var locked = ledger.lockPositions(AuthFixtures.ALPHA, payment, List.of(overdue));

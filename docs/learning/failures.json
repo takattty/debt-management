@@ -1276,6 +1276,12 @@
           "summary": "確認E2Eでも同じhelperがfilter応答と描画前にlocator.countを分岐に使い次ページdisabledで失敗した",
           "evidence": "work/settlement-fe-20261030T0825-e2e.log",
           "recorded_at": "2026-10-30T08:26:19+00:00"
+        },
+        {
+          "event": "allocation-session-expiry-before-history-read-settled-20261030",
+          "summary": "選択解除の同期DOM変化だけを待ってcookieを削除し、継続中historyGETの401による正しいsession破棄が後続button操作へ先行してtestがtimeoutした",
+          "evidence": "work/settlement-fe-20261030T0838-e2e.log",
+          "recorded_at": "2026-10-30T08:40:11+00:00"
         }
       ],
       "resolutions": [
@@ -1286,6 +1292,14 @@
           "guard": "frontend/e2e/payment-allocation.spec.ts",
           "event_count": 2,
           "resolved_at": "2026-10-30T08:28:41+00:00"
+        },
+        {
+          "cause": "非同期状態の一部のDOM変化をquery phase全体の完了と仮定した。初回はfilter描画前の分岐、再発は選択解除だけを待ってhistoryGET継続中にcookieを削除した",
+          "prevention": "filterとcursorのexactAPI応答と返却ID描画を待って分岐する。意図的session失効前は候補refreshbutton有効と当該payment空履歴表示の両方を待つ。失効後は対象候補GETの401を明示的に待ち、login画面を確認する",
+          "verification": "source検査で両readの完了を示すUI条件と当該paymentの候補GET401の明示assertを確認。直前lintのstatusguard4testsと型検査成功、product/unit sourceは113unit合格時から不変。次は失敗したtarget1件のみ実行し成功後に新backendprocessで全21+nativeを実行する。0838の20成功と1失敗を保持",
+          "guard": "frontend/e2e/payment-allocation.spec.ts",
+          "event_count": 3,
+          "resolved_at": "2026-10-30T08:41:28+00:00"
         }
       ]
     }

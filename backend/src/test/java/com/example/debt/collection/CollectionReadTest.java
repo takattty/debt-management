@@ -86,7 +86,8 @@ class CollectionReadTest {
 
     @AfterEach
     void resetOnlyDedicatedJUnitDatabaseImmutableFixtures() {
-        jdbc.sql("TRUNCATE collection_event,collection_state,allocation_line,allocation_operation,reconciliation_payment_state,payment").update();
+        // Explicit test-only TRUNCATE includes immutable audits; runtime UPDATE/DELETE stay forbidden.
+        jdbc.sql("TRUNCATE audit_event,collection_event,collection_state,allocation_line,allocation_operation,reconciliation_payment_state,payment").update();
         jdbc.sql("DELETE FROM invoice WHERE id IN (:ids)").param("ids", invoiceIds).update();
         jdbc.sql("DELETE FROM customer WHERE id IN (?,?)").params(customer, foreignCustomer).update();
         jdbc.sql("DELETE FROM import_batch WHERE id IN (?,?,?)").params(invoiceBatch, foreignBatch, paymentBatch).update();

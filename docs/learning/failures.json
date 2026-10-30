@@ -128,6 +128,34 @@
       ]
     },
     {
+      "key": "immutable-audit-test-fixture-cleanup",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "collection-audit-leftover-identity-cleanup",
+          "summary": "新たにimmutable化したCollection監査fixtureが残りIdentity testの既存DELETE cleanupが拒否された",
+          "evidence": "backend/src/test/java/com/example/debt/collection/CollectionReadTest.java",
+          "recorded_at": "2026-10-30T03:23:16+00:00"
+        },
+        {
+          "event": "collection-audit-leftover-invitation-cleanup",
+          "summary": "同じ監査fixture残留で別Invitation testの既存DELETE cleanupも拒否された",
+          "evidence": "backend/src/test/java/com/example/debt/collection/CollectionReadTest.java",
+          "recorded_at": "2026-10-30T03:23:16+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "専用Collection JUnit fixtureの後処理にimmutable auditを含めず、後続testの従来DELETE cleanupへ残留させた",
+          "prevention": "Collection fixtureの専用DB用TRUNCATE対象へaudit_eventを明示追加し、runtime/他ownerDBでは実行しない境界をguard化する",
+          "verification": "専用JUnit debt_collection_finalだけの残留auditをTRUNCATEしcount0を実確認。production UPDATE/DELETE triggerは変更せず、修正後の全suiteを次に再検証する",
+          "guard": "backend/src/test/java/com/example/debt/collection/CollectionReadTest.java",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T03:23:16+00:00"
+        }
+      ]
+    },
+    {
       "key": "ledger-stale-isolation-snapshot",
       "status": "resolved",
       "events": [

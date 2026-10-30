@@ -9,6 +9,8 @@ export type ImportBatch = components['schemas']['ImportBatchResponse'];
 export type ImportRow = components['schemas']['ImportRowResponse'];
 export type ImportError = components['schemas']['ImportErrorResponse'];
 export type Receivable = components['schemas']['ReceivableResponse'];
+export type Invoice = components['schemas']['InvoiceResponse'];
+export type InvoiceHistory = components['schemas']['InvoiceHistoryEntry'];
 export type ReceivablesQuery = NonNullable<operations['listReceivables']['parameters']['query']>;
 type Csrf = components['schemas']['CsrfResponse'];
 type LoginInput = operations['login']['requestBody']['content']['application/json'];
@@ -36,6 +38,11 @@ export const api = {
   login: (body: LoginInput, csrf: Csrf) => request({ path: '/api/auth/login', method: 'POST' }, csrf, body),
   getSession: () => request({ path: '/api/session', method: 'GET' }, undefined),
   listCustomers: () => request({ path: '/api/customers', method: 'GET' }, undefined),
+  getInvoice: (id: string) => request({ path: '/api/invoices/{id}', method: 'GET', url: invoiceUrl(id) }, undefined),
+  listInvoiceHistory: (id: string, cursor = -1) => request({ path: '/api/invoices/{id}/history', method: 'GET', url: `${invoiceUrl(id)}/history?cursor=${cursor}&limit=50` }, undefined),
+  correctInvoice: (csrf: Csrf, id: string, body: operations['correctInvoice']['requestBody']['content']['application/json']) => request(
+    { path: '/api/invoices/{id}', method: 'PUT', url: invoiceUrl(id) }, csrf, body,
+  ),
   listReceivables: (query: ReceivablesQuery = {}) => {
     const parameters = new URLSearchParams();
     Object.entries(query).forEach(([key, value]) => { if (value !== undefined) parameters.set(key, String(value)); });
@@ -86,6 +93,7 @@ export class ApiError extends Error {
 
 type RequestEndpoint<E extends Endpoint = Endpoint> = E & { url?: string };
 const importUrl = (id: string) => `/api/imports/${encodeURIComponent(id)}`;
+const invoiceUrl = (id: string) => `/api/invoices/${encodeURIComponent(id)}`;
 
 async function request<E extends Endpoint>(endpoint: RequestEndpoint<E>, csrf: Csrf | undefined, ...body: RequestBody<E>): Promise<SuccessOf<OperationOf<E>>> {
   const response = await send(endpoint, csrf, body.length ? JSON.stringify(body[0]) : undefined);
@@ -127,6 +135,7 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       ? failure.code : undefined;
     const invitation = endpoint.path.startsWith('/api/invitations');
     const importing = endpoint.path.startsWith('/api/imports');
+    const invoicing = endpoint.path.startsWith('/api/invoices');
     const messages: Record<number, string> = {
       400: endpoint.path === '/api/auth/login' ? 'メールアドレスとパスワードの入力内容を確認してください。'
         : endpoint.path === '/api/invitations' ? '招待先のメールアドレスと権限を確認してください。'
@@ -154,7 +163,14 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
     };
     const details = typeof failure === 'object' && failure !== null && 'errors' in failure && Array.isArray(failure.errors)
       ? failure.errors.filter((item): item is components['schemas']['FieldError'] => typeof item === 'object' && item !== null && typeof item.field === 'string' && typeof item.message === 'string') : [];
-    throw new ApiError(response.status, (importing && code ? importMessages[code] : undefined) ?? messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
+    const invoiceMessages: Record<string, string> = {
+      VERSION_CONFLICT: '他の担当者が更新しました。最新内容を取得し、入力中の内容と比較してください。',
+      INVOICE_NOT_ACTIVE: 'この請求は取消済みです。最新内容と履歴を確認してください。',
+      INVOICE_ALLOCATED: '消込がある請求は訂正・取消できません。先に対象の消込を取り消してください。',
+      NOT_FOUND: '請求が見つかりません。請求IDと一覧を確認してください。',
+    };
+    const invoiceMessage = invoicing ? (code ? invoiceMessages[code] : undefined) ?? (response.status === 400 ? '顧客・日付・正の円整数の金額・理由を確認してください。' : response.status === 404 ? invoiceMessages.NOT_FOUND : undefined) : undefined;
+    throw new ApiError(response.status, invoiceMessage ?? (importing && code ? importMessages[code] : undefined) ?? messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
   }
   return response;
 }

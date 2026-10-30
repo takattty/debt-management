@@ -324,6 +324,12 @@
           "summary": "pinned runn1.11.1でfolded scalarのtestがboolean式ではなく文字列として扱われた",
           "evidence": "backend/runn/customer-import.yml",
           "recorded_at": "2026-10-29T23:24:35+00:00"
+        },
+        {
+          "event": "ledger-read-bind-yaml-comment",
+          "summary": "追加bookの未引用bind式中の空白後記号がYAMLcommentとなり式が途中で切れた",
+          "evidence": "docs/learning/ledger-prep-source-validation.md",
+          "recorded_at": "2026-10-30T06:07:32+00:00"
         }
       ],
       "resolutions": [
@@ -334,6 +340,14 @@
           "guard": "backend/runn/customer-import.yml",
           "event_count": 2,
           "resolved_at": "2026-10-29T23:24:35+00:00"
+        },
+        {
+          "cause": "runn bind式をplain scalarにして式内記号のYAML解釈を見落とした",
+          "prevention": "bindとtest式の記号をquotedかblock scalarで保持する実行前guardを明記した",
+          "verification": "bind2箇所の引用後に一意fixture2回と既存関連3bookが実HTTPで成功した",
+          "guard": "backend/runn/ledger/read-guard.yml",
+          "event_count": 3,
+          "resolved_at": "2026-10-30T06:07:32+00:00"
         }
       ]
     },
@@ -352,6 +366,18 @@
           "summary": "CustomerImportConfirmationという未存在class名を推測して同じ読込失敗が再発した",
           "evidence": "docs/learning/README.md",
           "recorded_at": "2026-10-29T23:50:51+00:00"
+        },
+        {
+          "event": "ledger-prep-auth-settings-guess",
+          "summary": "旧prepのtest専用設定名を未列挙で推測し実在しないpathを読もうとした",
+          "evidence": "docs/learning/ledger-prep-source-validation.md",
+          "recorded_at": "2026-10-30T06:07:32+00:00"
+        },
+        {
+          "event": "ledger-prep-payment-book-guess",
+          "summary": "旧prepの入金runn名を責務から推測し実在しないpathを読もうとした",
+          "evidence": "docs/learning/ledger-prep-source-validation.md",
+          "recorded_at": "2026-10-30T06:07:32+00:00"
         }
       ],
       "resolutions": [
@@ -362,6 +388,14 @@
           "guard": "docs/learning/README.md",
           "event_count": 2,
           "resolved_at": "2026-10-29T23:50:51+00:00"
+        },
+        {
+          "cause": "古いprepの構成を前のtreeから推測し設定やYAMLをcatalog対象から漏らした",
+          "prevention": "codeと同じく設定やrunnも実catalogを確認した次callで観測済pathだけを読む手順を明文化した",
+          "verification": "active helperの曖昧main/test拒否と次callの一意完全path読取、実設定と入金book catalogを確認した",
+          "guard": "docs/learning/ledger-prep-source-validation.md",
+          "event_count": 4,
+          "resolved_at": "2026-10-30T06:07:32+00:00"
         }
       ]
     },

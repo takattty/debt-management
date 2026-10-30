@@ -42,3 +42,5 @@ work証拠を相対pathで直接読む操作も再発したため、`python3 scr
 helperが未導入の古い証拠checkoutから相対pathでhelperを呼ぶ失敗も観測した。Coordinatorはactive code checkout内のhelper絶対pathを使用する。helperの所有先と証拠の所有先は別に解決し、Docker等の操作は証拠readerと別commandで実行する。
 
 source classのfilenameも推測しない。最初に`rg --files`で対象packageの実在pathを列挙し、出力を確認した次のcommandで列挙済みpathだけを読む。discoveryと未確認の`cat`を同じbatchに組み込まず、名前の近いclassや責務からfilenameを作らない。
+
+古いprepで設定/YAML/runnの名前を探す場合もsource catalogを先行する。`rg --files backend/src backend/runn`の実出力を確認した次callで、列挙済みpathだけを読む。test profile名から設定filenameを生成せず、API名からbook名を生成しない。新しいactive helperが旧prepにもあると仮定しない。runn bind/testの式中に`#`がある場合はquoted/block scalarにしてYAML comment解釈を防ぐ。検証例は[ledger prep source/scalar](ledger-prep-source-validation.md)を参照する。

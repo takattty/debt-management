@@ -6,7 +6,7 @@
 | --- | --- |
 | pr47-correction-status-strict-831-20261030 | 請求訂正成功と一覧loadingが一致。旧correction treeの `work/independent-e2e-831-failed.log` で13件中12成功・1失敗を直接照合済み |
 | guide-cancellation-status-strict-20261030 | guide取消時に既存訂正成功と一覧loadingが一致。guide treeの `work/guide-browser-initial-failed.log` とsourceを直接照合済み。取消自体はcommit済みのためGETで回復確認した |
-| allocation-e2e-recovery-status-scope-20261030 | financial FE準備の応答消失回復後に候補と一覧loadingが一致。`debt-settlement-frontend/work/settlement-fe-20261030T0833-e2e.log` に旧5/7ではなく全21件中19成功・2失敗のうち、この1失敗を保存した |
+| allocation-e2e-recovery-status-scope-20261030 | financial FE準備の応答消失回復後に候補と一覧loadingが一致。`debt-settlement-frontend/work/settlement-fe-20261030T0833-e2e.log` に全21件中19成功・2失敗のうち、このstatus競合1件を保存した |
 
 `statusFeedback(Page | Locator, string | RegExp)` はrole=statusを期待文言で絞る3行のhelperで、既存のexpectと期待文言を維持する。同文言が複数ある場合は所有regionをscopeにする。`.first()`や固定sleepで曖昧さを隠さない。
 
@@ -16,6 +16,16 @@ main `7e15391fab7a4fa59470b39b36bf8fb8924047ce` の既存20keys/60events/resolut
 
 ## 検証対象
 
-静的検証と既存15E2E/native2の実行は次のphaseで行い、成功は結果が得られてから記録する。依存物は保護されたacceptance treeのnode_modulesを読取再利用し、npm ciで変更しない。
+実行対象sourceは `39488e9`。依存物は保護されたacceptance treeのnode_modulesを読取再利用し、npm ciで変更していない。
+
+| 検証 | 結果・所有work証拠 |
+| --- | --- |
+| 必須lintとguard | 成功。直書き/filter付き/computed/statictemplateを拒否し、Page/region helper・helper本体・product/unitを許可するNode4tests。`work/status-main-0912-static.log` |
+| 型・既存単体・生成整合・build | 成功。Vitest80件、生成差分0。同static log |
+| 実API/DBの既存browserフロー | 15件成功。`work/status-main-20261030T0913-e2e.log` |
+| production native BFCache | 2件成功。同E2E log |
+| baseline保持 | 正規APIで用意した古い52請求×2tenantの前後fingerprint一致。`work/status-main-20261030T0913-baseline.json` と `work/status-main-0913-harness.py` |
+
+API setup→同一JAR/DBの正常再起動→browser/nativeを直列実行し、backend/Viteは同親でwaitして正常停止した。固定sleep・429再送・DB cleanupは行っていない。ログ、HTML、結果はphase固有pathへ新規作成し上書きしない。
 
 runtimeには独立レビュー済み `7a311c23d776ae7477a0fda9a083ff589d513a71` のJARを使用する。全tree OIDは `05f9de7f1432795f4092754042fb32b617ee0d82`、JAR SHA256は `e287b2389b23beb92027c82d3bea72ce100ec7f45a90502a8cddf32bbd97777e`。7eと7aのfrontend/contracts差分は0だが、7aにはpayment previewのbackend変更があるため、7eそのもののruntimeと主張しない。専用架空DBでAPI setup後に同一artifact/DBのbackendを正常再起動してbrowser phaseを分離する。

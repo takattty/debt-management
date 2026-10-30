@@ -914,6 +914,14 @@
           "guard": "frontend/eslint.config.js",
           "event_count": 3,
           "resolved_at": "2026-10-30T08:38:04+00:00"
+        },
+        {
+          "cause": "共有画面の複数statusをroleだけで単一通知と仮定した。局所対策だけでは別の実行で3回目のstrict失敗が起きた",
+          "prevention": "statusFeedback(Pageまたは所有region,期待文言)を使い元のexpectを保つ。必須lintのE2E-only AST ruleとknownRED/allowed4testsでhelper以外の直書きを拒否する。私有probeにも同じ規約と事前snapshot永続化を適用する",
+          "verification": "main7e上の単独guard source39488e9でlint/guard4・型・既存80unit・生成整合・buildが成功。reviewed7a JAR e287b238を専用DBでAPI setup後に正常再起動し、既存15E2EとnativeBFCache2が全成功。52請求×2tenantのfingerprintを維持。旧main20keys/60events/resolutionsとcanonical3eventIDは完全保存。GitHub CIと独立reviewはCoordinator側の後続",
+          "guard": "frontend/eslint.config.js",
+          "event_count": 3,
+          "resolved_at": "2026-10-30T09:15:47+00:00"
         }
       ]
     }

@@ -40,6 +40,12 @@ PRのhead/base取得は `python3 /absolute/active-checkout/scripts/gh-pr-metadat
 
 source readerのstdoutはheader・行番号・候補path込みでUTF-8 8KiB上限、超過はstdout空で拒否する。原則1 bounded readerを1 tool callで表示し、`max_output_tokens` は8192以上を確保する。文字数・byte数・token数は同じではなく、各文書の文字数制限だけで合算出力を安全と判断しない。stdout総UTF-8 byte数とwrapperの余裕も確認し、不明なら範囲を縮める。raw `git diff`、Issue/GitHub応答はworkへ保存し、stdoutはID・URL・byte数・hash等の小さいscalar metadataだけにする。環境statusはready/enforced等のflagsだけを表示し、allowed-host一覧全文とsourceを合算しない。実観測と検証は[Source output validation](docs/learning/source-output-validation.md)。
 
+任意のtool結果もtop `content[].text` だけでsmallと判断せず、常に全envelopeをJSON化したUTF-8総量をemit前に確認する。結果は保存し、raw `text(result)` の代わりに保存済みJSONを `scripts/json-metadata.py` へ渡す。文字列値の本文ゼロ、field名/件数とdepth/node制限、最終JSON4KiB以内をhelperが強制する。[保存・metadata recipe](docs/learning/json-envelope-metadata-validation.md)を使い、保存後のraw再表示も禁止する。
+
+再開時は、指定operatorのAGENTS/learningをboundedな小範囲の単独callで確認してからpolicy/environmentへ進む。policy全文とAGENTS/FE AGENTSを合算表示しない。policyは同docのversion/vpn/type/host_count whitelistとemit前4KiB検査のrecipe、環境toolは既存3scalar recipeを単独callで使う。
+
+readerの入力scopeも先に確認する。read-sourceは定義suffix限定（.md/.json対象外）、read-evidenceはowner指定の相対work/...限定。既観測の非source doc/configには同docの行範囲＋UTF-8 cap付き専用recipeを使い、helper対象外の入力を別helperへ推測で渡し直さない。
+
 最初のdiscovery（worktree一覧・GitHub取得等）より先に、指定されたoperator checkoutのAGENTSとlearningを小さい範囲で確認する。tool inventoryは必要なnameだけに絞りdescription全文を表示しない。環境toolは戻り値を保持し、`const s = r.structuredContent; text({ observations_current: s?.observations_current, phase: s?.observed_phase, networkState: s?.network_policy?.state });` のscalarだけを表示する。`text(r)`を使わない。worktree一覧・未絞込catalog・GitHub本文はworkへ保存してpath・ID・URL・bytes・hashだけを表示し、必要部分を次の別callで読む。[実行recipe](docs/learning/source-output-validation.md#最初のdiscoveryとscalar表示)を使う。8192の指定単独では安全を保証せず、helperのbyte cap・1call・metadata表示を併用する。
 
 過去文脈・summaryに推定名があっても、ソース読込は同checkoutのcatalogを先の別callで観測し、その実出力から次callのpathを作る。`python3 /absolute/active-checkout/scripts/read-source.py Invoice --list --worktree /absolute/target-checkout` でGit管理下の実在sourceを列挙し、次callで観測した相対pathと `--start 1 --end 180` を指定して読む。複数候補・不一致時は内容を読まず候補を返すため、推測pathで直接cat/sedを反復しない。

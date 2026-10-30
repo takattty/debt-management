@@ -4,6 +4,8 @@
 
 各作業の開始時と関連する操作の直前に `failures.json` を読み、適用する guard を確認する。`check` が失敗した場合、対象原因への対策と検証を先に行う。依存しない作業は継続できる。解決後に同じ原因の新しい失敗が起きた場合は再度 open となり、既存の対策が不十分だった原因と改善を記録する。
 
+tool結果はtop `content[].text` の短さで判断せず、JSON化した全envelopeのUTF-8総量を表示前に確認する。raw表示の代わりに `scripts/json-metadata.py` へ保存済みJSONを渡し、文字列本文ゼロ・depth/node制限・最終4KiB以内のmetadataだけを使う。[実nested事象と保存recipe](json-envelope-metadata-validation.md)を参照し、保存した結果を後からraw表示しない。
+
 GitHub上流のGET500/502/503/504だけは合計最大3回のbounded retryとし、403/settings/billing拒否は再試行しない。POST/mergeの結果不明ではexact head/bodyを成功したGETで事実確認してから再操作を判断し、metadata不明ならmergeしない。[GitHub upstream transient guard](github-upstream-transient-validation.md)に実2件・判定手順・検証の境界を保存する。
 
 ## CLI

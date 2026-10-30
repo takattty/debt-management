@@ -4,6 +4,48 @@
  */
 
 export interface paths {
+    "/api/invoices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Read an invoice including its cancelled state */
+        get: operations["getInvoice"];
+        /**
+         * Correct an active unallocated invoice with a reason and expected version
+         * @description Invoice number is immutable, including after cancellation. Locks the invoice and appends revision and audit atomically; a stale version or active allocation prevents changes. Settlement dispatch is not present yet; enabling it requires a real ledger eligibility adapter.
+         */
+        put: operations["correctInvoice"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invoices/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Read immutable invoice revisions in increasing revision order */
+        get: operations["listInvoiceHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/receivables": {
         parameters: {
             query?: never;
@@ -406,6 +448,82 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        InvoiceCorrectionRequest: {
+            /** Format: int64 */
+            version: number;
+            /** Format: uuid */
+            customerId: string;
+            /** Format: date */
+            issueDate: string;
+            /** Format: date */
+            dueDate: string;
+            /** Format: int64 */
+            amount: number;
+            reason: string;
+        };
+        InvoiceResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            customerId: string;
+            customerCode: string;
+            customerName: string;
+            invoiceNumber: string;
+            /** Format: date */
+            issueDate: string;
+            /** Format: date */
+            dueDate: string;
+            /** Format: int64 */
+            amount: number;
+            /** Format: int64 */
+            outstandingAmount: number;
+            /** Format: int64 */
+            version: number;
+            /** @enum {string} */
+            status: "ACTIVE" | "CANCELLED";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            cancelledAt: string | null;
+        };
+        InvoiceHistorySnapshot: {
+            /** Format: uuid */
+            customerId: string;
+            customerCode: string;
+            customerName: string;
+            invoiceNumber: string;
+            /** Format: date */
+            issueDate: string;
+            /** Format: date */
+            dueDate: string;
+            /** Format: int64 */
+            amount: number;
+            /** @enum {string} */
+            status: "ACTIVE" | "CANCELLED";
+            /** Format: uuid */
+            sourceBatchId: string;
+            /** Format: int64 */
+            version: number;
+        };
+        InvoiceHistoryEntry: {
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            operation: "CREATED" | "CORRECTED" | "CANCELLED";
+            reason: string | null;
+            /** Format: uuid */
+            actorUserId: string;
+            /** Format: date-time */
+            occurredAt: string;
+            snapshot: components["schemas"]["InvoiceHistorySnapshot"];
+        };
+        InvoiceHistoryPage: {
+            items: components["schemas"]["InvoiceHistoryEntry"][];
+            /** Format: int64 */
+            nextCursor: number | null;
+        };
         ReceivableResponse: {
             /** Format: uuid */
             id: string;
@@ -599,6 +717,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description Invoice not found in the authenticated tenant, including deliberately hidden cross-tenant IDs */
+        InvoiceNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
         /** @description Batch not found in the authenticated tenant */
         ImportNotFound: {
             headers: {
@@ -650,6 +777,100 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current invoice facts and derived outstanding amount */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["InvoiceNotFound"];
+        };
+    };
+    correctInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Corrected invoice and incremented version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["InvoiceNotFound"];
+            /** @description VERSION_CONFLICT, INVOICE_NOT_ACTIVE or INVOICE_ALLOCATED; reload or reverse the active settlement first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listInvoiceHistory: {
+        parameters: {
+            query?: {
+                cursor?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description At most limit revisions; null nextCursor indicates the end */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceHistoryPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["InvoiceNotFound"];
+        };
+    };
     listReceivables: {
         parameters: {
             query?: {

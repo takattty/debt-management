@@ -228,6 +228,40 @@ steps:
               dueDate: '2026-11-30'
               amount: 110000
     test: current.res.status == 400
+  rejectTimestampDate:
+    invalid:
+      /api/invoices/{{ firstReceivable }}:
+        put:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 0
+              customerId: '{{ customerId }}'
+              issueDate: '2026-10-29T12:34:56'
+              dueDate: '2026-11-30'
+              amount: 110000
+              reason: 日付形式の検証
+    test: current.res.status == 400
+  rejectArrayDate:
+    invalid:
+      /api/invoices/{{ firstReceivable }}:
+        put:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 0
+              customerId: '{{ customerId }}'
+              issueDate: '2026-10-29'
+              dueDate: [2026, 11, 30]
+              amount: 110000
+              reason: 日付形式の検証
+    test: current.res.status == 400
   correct:
     api:
       /api/invoices/{{ firstReceivable }}:
@@ -238,12 +272,13 @@ steps:
             application/json:
               version: 0
               customerId: '{{ customerId }}'
-              issueDate: '2026-10-29'
-              dueDate: '2026-11-30'
+              issueDate: '0001-01-01'
+              dueDate: '9999-12-31'
               amount: 110000
               reason: 税込金額を訂正
     test: current.res.status == 200 && current.res.body.version == 1 && current.res.body.amount == 110000
       && current.res.body.outstandingAmount == 110000
+      && current.res.body.issueDate == '0001-01-01' && current.res.body.dueDate == '9999-12-31'
   staleCorrection:
     api:
       /api/invoices/{{ firstReceivable }}:
@@ -273,6 +308,7 @@ steps:
           body: null
     test: current.res.status == 200 && current.res.body.items[0].operation == 'CORRECTED'
       && current.res.body.items[0].snapshot.amount == 110000 && current.res.body.items[0].reason == '税込金額を訂正'
+      && current.res.body.items[0].snapshot.issueDate == '0001-01-01' && current.res.body.items[0].snapshot.dueDate == '9999-12-31'
       && current.res.body.nextCursor == null
   cancel:
     api:

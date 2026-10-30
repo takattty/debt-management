@@ -88,6 +88,26 @@ class InvoiceCorrectionTest {
     }
 
     @Test
+    void correctionDatesRejectTimestampsAndCoercionsWithoutChangingInvoiceHistoryOrAudit() throws Exception {
+        var original = queries.get(user.tenantId(), invoice, false);
+        long audits = jdbc.sql("SELECT count(*) FROM audit_event WHERE tenant_id=? AND entity_id=?")
+                .params(user.tenantId(), invoice).query(Long.class).single();
+        for (String field : List.of("issueDate", "dueDate")) {
+            for (String value : List.of("\"2026-10-29T00:00:00\"", "\"2026-10-29T12:34:56\"", "\"2026-10-29T00:00:00Z\"",
+                    "[2026,10,29]", "20665", "true", "\" 2026-10-29\"", "\"2026-10-29 \"", "\"2026-02-30\"", "\"2026-1-1\"")) {
+                var fields = new java.util.HashMap<>(json.readValue(body(0, 110000L, "日付の訂正"), Map.class));
+                fields.put(field, json.readTree(value));
+                mvc.perform(put("/api/invoices/" + invoice).session(alpha).with(csrf().asHeader()).contentType("application/json")
+                        .content(json.writeValueAsString(fields))).andExpect(status().isBadRequest());
+            }
+        }
+        assertThat(queries.get(user.tenantId(), invoice, false)).isEqualTo(original);
+        assertThat(queries.history(user.tenantId(), invoice, -1, 100).items()).hasSize(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_event WHERE tenant_id=? AND entity_id=?")
+                .params(user.tenantId(), invoice).query(Long.class).single()).isEqualTo(audits);
+    }
+
+    @Test
     void correctionsPreserveSupportedIsoDatesInResponsesRevisionsAndAudit() throws Exception {
         var dates = List.of("0001-01-01", "1500-03-01", "1582-10-04", "1582-10-05", "1582-10-10", "1582-10-15", "9999-12-31");
         for (int version = 0; version < dates.size(); version++) {

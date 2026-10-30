@@ -700,6 +700,12 @@
           "summary": "他顧客の既存請求52件が残るDBで未絞込先頭50件に自fixtureがあると仮定したE2Eが失敗した",
           "evidence": "frontend/e2e/invoice-imports.spec.ts",
           "recorded_at": "2026-10-30T01:59:24+00:00"
+        },
+        {
+          "event": "collection-e2e-first-overdue-page-20261030",
+          "summary": "Collection E2Eが超過1日の自fixtureを未絞込先頭pageと仮定し、既存2025年請求52件が残るDBで24件中1件失敗した",
+          "evidence": "docs/learning/existing-invoices-validation.md",
+          "recorded_at": "2026-10-30T04:38:25+00:00"
         }
       ],
       "resolutions": [
@@ -710,6 +716,42 @@
           "guard": "frontend/e2e/invoice-imports.spec.ts",
           "event_count": 2,
           "resolved_at": "2026-10-30T02:03:13+00:00"
+        },
+        {
+          "cause": "ID/filter/keysetを使う文書上の指示だけでは先頭pageを仮定した新E2Eが空DBの通常CIを通り再発した",
+          "prevention": "通常API globの必須bookで各tenant専用顧客に古い未取消請求52件を正規CSV確認APIから残し、同DBでE2Eを実行する。既定先頭50が古い請求で埋まることを実assertし原本を削除しない",
+          "verification": "新book1冊と通常全10冊が0skip0fail。初回104請求104revision106auditを残した同DBでmain全14E2Eを2回成功。同artifact再起動後と両E2E後の原本hash一致。Python38件とcanonicalglobへ実bookが入るmock7件も成功",
+          "guard": "backend/runn/zz-existing-invoices.yml",
+          "event_count": 3,
+          "resolved_at": "2026-10-30T04:47:12+00:00"
+        }
+      ]
+    },
+    {
+      "key": "verification-runtime-process-ownership",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "baseline-handoff-orphan-zombie-20261030",
+          "summary": "相当harnessが別shellへ引き継いだ正常停止済みorphan PIDをkill0だけで生存と誤判定し、再起動前に停止した",
+          "evidence": "docs/learning/existing-invoices-validation.md",
+          "recorded_at": "2026-10-30T04:47:11+00:00"
+        },
+        {
+          "event": "baseline-bash-cleanup-child-left-20261030",
+          "summary": "相当harnessのBash trapが内部errorとなり、npm wrapperだけの停止でVite子processが残った。E2E14件自体は成功していた",
+          "evidence": "docs/learning/existing-invoices-validation.md",
+          "recorded_at": "2026-10-30T04:47:12+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "相当検証を複数shellで継ぎ足しprocessの親子所有関係と終了値を保持せず、shelltrap終了とnpm子processを一括扱いした",
+          "prevention": "canonical verifyの同親waitと終了値保持を継承し、相当harnessもPopen同親waitと所有processgroup限定cleanupを使いport解放を検査する",
+          "verification": "修正後harnessが同jar同DBで14E2E全成功、初回104請求104revision106audit fingerprint不変、所有2processgroup停止と8096/5278空きを確認してexit0",
+          "guard": "docs/learning/existing-invoices-validation.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T04:47:12+00:00"
         }
       ]
     }

@@ -51,7 +51,7 @@ elif command == "python3":
         if mode == "restart-capacity" and any(event["event"] == "stop" for event in events()):
             sys.exit(1)
 elif command == "runn":
-    record("api")
+    record("api", books=args)
     if mode == "dead-api":
         os.kill(latest(), signal.SIGKILL)
         time.sleep(0.05)
@@ -85,6 +85,10 @@ class VerifyPhasesTest(unittest.TestCase):
             (scripts / "toolchain-env.sh").write_text("")
             (root / "backend/build/libs").mkdir(parents=True)
             (root / "backend/build/libs/debt-management.jar").write_text("same artifact")
+            (root / "backend/runn").mkdir()
+            (root / "backend/runn/authentication.yml").write_text("fixture")
+            shutil.copyfile(ROOT / "backend/runn/zz-existing-invoices.yml",
+                            root / "backend/runn/zz-existing-invoices.yml")
             (root / "backend/gradlew").write_text("#!/bin/sh\nexit 0\n")
             (root / "backend/gradlew").chmod(0o755)
             fake = root / "fake.py"
@@ -130,6 +134,8 @@ class VerifyPhasesTest(unittest.TestCase):
         self.assertNotEqual(starts[0]["pid"], starts[1]["pid"])
         self.assertEqual(starts[0]["artifact"], starts[1]["artifact"])
         self.assertEqual(starts[0]["db"], starts[1]["db"])
+        api = next(event for event in events if event["event"] == "api")
+        self.assertIn("backend/runn/zz-existing-invoices.yml", api["books"])
 
     def test_restart_failure_never_runs_e2e_and_cleans_both_pids(self):
         result, events = self.run_verify("restart-fails")

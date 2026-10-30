@@ -470,6 +470,12 @@
           "summary": "容量preflightの実名を観測せずcheck-capacity.pyと推測して実行し、不存在の終了値2となった。読込以外のscript実行にもcatalog確認が必要だった",
           "evidence": "docs/learning/capacity-validation.md",
           "recorded_at": "2026-10-30T01:55:22+00:00"
+        },
+        {
+          "event": "serial-delivery-api-errors-blob-guessed-20261030",
+          "summary": "publisherが未catalogのapi-errors.tsをGit blob照合へ推測指定しpath不存在exit128となった",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:06:51+00:00"
         }
       ],
       "resolutions": [
@@ -504,6 +510,14 @@
           "guard": "AGENTS.md",
           "event_count": 6,
           "resolved_at": "2026-10-30T01:56:00+00:00"
+        },
+        {
+          "cause": "source名catalogのguardを本文読込とscript実行に限定解釈し、Git objectのblob/path存在検査へ未catalog filenameを埋め込んだ",
+          "prevention": "Git objectのSHA:path読込とrev-parseとblob/hash照合も対象SHAの先callのls-treeまたはchanged-file catalog実出力だけを使う。推測名を照合関数へ埋め込まず、最新operator guardを古いtreeにも適用する",
+          "verification": "PR71head7664033の実changed-file catalog9pathsを先callで観測後、次callで全9blobをls-tree OIDと照合し成功。backend/contracts/scriptsの3tree不変を確認し、未存在pathを再試行していない。reader14と全Python71成功、mainの元6eventsと全resolutionを保持して実再発1件だけ追加",
+          "guard": "AGENTS.md",
+          "event_count": 7,
+          "resolved_at": "2026-10-30T12:08:16+00:00"
         }
       ]
     },
@@ -804,6 +818,84 @@
           "summary": "Coordinatorが今回観測して引き継いだ停止済みDocker logs退避の巨大JSON stdoutがtool上限で切断されJSON.parseに失敗した。圧縮size guardの意図的停止は別eventに数えない",
           "evidence": "docs/learning/evidence-output-validation.md",
           "recorded_at": "2026-10-30T05:38:24+00:00"
+        },
+        {
+          "event": "ledger-review-multifile-source-truncated-20261030",
+          "summary": "独立reviewの複数sourceまとめ読込がtool出力budgetを越えて表示切断した。JSON parseは行わず欠落を成功扱いしなかった",
+          "evidence": "AGENTS.md",
+          "recorded_at": "2026-10-30T06:29:25.163832+00:00"
+        },
+        {
+          "event": "ledger-review-source-budget-still-short-20261030",
+          "summary": "分量を減らした別source batchでもmax_output_tokensが不足し表示切断した。artifactreaderのbyteguard外の直接source出力だった",
+          "evidence": "AGENTS.md",
+          "recorded_at": "2026-10-30T06:29:25.163832+00:00"
+        },
+        {
+          "event": "root-resume-environment-source-output-truncation-20261030-1133",
+          "summary": "root再開時の環境status全文とsourceの合算応答が10905tokensで切断された",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:06:50+00:00"
+        },
+        {
+          "event": "serial-delivery-learning-output-truncation-20261030",
+          "summary": "publisherがAGENTSとskillとlearningとcatalogを合算してtool応答が切断された",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:06:50+00:00"
+        },
+        {
+          "event": "serial-delivery-git-diff-output-truncation-20261030",
+          "summary": "publisherが長いJSX行を含むraw git diffをstdoutへ出しtool応答が切断された",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:06:50+00:00"
+        },
+        {
+          "event": "serial-delivery-multi-issue-token-budget-truncation-20261030",
+          "summary": "publisherがIssueごと1800文字へ制限したが合計3168tokensがmax2800を超えtool応答が切断された",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:06:51+00:00"
+        },
+        {
+          "event": "compose-audit-worktree-list-output-truncated-20261030",
+          "summary": "reviewerが未絞込worktree一覧を表示し8981tokensがmax5000を超えtool応答が切断された。環境全文表示completeのnear missは加算しない",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:21:57+00:00"
+        },
+        {
+          "event": "serial-delivery-initial-tool-catalog-wrapper-truncation-20261030",
+          "summary": "publisher過去実行の遅延記録: 最初のtool discovery/skill/rg catalogを合算したfunctions.execの外側応答にWarning: truncated output (original token count: 26960)、Total output lines: 3を実観測。巨大なALL_TOOLS description一覧とrg結果を合算出力した。後続のlearning単独incident29e104とは別call。",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:26:02+00:00"
+        },
+        {
+          "event": "serial-delivery-initial-environment-status-wrapper-truncation-20261030",
+          "summary": "publisher過去実行の遅延記録: 次のenvironment_status全文・network skill・policy/AGENTS読込を合算したfunctions.execの外側応答にWarning: truncated output (original token count: 10898)、Total output lines: 3を実観測。environment statusのcontentとstructuredContent重複をそのまま出力した。learning/tool budgetの既存3incidentと別call。",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:26:02+00:00"
+        },
+        {
+          "event": "ar-guide-initial-environment-source-wrapper-truncation-20261030",
+          "summary": "先行ガイドtask過去実行の遅延記録: functions.exec outer response combined environment_status full object with AGENTS/catalog/worktree output and explicitly reported Warning: truncated output (original token count: 12801).",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:26:02+00:00"
+        },
+        {
+          "event": "ar-guide-ledger-docs-wrapper-truncation-20261030",
+          "summary": "先行ガイドtask過去実行の遅延記録: functions.exec outer response combined learning record summaries, user guide, README and sample source and explicitly reported Warning: truncated output (original token count: 10291).",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:26:02+00:00"
+        },
+        {
+          "event": "ar-guide-payment-source-truncation-20261030",
+          "summary": "先行ガイドtask過去実行の遅延記録: exec_command combined CSV import source, PaymentCsv, ADR and catalog output; result explicitly reported Warning: truncated output (original token count: 3681), with max_output_tokens 3500.",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:26:02+00:00"
+        },
+        {
+          "event": "ar-guide-allocation-source-truncation-20261030",
+          "summary": "先行ガイドtask過去実行の遅延記録: exec_command combined AllocationCommands matches and AllocationHistory source; result explicitly reported Warning: truncated output (original token count: 2315), with max_output_tokens 2200.",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:26:02+00:00"
         }
       ],
       "resolutions": [
@@ -814,6 +906,38 @@
           "guard": "docs/learning/evidence-output-validation.md",
           "event_count": 2,
           "resolved_at": "2026-10-30T05:40:00+00:00"
+        },
+        {
+          "cause": "artifactのbyte capだけでは直接複数sourceの合算出力を制限できず、旧prepのguardとtooltokenbudgetをそのまま用いたsource text表示が切断した。新2件ではJSON parseは行っていない",
+          "prevention": "read-sourceのheader/行番号/catalogを含むstdoutはUTF8 8192byteでfailclosed。原則1helper1toolcallで十分な予算を確保し、古prepでも最新main operatorのAGENTS/learningと絶対helperを使用して対象worktreeを固定する",
+          "verification": "source reader14件/全Python58件成功。切断対象code5files277行を小分け再読して全行復元、最大1909byte。Markdown3件とcontract差分6478byteも4096byte chunksで全byte照合し原source/doc/artifactのhash不変。既存2JSON事故のevents/resolutionと新2source表示切断を区別保持した",
+          "guard": "docs/learning/source-output-validation.md",
+          "event_count": 4,
+          "resolved_at": "2026-10-30T06:43:58+00:00"
+        },
+        {
+          "cause": "artifactの16KiB制限だけではsourceと環境statusや複数GitHub文書の合算出力を制限できず、各文書の文字数と総token予算を混同した。旧source guardもmainへ未統合だった",
+          "prevention": "source readerをheaderとcatalog込み8KiB atomic stdoutへ制限し14回帰を必須維持。原則1bounded reader1toolcallでmax_output_tokens8192以上、総UTF8 byteも確認。rawdiffとGitHub応答はwork保存しscalar metadata、環境statusはready/enforced flagsだけを表示する",
+          "verification": "移植treeでreader14と全Python71が成功。実App過大出力はexit2 stdout0、実source5files277行とMarkdown3件を完全復元、実contract-reviewed.diff6478byteを2chunksでSHA一致。元main全履歴と旧4event resolutionを保持し実8eventsを統合。負例probeは新eventへ加算していない",
+          "guard": "scripts/read-source.py",
+          "event_count": 8,
+          "resolved_at": "2026-10-30T12:08:16+00:00"
+        },
+        {
+          "cause": "文書guardを知っていても最初のdiscovery前の適用と具体的なscalar抽出手順が不足し、未絞込worktree一覧を直接表示してtool token予算を超えた。環境全文表示は別のnear missで実切断ではない",
+          "prevention": "指定operatorのAGENTSとlearningを最初のdiscoveryより先に確認する。環境toolはstructuredContentから3scalarだけを抽出。worktreeとGitHub本文は先にartifactへ保存しpath/id/url/bytes/hashだけを表示。8KiB helper capと1reader1callとmetadata表示を組み合わせtoken数指定単独へ依存しない",
+          "verification": "新実切断1件だけを追加しmain29keys76eventsと固定141fb38の83eventsと元resolution2/4/8をprefix保持、最終84events/output9を確認。live環境3scalar表示と文書のworktree保存recipeを実行しstdout132bytesのmetadataだけで完了。Python22filesとscripts/testsは固定版byte同一、14/71成功結果を再利用し再実行はしていない。near missは加算しない",
+          "guard": "scripts/read-source.py",
+          "event_count": 9,
+          "resolved_at": "2026-10-30T12:21:57+00:00"
+        },
+        {
+          "cause": "今回の追加はreviewerの未絞込worktree表示1件と、予防策適用前のpublisher外側応答2件および先行ガイドtask4件の計上漏れの遅延記録。外側とnestedの同一実行は1件として数え、環境全文completeのnear missは実切断と区別する",
+          "prevention": "最初のdiscoveryより先に指定operatorのAGENTSとlearningを確認。環境toolはcaptureしてstructuredContentの3scalarのみ表示。ALL_TOOLSも必要なnameと短いmetadataへ絞る。worktreeとGitHub本文はartifact保存後path/id/url/bytes/hashだけ表示し、8KiB helper capと1reader1callを併用。token予算指定単独へ依存しない",
+          "verification": "今回把握済みをmain29keys76eventsと固定141fb38の83eventsのprefix保持で90events/output15へ固定。新実1と過去遅延6は一意、外側nested二重計上とnear miss加算なし。22Python filesとscripts/tests byte同一でreader14/全71の既存成功をreuseし再実行していない。live環境3scalar、worktree保存stdout132bytes、24万byte架空GH応答のmetadata抽出197bytesが成功。GitHub実行なし",
+          "guard": "scripts/read-source.py",
+          "event_count": 15,
+          "resolved_at": "2026-10-30T12:26:02+00:00"
         }
       ]
     },

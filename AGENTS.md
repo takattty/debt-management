@@ -38,7 +38,13 @@ GitHub CLIは `scripts/gh-repo.sh owner/repository command ...` でrepositoryを
 
 PRのhead/base取得は `python3 /absolute/active-checkout/scripts/gh-pr-metadata.py owner/repository PR_NUMBER` を使う。REST応答を検査し、`headRefOid` / `baseRefOid` を返す。`gh pr view --json baseRefOid` は未対応のためwrapperで拒否する。
 
+source readerのstdoutはheader・行番号・候補path込みでUTF-8 8KiB上限、超過はstdout空で拒否する。原則1 bounded readerを1 tool callで表示し、`max_output_tokens` は8192以上を確保する。文字数・byte数・token数は同じではなく、各文書の文字数制限だけで合算出力を安全と判断しない。stdout総UTF-8 byte数とwrapperの余裕も確認し、不明なら範囲を縮める。raw `git diff`、Issue/GitHub応答はworkへ保存し、stdoutはID・URL・byte数・hash等の小さいscalar metadataだけにする。環境statusはready/enforced等のflagsだけを表示し、allowed-host一覧全文とsourceを合算しない。実観測と検証は[Source output validation](docs/learning/source-output-validation.md)。
+
+最初のdiscovery（worktree一覧・GitHub取得等）より先に、指定されたoperator checkoutのAGENTSとlearningを小さい範囲で確認する。tool inventoryは必要なnameだけに絞りdescription全文を表示しない。環境toolは戻り値を保持し、`const s = r.structuredContent; text({ observations_current: s?.observations_current, phase: s?.observed_phase, networkState: s?.network_policy?.state });` のscalarだけを表示する。`text(r)`を使わない。worktree一覧・未絞込catalog・GitHub本文はworkへ保存してpath・ID・URL・bytes・hashだけを表示し、必要部分を次の別callで読む。[実行recipe](docs/learning/source-output-validation.md#最初のdiscoveryとscalar表示)を使う。8192の指定単独では安全を保証せず、helperのbyte cap・1call・metadata表示を併用する。
+
 過去文脈・summaryに推定名があっても、ソース読込は同checkoutのcatalogを先の別callで観測し、その実出力から次callのpathを作る。`python3 /absolute/active-checkout/scripts/read-source.py Invoice --list --worktree /absolute/target-checkout` でGit管理下の実在sourceを列挙し、次callで観測した相対pathと `--start 1 --end 180` を指定して読む。複数候補・不一致時は内容を読まず候補を返すため、推測pathで直接cat/sedを反復しない。
+
+Git objectの `SHA:path` 読込・`rev-parse`・blob/hash照合にも同じcatalog規則を適用する。対象SHAの `git ls-tree` / `git diff --name-only` の実pathを先のcallで観測し、次callでそのpathだけを使用する。存在するはずというfilenameを照合関数へ埋め込まない。古い準備treeでも最新operator checkoutのAGENTS・learningを先に確認し、helperの絶対pathと対象 `--worktree` を固定する。
 
 Cloudのログ保存付き検証は `bash /absolute/checkout/scripts/verify-cloud.sh` を外側リダイレクトなしで実行する。新worktreeのworkディレクトリ作成とログ保存はwrapperに任せ、終了値とwork/cloud-verify.logを確認する。
 

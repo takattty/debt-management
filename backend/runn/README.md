@@ -45,4 +45,4 @@ Binary と checksum は `scripts/runn.sh` で固定する。
 
 CIのqualityはbootstrapの部分検証fallbackを廃止し、scripts/verify.shを必須実行する。verifier消失や非実行権限を部分成功に置き換えない。
 
-`payment-import.yml`は入金専用template/preview/payment-rows、修正前errorの固定、download、CSRF、tenant越境を実HTTPで検証する。段階1は業務入金を作らず、入金の共通rows/confirmを409で拒否する。入金確定と消込は後続段階。
+`payment-import.yml`は入金専用template/preview/payment-rows、修正前errorの固定、download、CSRF、tenant越境を実HTTPで検証する。段階2は全件確定・応答再送・重複再取込・bounded入金一覧を検証する。共通rowsは入金に409を返し、入金行はpayment-rowsで読む。消込ledgerは後続段階で、未充当額は未導入の間だけ入金額と同額。

@@ -39,9 +39,10 @@ public class ImportController implements ImportsApi {
     private final CurrentUser current;
     private final ConfirmCustomerImport confirmation;
     private final ConfirmInvoiceImport invoiceConfirmation;
+    private final ConfirmPaymentImport paymentConfirmation;
 
-    public ImportController(CustomerImportService service, InvoiceImportService invoices, ImportStore store, CurrentUser current, ConfirmCustomerImport confirmation, ConfirmInvoiceImport invoiceConfirmation, PaymentImportService payments) {
-        this.service = service; this.invoices = invoices; this.store = store; this.current = current; this.confirmation = confirmation; this.invoiceConfirmation = invoiceConfirmation; this.payments = payments;
+    public ImportController(CustomerImportService service, InvoiceImportService invoices, ImportStore store, CurrentUser current, ConfirmCustomerImport confirmation, ConfirmInvoiceImport invoiceConfirmation, PaymentImportService payments, ConfirmPaymentImport paymentConfirmation) {
+        this.service = service; this.invoices = invoices; this.store = store; this.current = current; this.confirmation = confirmation; this.invoiceConfirmation = invoiceConfirmation; this.payments = payments; this.paymentConfirmation = paymentConfirmation;
     }
 
     @Override
@@ -122,9 +123,11 @@ public class ImportController implements ImportsApi {
     public ResponseEntity<ImportBatchResponse> confirmImport(UUID id, ImportConfirmRequest request) {
         var user = current.require();
         var batch = store.get(user.tenantId(), id, false);
-        if (batch.kind() == ImportBatch.Kind.PAYMENT) { throw new ImportRejected("IMPORT_KIND_UNSUPPORTED"); }
-        ImportBatch confirmed = batch.kind() == ImportBatch.Kind.INVOICE
-                ? invoiceConfirmation.confirm(user, id, request.getVersion()) : confirmation.confirm(user, id, request.getVersion());
+        ImportBatch confirmed = switch (batch.kind()) {
+            case CUSTOMER -> confirmation.confirm(user, id, request.getVersion());
+            case INVOICE -> invoiceConfirmation.confirm(user, id, request.getVersion());
+            case PAYMENT -> paymentConfirmation.confirm(user, id, request.getVersion());
+        };
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response(confirmed));
     }
 

@@ -111,14 +111,43 @@ steps:
       /api/imports/{{ good }}/rows:
         get: {body: null}
     test: current.res.status == 409 && current.res.body.code == 'IMPORT_KIND_UNSUPPORTED'
-  unavailableConfirm:
+  confirm:
     api:
       /api/imports/{{ good }}/confirm:
         post:
           headers: {X-CSRF-TOKEN: '{{ token }}'}
           body:
             application/json: {version: 0}
-    test: current.res.status == 409 && current.res.body.code == 'IMPORT_KIND_UNSUPPORTED'
+    test: current.res.status == 200 && current.res.body.status == 'CONFIRMED' && current.res.body.confirmedCount == 2
+  resend:
+    api:
+      /api/imports/{{ good }}/confirm:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 200 && compare(current.res.body, steps.confirm.res.body)
+  payments:
+    api:
+      /api/payments?limit=1:
+        get: {body: null}
+    bind:
+      nextPayment: current.res.body.nextCursor
+      firstId: current.res.body.items[0].id
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && nextPayment != null && current.res.body.items[0].amount == current.res.body.items[0].unallocatedAmount && current.res.body.items[0].createdByUserId != null
+  nextPayment:
+    api:
+      /api/payments?limit=1&cursor={{ nextPayment }}:
+        get: {body: null}
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id != firstId
+  invalidConfirm:
+    api:
+      /api/imports/{{ bad }}/confirm:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 409 && current.res.body.code == 'IMPORT_INVALID'
   originalErrors:
     api:
       /api/imports/{{ bad }}:
@@ -160,6 +189,14 @@ steps:
     bind:
       betaToken: current.res.body.csrfToken
     test: current.res.status == 200
+  noTenantPayments:
+    beta:
+      /api/payments:
+        get:
+          useCookie: false
+          headers: {Cookie: 'JSESSIONID={{ betaCookie }}', X-Tenant-Id: '11111111-1111-1111-1111-111111111111'}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 0
   noTenantRows:
     beta:
       /api/imports/{{ good }}/payment-rows:
@@ -177,3 +214,20 @@ steps:
           body:
             application/json: {version: 0}
     test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'
+  reupload:
+    api:
+      /api/imports/payments/preview:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ cookie }}', X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            multipart/form-data: {file: ../../work/runn-payment-valid.csv}
+    bind: {duplicate: current.res.body.id}
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_INVALID' && current.res.body.originalBatchId == good
+  rejectDuplicate:
+    api:
+      /api/imports/{{ duplicate }}/confirm:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ cookie }}', X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 409 && current.res.body.code == 'IMPORT_ALREADY_CONFIRMED' && current.res.body.errors[0].message == good

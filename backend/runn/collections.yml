@@ -95,15 +95,15 @@ steps:
     loop:
       count: 10000
       interval: 0
-      until: 'current.res.status == 200 && (len(matches) == 1 || current.res.body.nextCursor == null)'
+      until: 'current.res.status == 200 && (len(candidateMatches) == 1 || current.res.body.nextCursor == null)'
     api:
       /api/collections?asOf=2026-12-01&view=ACTIONABLE&limit=100{{ pageSuffix }}:
         get: {body: null}
     bind:
-      matches: 'filter(current.res.body.items, {#.invoiceId == invoiceId})'
+      candidateMatches: 'filter(current.res.body.items, {#.invoiceId == invoiceId})'
       pageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
   ownCandidate:
-    test: len(matches) == 1 && matches[0].customerId == customerId && matches[0].outstandingAmount == amount && matches[0].daysOverdue == 1 && !matches[0].held
+    test: len(candidateMatches) == 1 && candidateMatches[0].customerId == customerId && candidateMatches[0].outstandingAmount == amount && candidateMatches[0].daysOverdue == 1 && !candidateMatches[0].held
   history:
     api:
       /api/collections/{{ invoiceId }}/history:

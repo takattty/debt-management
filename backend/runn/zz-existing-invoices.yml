@@ -1,0 +1,323 @@
+desc: Persist older multi-page invoices for both tenants before browser acceptance
+concurrency: debt-api-acceptance
+labels: [api, invoices, fixture-baseline, security]
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: false
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+  fixture: json://../../work/runn-existing-invoices.json
+secrets: [vars.password, alphaAnonymousToken, alphaAnonymousCookie, alphaCookie, alphaToken, betaAnonymousToken, betaAnonymousCookie, betaCookie, betaToken]
+steps:
+  alphaCsrf:
+    api:
+      /api/csrf:
+        get:
+          body: null
+    bind:
+      alphaAnonymousToken: current.res.body.csrfToken
+      alphaAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  alphaLogin:
+    api:
+      /api/auth/login:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ alphaAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ alphaAnonymousToken }}'
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: '{{ vars.password }}'
+    bind:
+      alphaCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  alphaSession:
+    api:
+      /api/session:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    bind:
+      alphaToken: current.res.body.csrfToken
+    test: current.res.status == 200
+  alphaCustomer:
+    api:
+      /api/customers:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+            X-CSRF-TOKEN: '{{ alphaToken }}'
+          body:
+            application/json:
+              code: '{{ vars.fixture.alpha.customerCode }}'
+              name: 架空の既存請求baseline alpha
+    bind:
+      alphaCustomerId: current.res.body.id
+    test: current.res.status == 201
+  alphaBefore:
+    api:
+      /api/receivables?customerId={{ alphaCustomerId }}:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 0
+  alphaPreview:
+    api:
+      /api/imports/invoices/preview:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+            X-CSRF-TOKEN: '{{ alphaToken }}'
+          body:
+            multipart/form-data:
+              file: ../../work/runn-existing-invoices-alpha.csv
+    bind:
+      alphaBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID'
+      && current.res.body.rowCount == 52 && current.res.body.errorCount == 0
+  alphaPreviewDoesNotRegister:
+    api:
+      /api/receivables?customerId={{ alphaCustomerId }}:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 0
+  alphaConfirm:
+    api:
+      /api/imports/{{ alphaBatch }}/confirm:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+            X-CSRF-TOKEN: '{{ alphaToken }}'
+          body:
+            application/json:
+              version: 0
+    test: current.res.status == 200 && current.res.body.status == 'CONFIRMED'
+      && current.res.body.confirmedCount == 52
+  alphaFirstPage:
+    api:
+      /api/receivables?customerId={{ alphaCustomerId }}&limit=50:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    bind:
+      alphaCursor: current.res.body.nextCursor
+      alphaFirstIds: map(current.res.body.items, {.id})
+    test: current.res.status == 200 && len(current.res.body.items) == 50 && alphaCursor != null
+      && all(current.res.body.items, {.customerId == alphaCustomerId && .dueDate == '2020-01-31' && .amount == 1000 && .outstandingAmount == 1000})
+  alphaSecondPage:
+    api:
+      /api/receivables?customerId={{ alphaCustomerId }}&limit=50&cursor={{ alphaCursor }}:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 2 && current.res.body.nextCursor == null
+      && all(current.res.body.items, {.customerId == alphaCustomerId && !(.id in alphaFirstIds)})
+  alphaAllOwnInvoices:
+    api:
+      /api/receivables?customerId={{ alphaCustomerId }}&limit=100:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    bind:
+      alphaOriginalRows: current.res.body.items
+      alphaFirstInvoice: current.res.body.items[0].id
+    test: current.res.status == 200 && len(current.res.body.items) == 52 && current.res.body.nextCursor == null
+      && all(current.res.body.items, {.customerId == alphaCustomerId && .invoiceNumber in vars.fixture.alpha.invoiceNumbers && .version == 0})
+  alphaGlobalFirstPageIsOlderBaseline:
+    api:
+      /api/receivables:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 50 && current.res.body.nextCursor != null
+      && all(current.res.body.items, {.dueDate <= '2020-01-31'})
+  betaCsrf:
+    api:
+      /api/csrf:
+        get:
+          body: null
+    bind:
+      betaAnonymousToken: current.res.body.csrfToken
+      betaAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  betaLogin:
+    api:
+      /api/auth/login:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ betaAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ betaAnonymousToken }}'
+          body:
+            application/json:
+              email: beta-admin@example.test
+              password: '{{ vars.password }}'
+    bind:
+      betaCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  betaSession:
+    api:
+      /api/session:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    bind:
+      betaToken: current.res.body.csrfToken
+    test: current.res.status == 200
+  betaCustomer:
+    api:
+      /api/customers:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-CSRF-TOKEN: '{{ betaToken }}'
+          body:
+            application/json:
+              code: '{{ vars.fixture.beta.customerCode }}'
+              name: 架空の既存請求baseline beta
+    bind:
+      betaCustomerId: current.res.body.id
+    test: current.res.status == 201
+  betaBefore:
+    api:
+      /api/receivables?customerId={{ betaCustomerId }}:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 0
+  betaPreview:
+    api:
+      /api/imports/invoices/preview:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-CSRF-TOKEN: '{{ betaToken }}'
+          body:
+            multipart/form-data:
+              file: ../../work/runn-existing-invoices-beta.csv
+    bind:
+      betaBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID'
+      && current.res.body.rowCount == 52 && current.res.body.errorCount == 0
+  betaPreviewDoesNotRegister:
+    api:
+      /api/receivables?customerId={{ betaCustomerId }}:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 0
+  betaConfirm:
+    api:
+      /api/imports/{{ betaBatch }}/confirm:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-CSRF-TOKEN: '{{ betaToken }}'
+          body:
+            application/json:
+              version: 0
+    test: current.res.status == 200 && current.res.body.status == 'CONFIRMED'
+      && current.res.body.confirmedCount == 52
+  betaFirstPage:
+    api:
+      /api/receivables?customerId={{ betaCustomerId }}&limit=50:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    bind:
+      betaCursor: current.res.body.nextCursor
+      betaFirstIds: map(current.res.body.items, {.id})
+    test: current.res.status == 200 && len(current.res.body.items) == 50 && betaCursor != null
+      && all(current.res.body.items, {.customerId == betaCustomerId && .dueDate == '2020-01-31' && .amount == 1000 && .outstandingAmount == 1000})
+  betaSecondPage:
+    api:
+      /api/receivables?customerId={{ betaCustomerId }}&limit=50&cursor={{ betaCursor }}:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 2 && current.res.body.nextCursor == null
+      && all(current.res.body.items, {.customerId == betaCustomerId && !(.id in betaFirstIds)})
+  betaAllOwnInvoices:
+    api:
+      /api/receivables?customerId={{ betaCustomerId }}&limit=100:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    bind:
+      betaOriginalRows: current.res.body.items
+      betaFirstInvoice: current.res.body.items[0].id
+    test: current.res.status == 200 && len(current.res.body.items) == 52 && current.res.body.nextCursor == null
+      && all(current.res.body.items, {.customerId == betaCustomerId && .invoiceNumber in vars.fixture.beta.invoiceNumbers && .version == 0})
+  betaGlobalFirstPageIsOlderBaseline:
+    api:
+      /api/receivables:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 50 && current.res.body.nextCursor != null
+      && all(current.res.body.items, {.dueDate <= '2020-01-31'})
+  alphaCannotListOtherCustomer:
+    api:
+      /api/receivables?customerId={{ betaCustomerId }}&limit=100:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 0
+  alphaCannotReadOtherInvoice:
+    api:
+      /api/invoices/{{ betaFirstInvoice }}:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    test: current.res.status == 404
+  alphaOriginalRowsRetained:
+    api:
+      /api/receivables?customerId={{ alphaCustomerId }}&limit=100:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ alphaCookie }}
+          body: null
+    test: current.res.status == 200 && compare(current.res.body.items, alphaOriginalRows)
+  betaCannotListOtherCustomer:
+    api:
+      /api/receivables?customerId={{ alphaCustomerId }}&limit=100:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 0
+  betaCannotReadOtherInvoice:
+    api:
+      /api/invoices/{{ alphaFirstInvoice }}:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 404
+  betaOriginalRowsRetained:
+    api:
+      /api/receivables?customerId={{ betaCustomerId }}&limit=100:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 200 && compare(current.res.body.items, betaOriginalRows)

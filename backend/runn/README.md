@@ -44,6 +44,8 @@ Binary と checksum は `scripts/runn.sh` で固定する。
 
 CIのqualityはbootstrapの部分検証fallbackを廃止し、scripts/verify.shを必須実行する。verifier消失や非実行権限を部分成功に置き換えない。
 
+`zz-existing-invoices.yml`も通常globに含まれる必須book。Alpha/Betaの専用顧客ごとに古い請求52件をCSV preview/confirmで登録し、50+2件のkeyset・相互tenant分離・原行保持を確認する。後続browser E2EでもDBを保持し、先頭pageや空DBを前提にしたfixture選択を検出する。各実行でUUIDを変え、既存の顧客・請求を削除しない。
+
 ## Production proxy capacity
 
 `bash scripts/verify-proxy.sh`は起動中の今回のBackend（8080）へ、本番と同じNginx設定・固定imageを通して`proxy/uploads.yml`を実行する。標準LinuxのDocker socketが必要で、CIでも必須実行する。

@@ -273,6 +273,7 @@ class InvoiceConfirmationTest {
         var invalid = preview(rows.toString()); rejected(invalid, 0, "IMPORT_INVALID");
         assertThat(store.errors(user.tenantId(), invalid.id(), 0, 10).getFirst().value().rowNumber()).isEqualTo(10001);
         assertThat(invoices()).isEqualTo(10_000);
+        jdbc.sql("ANALYZE invoice").update();
         var plan = jdbc.sql("EXPLAIN (ANALYZE, BUFFERS) SELECT id FROM invoice WHERE tenant_id=? AND status='ACTIVE' ORDER BY due_date,id LIMIT 100")
                 .param(user.tenantId()).query(String.class).list();
         assertThat(String.join("\n", plan)).contains("invoice_receivables_page");

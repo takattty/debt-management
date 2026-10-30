@@ -60,7 +60,7 @@ describe('Customer workspace with cookie authentication', () => {
   });
 
   it('shows duplicate recovery guidance and preserves entered values without adding a row', async () => {
-    const fetch = mockApi({ createStatus: 409 });
+    const fetch = mockApi({ createStatus: 409, createCode: 'DUPLICATE_CUSTOMER_CODE' });
     render(<App />);
     const user = await login();
     await user.type(await screen.findByLabelText(/顧客コード/), 'CUST-001');

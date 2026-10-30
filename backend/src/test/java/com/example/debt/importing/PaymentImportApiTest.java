@@ -55,7 +55,7 @@ class PaymentImportApiTest {
         // Test-only reset: ordinary UPDATE/DELETE remain blocked by the immutable-facts trigger.
         jdbc.sql("DELETE FROM audit_event WHERE tenant_id IN (?,?) AND entity_id IN (SELECT id FROM payment)")
                 .params(AuthFixtures.ALPHA, AuthFixtures.BETA).update();
-        jdbc.sql("TRUNCATE payment").update();
+        jdbc.sql("TRUNCATE allocation_line,allocation_operation,reconciliation_payment_state,payment").update();
         for (UUID batch : batches) {
             jdbc.sql("DELETE FROM audit_event WHERE tenant_id IN (?,?) AND entity_id=?")
                     .params(AuthFixtures.ALPHA, AuthFixtures.BETA, batch).update();

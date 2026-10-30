@@ -34,6 +34,8 @@ Public/Freeと標準Linux Actions利用はユーザー確認済み。2026-10-29�
 
 GitHub CLIは `scripts/gh-repo.sh owner/repository command ...` でrepositoryを必須指定する。証拠のworkファイルは `python3 scripts/read-evidence.py work/name.log` で所有worktreeを解決し、同名が複数なら `--worktree` を明示する。複数treeを扱うCoordinatorはhelper自身もactive code checkoutの絶対pathで呼び、古い証拠ownerのcheckoutに新helperがあると仮定しない。別treeの操作/読込を一つのcwd依存commandへ混在させない。
 
+Cloudのログ保存付き検証は `bash /absolute/checkout/scripts/verify-cloud.sh` を外側リダイレクトなしで実行する。新worktreeのworkディレクトリ作成とログ保存はwrapperに任せ、終了値とwork/cloud-verify.logを確認する。
+
 ## PR と API 契約
 
 - PR本文・まとまったレビュー/検証コメントは [PRとコメントの書き方](docs/pr-writing.md) とrepoテンプレートに従う。本文は概要・何をやったか・なぜ・何をやらなかったか・ユーザーへの影響・検証・その他を埋め、結果/証拠は表にする。公開前とmerge直前に最新本文を検査し、空欄やSHAだけの説明で済ませない。

@@ -53,8 +53,12 @@ class PaymentImportApiTest {
     @AfterEach
     void cleanupOwnFixtures() {
         // Test-only reset: ordinary UPDATE/DELETE remain blocked by the immutable-facts trigger.
+        jdbc.sql("DELETE FROM audit_event WHERE tenant_id IN (?,?) AND entity_id IN (SELECT id FROM payment)")
+                .params(AuthFixtures.ALPHA, AuthFixtures.BETA).update();
         jdbc.sql("TRUNCATE payment").update();
         for (UUID batch : batches) {
+            jdbc.sql("DELETE FROM audit_event WHERE tenant_id IN (?,?) AND entity_id=?")
+                    .params(AuthFixtures.ALPHA, AuthFixtures.BETA, batch).update();
             for (String table : List.of("import_error", "import_row", "import_batch")) {
                 jdbc.sql("DELETE FROM " + table + " WHERE tenant_id IN (?,?) AND " + (table.equals("import_batch") ? "id" : "batch_id") + "=?")
                         .params(AuthFixtures.ALPHA, AuthFixtures.BETA, batch).update();
@@ -77,7 +81,7 @@ class PaymentImportApiTest {
         mvc.perform(get("/api/imports/" + id + "/rows").session(alpha)).andExpect(status().isConflict());
         mvc.perform(post("/api/imports/" + id + "/confirm").session(alpha).with(csrf().asHeader())
                 .contentType("application/json").content("{\"version\":0}"))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IMPORT_KIND_UNSUPPORTED"));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IMPORT_EXPIRED"));
         assertThat(count("payment")).isZero(); assertThat(count("audit_event")).isEqualTo(audit);
         assertThat(count("customer")).isEqualTo(customers); assertThat(count("invoice")).isEqualTo(invoices);
         assertThat(preview("T1,2026-10-30,架空,100\n", alpha)).isNotEqualTo(id);
@@ -145,6 +149,30 @@ class PaymentImportApiTest {
                 .param("tenantId", AuthFixtures.BETA.toString())).andExpect(status().isBadRequest());
         UUID id = preview("T,2026-10-30,架空,1\n", alpha);
         mvc.perform(get("/api/imports/" + id + "/payment-rows?limit=101").session(alpha)).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void confirmsAllFactsOnceAndListsTenantScopedImmutablePayments() throws Exception {
+        UUID id = preview("HTTP-A,2026-10-30,架空A,100\nHTTP-B,2026-10-31,架空B,200\n", alpha);
+        String confirm = "/api/imports/" + id + "/confirm";
+        mvc.perform(post(confirm).session(alpha).contentType("application/json").content("{\"version\":0}"))
+                .andExpect(status().isForbidden());
+        for (int ignored = 0; ignored < 2; ignored++) {
+            mvc.perform(post(confirm).session(alpha).with(csrf().asHeader()).contentType("application/json").content("{\"version\":0}"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.confirmedCount").value(2));
+        }
+        mvc.perform(get("/api/payments?dateFrom=2026-10-31&dateTo=2026-10-31").session(alpha))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].transactionId").value("HTTP-B")).andExpect(jsonPath("$.items[0].amount").value(200))
+                .andExpect(jsonPath("$.items[0].unallocatedAmount").value(200)).andExpect(jsonPath("$.items[0].sourceBatchId").value(id.toString()));
+        mvc.perform(get("/api/payments")).andExpect(status().isUnauthorized());
+        for (String query : List.of("limit=101", "cursor=bad", "dateFrom=2026-11-01&dateTo=2026-10-01")) {
+            mvc.perform(get("/api/payments?" + query).session(alpha)).andExpect(status().isBadRequest());
+        }
+        var beta = AuthFixtures.login(mvc, "beta-admin@example.test");
+        mvc.perform(get("/api/payments").session(beta).header("X-Tenant-Id", AuthFixtures.ALPHA))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
+        assertThat(count("payment")).isEqualTo(2);
     }
 
     private UUID preview(String rows, MockHttpSession session) throws Exception {

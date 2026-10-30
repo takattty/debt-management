@@ -163,15 +163,15 @@ class AllocationCommandsTest extends LedgerPublicFixtures {
 
     @Test
     void actualHttpRequiresSessionCsrfStrictNumbersAndHidesForeignResources() throws Exception {
-        String body = json.writeValueAsString(Map.of("requestId", UUID.randomUUID(), "expectedPaymentVersion", 0, "reason", "Fictional HTTP",
-                "lines", List.of(Map.of("invoiceId", invoice, "expectedInvoiceVersion", 0, "cashAmount", 99560, "feeAmount", 440))));
+        String body = json.writeValueAsString(Map.of("requestId", UUID.randomUUID(), "expectedPaymentVersion", "0", "reason", "Fictional HTTP",
+                "lines", List.of(Map.of("invoiceId", invoice, "expectedInvoiceVersion", "0", "cashAmount", 99560, "feeAmount", 440))));
         String path = "/api/payments/" + payment + "/allocations";
         mvc.perform(post(path).contentType("application/json").content(body).with(csrf())).andExpect(status().isUnauthorized());
         mvc.perform(post(path).contentType("application/json").content(body).with(auth(user))).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALID"));
         mvc.perform(post(path).contentType("application/json").content(body).with(auth(foreign)).with(csrf())).andExpect(status().isNotFound());
         mvc.perform(post(path).contentType("application/json").content(body.replace("99560", "99560.5")).with(auth(user)).with(csrf())).andExpect(status().isBadRequest());
-        mvc.perform(post(path).contentType("application/json").content(body).with(auth(user)).with(csrf())).andExpect(status().isOk()).andExpect(jsonPath("$.paymentVersion").value(1));
-        mvc.perform(post(path).contentType("application/json").content(body).with(auth(user)).with(csrf())).andExpect(status().isOk()).andExpect(jsonPath("$.paymentVersion").value(1));
+        mvc.perform(post(path).contentType("application/json").content(body).with(auth(user)).with(csrf())).andExpect(status().isOk()).andExpect(jsonPath("$.paymentVersion").value("1"));
+        mvc.perform(post(path).contentType("application/json").content(body).with(auth(user)).with(csrf())).andExpect(status().isOk()).andExpect(jsonPath("$.paymentVersion").value("1"));
     }
 
     AllocationCommands.Operation confirm(UUID request, long paymentVersion, List<AllocationCommands.Line> lines) {

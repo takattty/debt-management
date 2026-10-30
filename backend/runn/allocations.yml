@@ -214,20 +214,35 @@ steps:
           body:
             application/json:
               requestId: '{{ confirmRequest }}'
-              expectedPaymentVersion: 0
+              expectedPaymentVersion: '0'
               reason: 架空の顧客横断充当と明示手数料
               lines:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 99560
                 feeAmount: 440
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 20000
                 feeAmount: 0
           headers:
             Cookie: JSESSIONID={{ cookie }}
     test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
+  nullConfirmRow:
+    invalid:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '0'
+              reason: 架空のnull行拒否
+              lines: [null]
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 400
   feeOnlyStandalone:
     api:
       /api/payments/{{ paymentId }}/allocations:
@@ -236,15 +251,15 @@ steps:
           body:
             application/json:
               requestId: '{{ faker.UUID() }}'
-              expectedPaymentVersion: 0
+              expectedPaymentVersion: '0'
               reason: 架空の顧客横断充当と明示手数料
               lines:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 0
                 feeAmount: 440
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 0
                 feeAmount: 0
           headers:
@@ -259,15 +274,15 @@ steps:
           body:
             application/json:
               requestId: '{{ confirmRequest }}'
-              expectedPaymentVersion: 0
+              expectedPaymentVersion: '0'
               reason: 架空の顧客横断充当と明示手数料
               lines:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 99560
                 feeAmount: 440
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 20000
                 feeAmount: 0
           headers:
@@ -275,7 +290,7 @@ steps:
             X-CSRF-TOKEN: '{{ token }}'
     bind:
       original: current.res.body.id
-    test: current.res.status == 200 && current.res.body.kind == 'CONFIRM' && current.res.body.paymentVersion == 1
+    test: current.res.status == 200 && current.res.body.kind == 'CONFIRM' && current.res.body.paymentVersion == '1'
   replay:
     api:
       /api/payments/{{ paymentId }}/allocations:
@@ -284,21 +299,21 @@ steps:
           body:
             application/json:
               requestId: '{{ confirmRequest }}'
-              expectedPaymentVersion: 0
+              expectedPaymentVersion: '0'
               reason: 架空の顧客横断充当と明示手数料
               lines:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 99560
                 feeAmount: 440
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 20000
                 feeAmount: 0
           headers:
             Cookie: JSESSIONID={{ cookie }}
             X-CSRF-TOKEN: '{{ token }}'
-    test: current.res.status == 200 && current.res.body.id == original && current.res.body.paymentVersion == 1
+    test: current.res.status == 200 && current.res.body.id == original && current.res.body.paymentVersion == '1'
   changedReplay:
     api:
       /api/payments/{{ paymentId }}/allocations:
@@ -307,15 +322,15 @@ steps:
           body:
             application/json:
               requestId: '{{ confirmRequest }}'
-              expectedPaymentVersion: 0
+              expectedPaymentVersion: '0'
               reason: 架空の顧客横断充当と明示手数料
               lines:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 99560
                 feeAmount: 440
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 20001
                 feeAmount: 0
           headers:
@@ -330,15 +345,15 @@ steps:
           body:
             application/json:
               requestId: '{{ faker.UUID() }}'
-              expectedPaymentVersion: 0
+              expectedPaymentVersion: '0'
               reason: 架空の顧客横断充当と明示手数料
               lines:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 99560
                 feeAmount: 440
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 20000
                 feeAmount: 0
           headers:
@@ -363,6 +378,21 @@ steps:
           headers:
             Cookie: JSESSIONID={{ cookie }}
     test: current.res.status == 200 && current.res.body.outstandingAmount == 30000 && current.res.body.version == 1
+  nullReverseRow:
+    invalid:
+      /api/payments/{{ paymentId }}/allocations/{{ original }}/reversal:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '1'
+              reason: 架空のnull行拒否
+              invoices: [null]
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 400
   incompleteReversal:
     api:
       /api/payments/{{ paymentId }}/allocations/{{ original }}/reversal:
@@ -371,11 +401,11 @@ steps:
           body:
             application/json:
               requestId: '{{ faker.UUID() }}'
-              expectedPaymentVersion: 1
+              expectedPaymentVersion: '1'
               reason: 架空の全体取消
               invoices:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 1
+                expectedInvoiceVersion: '1'
           headers:
             Cookie: JSESSIONID={{ cookie }}
             X-CSRF-TOKEN: '{{ token }}'
@@ -388,19 +418,19 @@ steps:
           body:
             application/json:
               requestId: '{{ reverseRequest }}'
-              expectedPaymentVersion: 1
+              expectedPaymentVersion: '1'
               reason: 架空の全体取消
               invoices:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 1
+                expectedInvoiceVersion: '1'
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 1
+                expectedInvoiceVersion: '1'
           headers:
             Cookie: JSESSIONID={{ cookie }}
             X-CSRF-TOKEN: '{{ token }}'
     bind:
       reversal: current.res.body.id
-    test: current.res.status == 200 && current.res.body.kind == 'REVERSE' && current.res.body.reversesId == original && current.res.body.paymentVersion == 2
+    test: current.res.status == 200 && current.res.body.kind == 'REVERSE' && current.res.body.reversesId == original && current.res.body.paymentVersion == '2'
   reverseReplay:
     api:
       /api/payments/{{ paymentId }}/allocations/{{ original }}/reversal:
@@ -409,13 +439,13 @@ steps:
           body:
             application/json:
               requestId: '{{ reverseRequest }}'
-              expectedPaymentVersion: 1
+              expectedPaymentVersion: '1'
               reason: 架空の全体取消
               invoices:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 1
+                expectedInvoiceVersion: '1'
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 1
+                expectedInvoiceVersion: '1'
           headers:
             Cookie: JSESSIONID={{ cookie }}
             X-CSRF-TOKEN: '{{ token }}'
@@ -428,13 +458,13 @@ steps:
           body:
             application/json:
               requestId: '{{ faker.UUID() }}'
-              expectedPaymentVersion: 2
+              expectedPaymentVersion: '2'
               reason: 架空の全体取消
               invoices:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 2
+                expectedInvoiceVersion: '2'
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 2
+                expectedInvoiceVersion: '2'
           headers:
             Cookie: JSESSIONID={{ cookie }}
             X-CSRF-TOKEN: '{{ token }}'
@@ -447,21 +477,21 @@ steps:
           body:
             application/json:
               requestId: '{{ confirmRequest }}'
-              expectedPaymentVersion: 0
+              expectedPaymentVersion: '0'
               reason: 架空の顧客横断充当と明示手数料
               lines:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 99560
                 feeAmount: 440
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 20000
                 feeAmount: 0
           headers:
             Cookie: JSESSIONID={{ cookie }}
             X-CSRF-TOKEN: '{{ token }}'
-    test: current.res.status == 200 && current.res.body.id == original && current.res.body.paymentVersion == 1
+    test: current.res.status == 200 && current.res.body.id == original && current.res.body.paymentVersion == '1'
   firstRestored:
     api:
       /api/invoices/{{ firstInvoice }}:
@@ -488,21 +518,21 @@ steps:
           body:
             application/json:
               requestId: '{{ faker.UUID() }}'
-              expectedPaymentVersion: 2
+              expectedPaymentVersion: '2'
               reason: 架空の顧客横断充当と明示手数料
               lines:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 2
+                expectedInvoiceVersion: '2'
                 cashAmount: 99900
                 feeAmount: 100
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 2
+                expectedInvoiceVersion: '2'
                 cashAmount: 20000
                 feeAmount: 0
           headers:
             Cookie: JSESSIONID={{ cookie }}
             X-CSRF-TOKEN: '{{ token }}'
-    test: current.res.status == 200 && current.res.body.paymentVersion == 3
+    test: current.res.status == 200 && current.res.body.paymentVersion == '3'
   reconfirmed:
     api:
       /api/invoices/{{ firstInvoice }}:
@@ -556,15 +586,15 @@ steps:
           body:
             application/json:
               requestId: '{{ faker.UUID() }}'
-              expectedPaymentVersion: 0
+              expectedPaymentVersion: '0'
               reason: 架空の顧客横断充当と明示手数料
               lines:
               - invoiceId: '{{ firstInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 99560
                 feeAmount: 440
               - invoiceId: '{{ secondInvoice }}'
-                expectedInvoiceVersion: 0
+                expectedInvoiceVersion: '0'
                 cashAmount: 20000
                 feeAmount: 0
           headers:

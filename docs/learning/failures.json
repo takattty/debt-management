@@ -960,6 +960,34 @@
           "resolved_at": "2026-10-30T09:57:22+00:00"
         }
       ]
+    },
+    {
+      "key": "api-error-prototype-property-lookup",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "invoice-http-prototype-dictionary-20261030",
+          "summary": "独立HTTP invoice clientの3入力constructor/toString/__proto__が既存辞書の継承propertyへ一致しnative function/object案内となった。1clientの1実caseとして記録し、8a/ce/基点にも既存",
+          "evidence": "work/independent-http-boundaries-18-ce50a74-RED.log",
+          "recorded_at": "2026-10-30T10:11:45+00:00"
+        },
+        {
+          "event": "import-http-prototype-dictionary-20261030",
+          "summary": "独立HTTP import clientの同じ3入力が既存辞書の継承propertyへ一致し取込案内を上書きした。1clientの1実caseとして記録し、8a/ce/基点にも既存",
+          "evidence": "work/independent-http-boundaries-18-ce50a74-RED.log",
+          "recorded_at": "2026-10-30T10:11:45+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "既存invoice/import message辞書が未知codeで通常objectの継承propertyも参照し、共通409案内をnative function/objectで上書きした。新helper以前から8a/ce/基点に存在した",
+          "prevention": "全error-message辞書の動的参照をMap.getまたはObject.hasOwnで自身のkeyだけに制限する。実HTTP clientを通し、各clientの実code・未知/欠落とprototype名3入力を検査する。3値は各client1実caseとして数える",
+          "verification": "api.tsのinvoice/import/数値statusとconflict-guidanceの計4辞書を棚卸し、全動的参照がown-property検査後であることを確認。現HTTP2client×3回帰と既存未知/欠落/実codeを保持して全111unit・型・lint/guard4成功。旧15probe12成功3RED、新18probe12成功6RED、基点証拠を保持。独立18probeの再評価は未実施で後続",
+          "guard": "frontend/src/api-errors.test.tsx",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T10:13:06+00:00"
+        }
+      ]
     }
   ]
 }

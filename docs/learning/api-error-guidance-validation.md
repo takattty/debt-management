@@ -9,3 +9,7 @@ productionの409案内を小さな `conflictGuidance` に分離し、既存API c
 型・lint・既存80＋新25の105unit・生成整合・buildが成功した。証拠は `work/conflict-guidance-0923-static.log`。画面の操作・保存処理は変更せず、今回のE2Eは未再実行。独立レビューとGitHub CIはCoordinator側の後続とする。
 
 学習recordは正確な2実eventだけを追加する。mainの全既存records/events/resolutionsを値・順序とも保持し、financial準備の他の原因keyは含めない。
+
+追加の独立18HTTP probeは12成功・6RED。invoice/importの2clientで各3入力が継承propertyへ一致した既存不具合を確認した（8a/ce/基点bdにも存在し、新しい回帰ではない）。旧15結果と基点の証拠も保持し、両code辞書・数値status辞書・新helperの全参照を棚卸してown-property参照へ統一する。3入力は各clientの1実caseとして数え、learningは2eventsとする。証拠は `work/independent-http-boundaries-18-ce50a74-RED.log` と `work/preexisting-invoice-prototype-base-proof.json`。
+
+上記修正後、型・lint/guard4・既存を含む111unitが成功した（`work/conflict-guidance-own-property-0931-static.log`）。独立18probeの同一source再評価は後続であり、ここでは合格と主張しない。

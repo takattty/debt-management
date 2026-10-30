@@ -171,8 +171,10 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       INVOICE_ALLOCATED: '消込がある請求は訂正・取消できません。先に対象の消込を取り消してください。',
       NOT_FOUND: '請求が見つかりません。請求IDと一覧を確認してください。',
     };
-    const invoiceMessage = invoicing ? (code ? invoiceMessages[code] : undefined) ?? (response.status === 400 ? '顧客・日付・正の円整数の金額・理由を確認してください。' : response.status === 404 ? invoiceMessages.NOT_FOUND : undefined) : undefined;
-    throw new ApiError(response.status, invoiceMessage ?? (importing && code ? importMessages[code] : undefined) ?? messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
+    const invoiceMessage = invoicing ? (code && Object.hasOwn(invoiceMessages, code) ? invoiceMessages[code] : undefined) ?? (response.status === 400 ? '顧客・日付・正の円整数の金額・理由を確認してください。' : response.status === 404 ? invoiceMessages.NOT_FOUND : undefined) : undefined;
+    const importMessage = importing && code && Object.hasOwn(importMessages, code) ? importMessages[code] : undefined;
+    const statusMessage = Object.hasOwn(messages, response.status) ? messages[response.status] : undefined;
+    throw new ApiError(response.status, invoiceMessage ?? importMessage ?? statusMessage ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
   }
   return response;
 }

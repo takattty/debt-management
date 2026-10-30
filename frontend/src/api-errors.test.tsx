@@ -40,6 +40,12 @@ describe('Conflict guidance is scoped to the actual error and operation', () => 
   it.each(['list', 'invoice', 'receivables'] as const)('does not mislabel %s when another domain code is returned', async (kind) => {
     expect((await errorFor(operations[kind], 'DUPLICATE_CUSTOMER_CODE')).message).not.toContain('顧客コード');
   });
+  it.each(['constructor', 'toString', '__proto__'])('uses safe HTTP invoice guidance for inherited key %s', async (code) => {
+    const error = await errorFor(operations.invoice, code); expect(error.code).toBe(code); expect(error.message).toBe('現在の状態では処理できません。最新内容を取得して確認してください。');
+  });
+  it.each(['constructor', 'toString', '__proto__'])('uses safe HTTP import guidance for inherited key %s', async (code) => {
+    const error = await errorFor(() => api.confirmImport(session, 'batch', { version: 0 }), code); expect(error.code).toBe(code); expect(error.message).toBe('取込内容が変わっています。状態を確認して、CSVをもう一度プレビューしてください。');
+  });
   it.each([['/api/customers', 'DELETE'], ['/api/customers/{id}', 'GET'], ['/api/customers-archive', 'POST']])('requires the correct customer mutation %s %s', (path, method) => {
     expect(conflictGuidance(path, method, 'DUPLICATE_CUSTOMER_CODE')).not.toContain('顧客コード');
   });

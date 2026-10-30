@@ -66,3 +66,5 @@ source名の推測読込も再発したため、同checkoutの `read-source.py Q
 Cloudの容量不足はworktree mkdir・Gradle report・E2E resultsの書込で別々に再発した。新worktree/worker前にdfと `scripts/check-workspace-capacity.py /workspace` で測定し、重い処理は1GiB未満・測定不能で停止する。verify-cloudはログ作成前、verifyは開始時と重いphase前、標準Linux CIも容量gateを必須実行する。完了と所有者を確認したtreeの再取得可能依存だけを、ignore状態・symlinkを確認して整理する。source・jar・DB・log/証拠・稼働中treeは保持し、無差別削除で回避しない。詳細は [Capacity validation](capacity-validation.md)。
 
 APIの正常/異常系とbrowser検証は同runtimeで並行させずphaseを分ける。verifyはrunn/proxy完了後に同じartifactとDBでbackendを正常再起動し、process内login counterの共有を切る。閾値/window・CSRFを変えたり、固定sleepと429再送で検証を通したりしない。死活・port・容量・artifact照合と各phaseのlog/失敗終了値を保持する。相当検証harnessでもhelperとfixtureの所有checkoutをcatalogから固定し、古いcheckoutに新helperがあると仮定しない。実証は [Authentication phase validation](auth-phase-validation.md)。
+
+APIのerror-code→message辞書は `Map.get` または `Object.hasOwn` で自身のkeyだけを参照する。HTTP clientを通す回帰では、実code・未知/欠落code・`constructor` / `toString` / `__proto__` を検査し、上位の個別案内が共通fallbackを誤って上書きしないことも確認する。

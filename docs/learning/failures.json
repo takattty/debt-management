@@ -56,6 +56,12 @@
           "summary": "同じ容量枯渇によりCollection fix独立reviewのworktree作成が失敗した",
           "evidence": "docs/learning/capacity-validation.md",
           "recorded_at": "2026-10-30T05:44:20+00:00"
+        },
+        {
+          "event": "docker-vfs-init-rw-budget-underestimate-20261030",
+          "summary": "root fresh recreate実測でVFS旧1copy予算の過少を確認。旧閾値なら1GiB reserveが597MBへ減るモデル誤り",
+          "evidence": "docs/learning/capacity-validation.md",
+          "recorded_at": "2026-10-30T07:17:43+00:00"
         }
       ],
       "resolutions": [
@@ -74,6 +80,14 @@
           "guard": "scripts/check-docker-capacity.py",
           "event_count": 5,
           "resolved_at": "2026-10-30T05:47:55+00:00"
+        },
+        {
+          "cause": "VFS runtime createのinitとRW二層を一層だけ計上し、image.Size論理量とfilesystem allocation差も別予算にしていなかった",
+          "prevention": "公式Moby28.4.0のinit→RW→Content copyを根拠にupとbuild将来containerを二層化。VFS clone/buildに現pinned実測較正10%をFS block単位で別枠確保しPGと1GiBreserveを維持。cold builder上界未検証を明示、実writeはroot独立review後",
+          "verification": "公式tagcommit249d679と各blobSHAを取得。root fresh実測drop1786224640Bを使う旧2383514815B境界は未修正0/期待1のRED、修正後拒否。対象13・全Python63tests成功、unknown/block/current/COW/sourceownerも保持。readonly up通過/build不足拒否。作者Docker lifecycle/tar/FSbindなし。元5eventsと全他keyを保持",
+          "guard": "scripts/check-docker-capacity.py",
+          "event_count": 6,
+          "resolved_at": "2026-10-30T07:24:37+00:00"
         }
       ]
     },

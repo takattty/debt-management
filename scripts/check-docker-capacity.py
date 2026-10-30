@@ -2,6 +2,7 @@
 """Read-only managed-Cloud Docker build/up budget. Never creates or deletes Docker objects."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -14,6 +15,10 @@ ROOT = OWNER
 MARKER = Path('/etc/codex/network-policy.json')
 GIB = 1024 ** 3
 PG_MINIMUM = 256 * 1024 ** 2
+VFS_CONTAINER_COPIES = 2  # Moby creates an init layer, then a writable layer from it.
+# Current pinned runtime-image set measured <5% beyond two logical copies (before PG reserve).
+# Keep a separate, block-rounded 10% allowance; this is not a universal cold-builder bound.
+VFS_ALLOCATION_PERCENT = 10
 
 
 class MeasurementError(Exception):
@@ -90,7 +95,8 @@ def build_budget(build, driver):
             raise MeasurementError('Unsupported Dockerfile instruction; build size is unknown')
     if base is None:
         raise MeasurementError('Pinned base image unavailable')
-    # VFS retains deep copies for filesystem layers plus one transient working container.
+    # Retained filesystem layers plus a transient working-copy estimate. Cold builder peak is unverified;
+    # unlike runtime containers, some builder paths call CreateRWLayer with no init function.
     # COW drivers retain copied payload instead. Context transport/tar metadata is additional.
     return {'build_bytes': tree_bytes(context) + ((base + copied) * (layers + 1) if driver == 'vfs' else copied),
             'final_virtual_bytes': base + copied}
@@ -108,6 +114,9 @@ def measure(phase):
         raise MeasurementError('Local daemon filesystem cannot be measured')
     available = shutil.disk_usage(daemon_root).free
     workspace_available = shutil.disk_usage(ROOT).free
+    allocation_unit = os.statvfs(daemon_root).f_frsize
+    if type(allocation_unit) is not int or allocation_unit <= 0:
+        raise MeasurementError('Filesystem allocation unit is unknown')
     if any(type(value) is not int or value < 0 for value in (available, workspace_available)):
         raise MeasurementError('Filesystem available bytes are unknown')
     model = docker('compose', 'config', '--format', 'json')
@@ -133,7 +142,7 @@ def measure(phase):
             projected = build_budget(service['build'], driver)
             build_bytes += projected['build_bytes']
             if driver == 'vfs':
-                clone += projected['final_virtual_bytes']
+                clone += VFS_CONTAINER_COPIES * projected['final_virtual_bytes']
             planned.append({'service': name, 'projected_virtual_bytes': projected['final_virtual_bytes']})
             continue
         measured = image(reference)
@@ -144,7 +153,7 @@ def measure(phase):
         current = bool(own and own[0]['Image'] == measured['Id']
                        and own[0]['Config']['Labels'].get('com.docker.compose.config-hash') == hashes[name])
         if driver == 'vfs' and not current:
-            clone += measured['Size']
+            clone += VFS_CONTAINER_COPIES * measured['Size']
         healthy = bool(current and own[0]['State'].get('Running')
                        and own[0]['State'].get('Health', {}).get('Status') == 'healthy')
         postgres = name == 'postgres' or reference.rsplit('/', 1)[-1].split('@')[0].split(':')[0] == 'postgres'
@@ -153,10 +162,17 @@ def measure(phase):
         planned.append({'service': name, 'virtual_bytes': measured['Size'], 'current_container': current,
                         'healthy': healthy})
     # A build leaves room for subsequent new application containers, not just its transient layers.
-    required = GIB + clone + pg + build_bytes
+    allocation = 0
+    if driver == 'vfs':
+        overhead = ((clone + build_bytes) * VFS_ALLOCATION_PERCENT + 99) // 100
+        allocation = ((overhead + allocation_unit - 1) // allocation_unit) * allocation_unit
+    required = GIB + clone + allocation + pg + build_bytes
     return {'phase': phase, 'driver': driver, 'worktree': str(ROOT), 'available_bytes': available,
             'workspace_available_bytes': workspace_available, 'reserve_bytes': GIB,
-            'vfs_clone_bytes': clone, 'postgres_start_bytes': pg, 'build_bytes': build_bytes,
+            'vfs_clone_bytes': clone, 'vfs_container_copies': VFS_CONTAINER_COPIES if driver == 'vfs' else 0,
+            'vfs_allocation_bytes': allocation, 'vfs_allocation_percent': VFS_ALLOCATION_PERCENT if driver == 'vfs' else 0,
+            'filesystem_block_bytes': allocation_unit,
+            'postgres_start_bytes': pg, 'build_bytes': build_bytes,
             'required_bytes': required, 'services': planned,
             'sufficient': available >= required and workspace_available >= GIB}
 

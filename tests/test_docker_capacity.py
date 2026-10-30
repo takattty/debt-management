@@ -59,7 +59,7 @@ else: raise AssertionError('No mutations permitted: '+repr(args))
 ''')
         self.fake.chmod(0o755)
 
-    def run_guard(self, free, phase='up', error=None, worktree=None):
+    def run_guard(self, free, phase='up', error=None, worktree=None, block_size=4096):
         fixture = self.root / 'fixture.json'
         fixture.write_text(json.dumps(self.fixture))
         env = {'PATH': str(self.root) + os.pathsep + os.environ['PATH'], 'FIXTURE': str(fixture), 'TRACE': str(self.trace),
@@ -68,6 +68,7 @@ else: raise AssertionError('No mutations permitted: '+repr(args))
         out, err = io.StringIO(), io.StringIO()
         with patch.object(CAPACITY, 'ROOT', self.root), patch.object(CAPACITY, 'OWNER', self.root), patch.object(CAPACITY, 'MARKER', self.root / 'marker'), \
                 patch.object(CAPACITY.shutil, 'disk_usage', return_value=SimpleNamespace(free=free), side_effect=error), \
+                patch.object(CAPACITY.os, 'statvfs', return_value=SimpleNamespace(f_frsize=block_size)), \
                 patch.dict(os.environ, env), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = CAPACITY.main(['--cloud-local', *(['--worktree', str(worktree)] if worktree else []), phase])
         return code, json.loads(out.getvalue()) if out.getvalue() else None, err.getvalue()
@@ -80,9 +81,10 @@ else: raise AssertionError('No mutations permitted: '+repr(args))
     def test_zero_space_refuses_without_mutations_and_preserves_registry_selector(self):
         code, report, _ = self.run_guard(0)
         self.assertEqual(code, 1)
-        self.assertEqual(report['vfs_clone_bytes'], 854500000)
+        self.assertEqual(report['vfs_clone_bytes'], 1709000000)
         self.assertEqual(report['postgres_start_bytes'], 456000000)
-        self.assertEqual(report['required_bytes'], CAPACITY.GIB + 854500000 + 456000000)
+        self.assertEqual(report['vfs_allocation_bytes'], 170901504)
+        self.assertEqual(report['required_bytes'], CAPACITY.GIB + 1709000000 + 170901504 + 456000000)
         for event in map(json.loads, self.trace.read_text().splitlines()):
             self.assertEqual(event['selectors'], [])
             self.assertEqual(event['config'], '/preserved-registry-selector')
@@ -102,7 +104,22 @@ else: raise AssertionError('No mutations permitted: '+repr(args))
         code, report, _ = self.run_guard(2 * CAPACITY.GIB)
         self.assertEqual(code, 0)
         self.assertEqual(report['vfs_clone_bytes'], 0)
+        self.assertEqual(report['vfs_allocation_bytes'], 0)
         self.assertEqual(report['postgres_start_bytes'], 456000000)
+
+    def test_root_observed_fresh_create_cannot_pass_the_old_one_copy_boundary(self):
+        # Root Engine28.4.0/vfs observation: these pinned images consumed 1,786,224,640B,
+        # including a later 9.38MB snapshot. Old required space would leave only 597MB.
+        for name, size in [('postgres', 455836883), ('backend', 349570196), ('frontend', 48529029)]:
+            self.fixture['images'][name]['Size'] = size
+        old_boundary = 2383514815
+        observed_drop = 1786224640
+        self.assertLess(old_boundary - observed_drop, CAPACITY.GIB)
+        code, report, _ = self.run_guard(old_boundary)
+        self.assertEqual(code, 1, 'the old one-copy boundary must refuse before create')
+        self.assertEqual(report['vfs_clone_bytes'], 2 * 853936108)
+        self.assertGreater(report['vfs_allocation_bytes'], 0)
+        self.assertGreaterEqual(report['required_bytes'] - observed_drop, CAPACITY.GIB)
 
     def test_unknown_driver_image_size_or_filesystem_fail_closed(self):
         for mutate in [lambda: self.fixture['info'].update(Driver='unknown'),
@@ -113,11 +130,12 @@ else: raise AssertionError('No mutations permitted: '+repr(args))
                 self.assertEqual(self.run_guard(20 * CAPACITY.GIB)[0], 2)
                 self.fixture = saved
         self.assertEqual(self.run_guard(None, error=OSError('unavailable'))[0], 2)
+        self.assertEqual(self.run_guard(20 * CAPACITY.GIB, block_size=0)[0], 2)
 
     def test_current_container_avoids_clone_but_unhealthy_postgres_still_needs_start_space(self):
         self.fixture['containers'] = [self.current()]
         _, report, _ = self.run_guard(20 * CAPACITY.GIB)
-        self.assertEqual(report['vfs_clone_bytes'], 398500000)
+        self.assertEqual(report['vfs_clone_bytes'], 797000000)
         self.assertEqual(report['postgres_start_bytes'], 456000000)
         self.fixture['containers'] = [self.current(healthy=True)]
         self.assertEqual(self.run_guard(20 * CAPACITY.GIB)[1]['postgres_start_bytes'], 0)
@@ -125,14 +143,41 @@ else: raise AssertionError('No mutations permitted: '+repr(args))
     def test_changed_config_or_image_requires_recreation_clone(self):
         for container in [self.current(hash_value='b' * 64), self.current(image='sha256:old')]:
             self.fixture['containers'] = [container]
-            self.assertEqual(self.run_guard(20 * CAPACITY.GIB)[1]['vfs_clone_bytes'], 854500000)
+            self.assertEqual(self.run_guard(20 * CAPACITY.GIB)[1]['vfs_clone_bytes'], 1709000000)
+
+    def test_all_current_healthy_containers_need_no_new_vfs_copies_or_allocation(self):
+        containers = []
+        for index, name in enumerate(['postgres', 'backend', 'frontend'], 1):
+            current = self.current(healthy=True, image='sha256:' + name)
+            current['Id'] = str(index) * 64
+            current['Config']['Labels']['com.docker.compose.service'] = name
+            containers.append(current)
+        self.fixture['containers'] = containers
+        code, report, _ = self.run_guard(CAPACITY.GIB)
+        self.assertEqual(code, 0)
+        self.assertEqual(report['vfs_clone_bytes'], 0)
+        self.assertEqual(report['vfs_allocation_bytes'], 0)
+        self.assertEqual(report['required_bytes'], CAPACITY.GIB)
+
+    def test_allocation_allowance_scales_with_image_bytes_and_filesystem_blocks_without_pg_start(self):
+        self.fixture['containers'] = [self.current(healthy=True)]
+        _, before, _ = self.run_guard(20 * CAPACITY.GIB)
+        self.assertEqual(before['postgres_start_bytes'], 0)
+        self.assertGreater(before['vfs_allocation_bytes'], 0)
+        self.fixture['images']['backend']['Size'] += 100000000
+        _, after, _ = self.run_guard(20 * CAPACITY.GIB, block_size=65536)
+        self.assertGreater(after['vfs_allocation_bytes'], before['vfs_allocation_bytes'])
+        self.assertEqual(after['vfs_allocation_bytes'] % 65536, 0)
+        self.assertEqual(after['filesystem_block_bytes'], 65536)
 
     def test_build_accounts_for_real_base_payload_layers_and_future_container(self):
         self.fixture['model']['services']['backend'] = {'build': {'context': str(self.root / 'backend')}}
         self.fixture['model']['services']['frontend'] = {'build': {'context': str(self.root / 'frontend')}}
         _, report, _ = self.run_guard(20 * CAPACITY.GIB, 'build')
         self.assertGreater(report['build_bytes'], 1200000000)
-        self.assertGreater(report['vfs_clone_bytes'], 856000000)
+        projected = sum(service.get('projected_virtual_bytes', 0) for service in report['services'])
+        self.assertEqual(report['vfs_clone_bytes'], 2 * (456000000 + projected))
+        self.assertGreater(report['vfs_allocation_bytes'], 0)
         before = report['required_bytes']
         (self.root / 'backend/payload').write_bytes(b'X' * 1000000)
         self.assertGreater(self.run_guard(20 * CAPACITY.GIB, 'build')[1]['required_bytes'], before)

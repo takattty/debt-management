@@ -64,6 +64,18 @@ CREATE TRIGGER collection_state_history BEFORE INSERT OR UPDATE OR DELETE ON col
 CREATE TRIGGER collection_event_immutable BEFORE UPDATE OR DELETE ON collection_event
     FOR EACH ROW EXECUTE FUNCTION protect_allocation_history();
 
+CREATE FUNCTION protect_collection_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.action LIKE 'COLLECTION_%' OR (TG_OP='UPDATE' AND NEW.action LIKE 'COLLECTION_%') THEN
+        RAISE EXCEPTION 'Collection audits are append-only' USING ERRCODE='23514';
+    END IF;
+    IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER collection_audit_immutable BEFORE UPDATE OR DELETE ON audit_event
+    FOR EACH ROW EXECUTE FUNCTION protect_collection_audit();
+
 CREATE FUNCTION identify_collection_actor() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     SELECT email_canonical INTO NEW.actor_label FROM app_user

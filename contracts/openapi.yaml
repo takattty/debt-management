@@ -1180,14 +1180,14 @@ components:
       required: [invoiceId, expectedInvoiceVersion]
       properties:
         invoiceId: {type: string, format: uuid}
-        expectedInvoiceVersion: {type: integer, format: int64, minimum: 0}
+        expectedInvoiceVersion: {type: string, pattern: '^(0|[1-9][0-9]*)$', maxLength: 19, description: 'Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected.'}
     AllocationConfirmLine:
       type: object
       additionalProperties: false
       required: [invoiceId, expectedInvoiceVersion, cashAmount, feeAmount]
       properties:
         invoiceId: {type: string, format: uuid}
-        expectedInvoiceVersion: {type: integer, format: int64, minimum: 0}
+        expectedInvoiceVersion: {type: string, pattern: '^(0|[1-9][0-9]*)$', maxLength: 19, description: 'Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected.'}
         cashAmount: {type: integer, format: int64, minimum: 0, maximum: 9007199254740991}
         feeAmount: {type: integer, format: int64, minimum: 0, maximum: 9007199254740991}
     AllocationConfirmRequest:
@@ -1196,7 +1196,7 @@ components:
       required: [requestId, expectedPaymentVersion, reason, lines]
       properties:
         requestId: {type: string, format: uuid}
-        expectedPaymentVersion: {type: integer, format: int64, minimum: 0}
+        expectedPaymentVersion: {type: string, pattern: '^(0|[1-9][0-9]*)$', maxLength: 19, description: 'Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected.'}
         reason: {type: string, minLength: 1, description: Required explanation of 1 through 1000 code points after surrounding whitespace removal; controls and line separators are rejected.}
         lines:
           type: array
@@ -1210,7 +1210,7 @@ components:
       required: [requestId, expectedPaymentVersion, reason, invoices]
       properties:
         requestId: {type: string, format: uuid}
-        expectedPaymentVersion: {type: integer, format: int64, minimum: 0}
+        expectedPaymentVersion: {type: string, pattern: '^(0|[1-9][0-9]*)$', maxLength: 19, description: 'Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected.'}
         reason: {type: string, minLength: 1, description: Required explanation of 1 through 1000 code points after surrounding whitespace removal; controls and line separators are rejected.}
         invoices:
           type: array
@@ -1226,7 +1226,7 @@ components:
         requestId: {type: string, format: uuid}
         kind: {type: string, enum: [CONFIRM, REVERSE]}
         reversesId: {type: string, format: uuid, nullable: true}
-        paymentVersion: {type: integer, format: int64, minimum: 1}
+        paymentVersion: {type: string, pattern: '^[1-9][0-9]*$', maxLength: 19, description: Exact immutable bigint payment version as a decimal string.}
         actorUserId: {type: string, format: uuid}
         reason: {type: string}
         occurredAt: {type: string, format: date-time}

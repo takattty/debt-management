@@ -808,14 +808,14 @@ export interface components {
         AllocationInvoiceVersion: {
             /** Format: uuid */
             invoiceId: string;
-            /** Format: int64 */
-            expectedInvoiceVersion: number;
+            /** @description Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected. */
+            expectedInvoiceVersion: string;
         };
         AllocationConfirmLine: {
             /** Format: uuid */
             invoiceId: string;
-            /** Format: int64 */
-            expectedInvoiceVersion: number;
+            /** @description Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected. */
+            expectedInvoiceVersion: string;
             /** Format: int64 */
             cashAmount: number;
             /** Format: int64 */
@@ -824,8 +824,8 @@ export interface components {
         AllocationConfirmRequest: {
             /** Format: uuid */
             requestId: string;
-            /** Format: int64 */
-            expectedPaymentVersion: number;
+            /** @description Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected. */
+            expectedPaymentVersion: string;
             /** @description Required explanation of 1 through 1000 code points after surrounding whitespace removal; controls and line separators are rejected. */
             reason: string;
             /** @description Each invoice occurs once. Each line has positive cash or explicit fee; total operation cash must be positive. */
@@ -834,8 +834,8 @@ export interface components {
         AllocationReverseRequest: {
             /** Format: uuid */
             requestId: string;
-            /** Format: int64 */
-            expectedPaymentVersion: number;
+            /** @description Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected. */
+            expectedPaymentVersion: string;
             /** @description Required explanation of 1 through 1000 code points after surrounding whitespace removal; controls and line separators are rejected. */
             reason: string;
             invoices: components["schemas"]["AllocationInvoiceVersion"][];
@@ -851,8 +851,8 @@ export interface components {
             kind: "CONFIRM" | "REVERSE";
             /** Format: uuid */
             reversesId: string | null;
-            /** Format: int64 */
-            paymentVersion: number;
+            /** @description Exact immutable bigint payment version as a decimal string. */
+            paymentVersion: string;
             /** Format: uuid */
             actorUserId: string;
             reason: string;

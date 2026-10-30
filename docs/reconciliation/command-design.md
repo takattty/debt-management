@@ -30,3 +30,6 @@ HTTP response は immutable 操作を返す。現在の版・残高は既存 GET
 
 この準備branchではV9を使用する。未mergeのCollection V9は統合順を確定後V10へ改番し、
 既存V8 DBへのupgradeとchecksumを検証してから公開する。released migrationは変更しない。
+
+公開commandの版は候補GETと同じ正確なdecimal stringで送受信する。正規表現とLong.parseLongで
+非負bigint範囲を検証し、JS Numberへの変換による丸めを防ぐ。nullの配列要素はmapping前に400で拒否する。

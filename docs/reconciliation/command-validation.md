@@ -31,3 +31,23 @@ Docker build/upや既存DBの削除は実施していない。正常終了後は
 
 証拠readerはactive checkoutの`/workspace/debt-issue3-local-acceptance/scripts/read-evidence.py`を
 絶対pathで実行し、artifactは`work/name.log`、ownerは`--worktree /workspace/debt-settlement-commands`とする。
+
+
+## 独立レビュー所見への修正検証
+
+旧対象bd94はnull配列要素の500とJSで正確に扱えないnumber版の2所見があり、旧結果を保持する。
+修正は別worktree `debt-allocation-version-fix` に置き、command版を候補と同じ正確なdecimal stringへ変更した。
+null行はmapping前に400。moneyはJPY整数のまま。
+
+| 修正の検証 | 結果 | 修正treeの証拠 |
+| --- | --- | --- |
+| 既存command8本＋新actualHTTP2本、OpenAPI/checkstyle/bootJar | 10test、0fail、0skip | `work/fix-command-check-01.log` |
+| 型生成整合・FE型 | 成功 | `work/fix-frontend-check-01.log` |
+| 通常globの全runn | 13book、0skip、0fail。null確認/取消も400 | `work/fix-runn-all-01.log` |
+| 実HTTP backend終了 | runnExit0、同親SIGTERM/wait | `work/fix-http-result-01.json` |
+
+実HTTP回帰は2^53−1/2^53/2^53+1のinvoice版を丸めず確定して再送し、LongMAXのstale409、
+invoice版加算overflow409、非canonical/Long範囲超の版400、両commandの先頭/途中null400を確認した。
+拒否後はpayment/invoice/operation/line/revision/auditのtraceが不変。
+修正後の全206回帰は未再実施であり、旧206成功を新SHAの結果へ流用しない。
+新しい各phase logはunique名とexclusive creationを使い、既存FAIL/PASSを置換しない。

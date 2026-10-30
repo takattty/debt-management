@@ -1,8 +1,9 @@
+import { statusFeedback } from './status-feedback';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import { loginPaymentUser } from './payment-fixtures';
 import { sessionHeaders } from './invoice-fixtures';
-import type { Customer, ImportBatch, Payment, PaymentCandidates } from '../src/api';
+import type { Customer, ImportBatch, Payment, PaymentCandidates, Session } from '../src/api';
 
 async function importCsv(page: Page, kind: 'invoices' | 'payments', csv: string) {
   const headers = await sessionHeaders(page);
@@ -65,4 +66,19 @@ test('real candidate selection is human, cross-customer, keyset-paged and tenant
   const rejected = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/payments/${payment.id}/candidates` && response.status() === 401);
   await page.getByRole('button', { name: '最新候補を取得して選び直す', exact: true }).click(); expect((await rejected).status()).toBe(401);
   await expect(page.getByLabel('パスワード', { exact: true })).toHaveValue(''); await expect(page.getByRole('table', { name: '消込候補', exact: true })).toHaveCount(0);
+});
+
+test('real split allocation with explicit fees recovers a lost response using the same immutable operation', async ({ page }) => {
+  await loginPaymentUser(page); const { payment, prefix } = await seed(page); await openPayment(page, payment);
+  for (const index of [0, 1]) await page.getByRole('checkbox', { name: `請求 ${prefix}-INV-${index} を選択`, exact: true }).check();
+  await page.getByRole('button', { name: '選択内容を再取得して確認', exact: true }).click();
+  await page.getByLabel(`現金（円） ${prefix}-INV-0`, { exact: true }).fill('6000'); await page.getByLabel(`現金（円） ${prefix}-INV-1`, { exact: true }).fill('3000'); await page.getByLabel(`手数料（円） ${prefix}-INV-1`, { exact: true }).fill('500');
+  await page.getByLabel('消込理由', { exact: true }).fill('架空明細の合算振込と手数料を確認'); await page.getByRole('checkbox', { name: '顧客・請求・現金額・明示した手数料を確認しました', exact: true }).check();
+  const bodies: string[] = []; let drop = true;
+  await page.route(`**/api/payments/${payment.id}/allocations`, async (route) => { if (route.request().method() !== 'POST') { await route.continue(); return; } bodies.push(route.request().postData()!); const response = await route.fetch(); expect(response.status()).toBe(200); if (drop) { drop = false; await route.abort('failed'); } else await route.fulfill({ response }); });
+  await page.getByRole('button', { name: 'この内容で消込を確定', exact: true }).click(); await expect(page.getByRole('alert')).toContainText('確定結果が不明'); await expect(page.getByRole('button', { name: '消込を閉じる', exact: true })).toBeDisabled(); await expect(page.getByRole('button', { name: '顧客管理', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '同じ操作IDで結果を確認', exact: true }).click(); await expect(statusFeedback(page.getByRole('region', { name: '消込内容の確認', exact: true }), '消込を確定しました')).toContainText('消込を確定しました'); expect(bodies).toHaveLength(2); expect(bodies[0]).toBe(bodies[1]);
+  const current: PaymentCandidates = await (await page.request.get(`/api/payments/${payment.id}/candidates`)).json(); expect(current.unallocatedAmount).toBe(1000); expect(current.expectedPaymentVersion).toBe('1');
+  for (const index of [0, 1]) { const item = current.items.find((candidate) => candidate.invoiceNumber === `${prefix}-INV-${index}`)!; expect(item.outstandingAmount).toBe(index === 0 ? 4000 : 6500); }
+  const session: Session = await (await page.request.get('/api/session')).json(); expect(session.email).toBe('alpha-accountant@example.test'); await page.reload(); await openPayment(page, payment); await expect(page.getByText(/現在の未充当現金：1,000円/)).toBeVisible(); await expect(page.getByText(/入金原本：.*10,000円/)).toBeVisible();
 });

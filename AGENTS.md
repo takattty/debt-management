@@ -46,6 +46,8 @@ Cloudのログ保存付き検証は `bash /absolute/checkout/scripts/verify-clou
 
 API/runn/proxyとbrowser E2Eは同じruntimeで並行実行しない。verifyはAPI phase後に同一artifact・同一DBのbackendを正常停止/再起動し、process内login counterをphase間で分離する。limiterの閾値・window・CSRFを変えず、固定sleepや429再送で検証を通さない。phaseごとのbackend logと失敗終了値を保持する。
 
+managed CloudでDocker build/upを行う前は他のGradle/npm/build/E2Eなどのheavy workerをCoordinatorが停止・待機させ、Docker phaseを一つだけ実行する。通常の1GiB検査はVFS複製の予算ではない。`scripts/docker-verify.sh --cloud-local` は明示local socketを使い、各build/up直前に実driver・image virtual size・同image/configの既存container・PG起動余裕を測定し、複製/中間layer/context＋1GiB reserveに不足または測定不能なら作成前に拒否する。これは容量の予約ではないためphase間も再測定する。標準Mac/Desktop/remoteはこのCloud modeへ暗黙切替せず、通常のselected contextと共通host build guardを維持する。Docker driver、TLS/proxy/registry設定を変更せず、source・JAR・DB volume・image・logを自動削除しない。
+
 ## PR と API 契約
 
 repository内scriptの実行にもcatalog確認を適用する。新しいscript名は責務や過去文脈から作らず、先のcallで `rg --files scripts` の実出力を観測し、次callで観測した実pathだけを実行する。読込helperだけを使っても、未確認名を `python3` / `bash` へ渡せば同じ誤りになる。

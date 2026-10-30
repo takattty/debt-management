@@ -1,0 +1,382 @@
+desc: Manual payer correspondence registration, deactivation and tenant isolation
+concurrency: debt-api-acceptance
+labels:
+- api
+- payments
+- security
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+  admin:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+  beta:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: true
+  invalid:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    skipValidateRequest: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+secrets:
+- vars.password
+- anonymousToken
+- anonymousCookie
+- cookie
+- token
+- adminAnonymousToken
+- adminAnonymousCookie
+- adminCookie
+- adminToken
+- betaAnonymousToken
+- betaAnonymousCookie
+- betaCookie
+- betaToken
+steps:
+  unauthenticated:
+    invalid:
+      /api/payer-aliases:
+        get:
+          body: null
+          useCookie: false
+    test: current.res.status == 401
+  csrf:
+    api:
+      /api/csrf:
+        get:
+          body: null
+          useCookie: false
+    bind:
+      anonymousToken: current.res.body.csrfToken
+      anonymousCookie: current.res.cookies.JSESSIONID.Value
+      suffix: faker.UUID()
+    test: current.res.status == 200
+  login:
+    api:
+      /api/auth/login:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ anonymousCookie }}
+            X-CSRF-TOKEN: '{{ anonymousToken }}'
+          body:
+            application/json:
+              email: alpha-accountant@example.test
+              password: '{{ vars.password }}'
+          useCookie: false
+    bind:
+      cookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  session:
+    api:
+      /api/session:
+        get:
+          body: null
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      token: current.res.body.csrfToken
+      actor: current.res.body.userId
+    test: current.res.status == 200 && current.res.body.role == 'ACCOUNTANT'
+  customer:
+    api:
+      /api/customers:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+            Cookie: JSESSIONID={{ cookie }}
+          body:
+            application/json:
+              code: A-{{ suffix }}
+              name: 架空名義顧客A
+          useCookie: false
+    bind:
+      first: current.res.body.id
+    test: current.res.status == 201
+  secondCustomer:
+    api:
+      /api/customers:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+            Cookie: JSESSIONID={{ cookie }}
+          body:
+            application/json:
+              code: B-{{ suffix }}
+              name: 架空名義顧客B
+          useCookie: false
+    bind:
+      second: current.res.body.id
+    test: current.res.status == 201
+  noCsrf:
+    invalid:
+      /api/payer-aliases:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+          body:
+            application/json:
+              payerName: 名義
+              customerId: '{{ first }}'
+          useCookie: false
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
+  noUnknownTenantInput:
+    invalid:
+      /api/payer-aliases:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              payerName: 名義
+              customerId: '{{ first }}'
+              tenantId: 22222222-2222-2222-2222-222222222222
+          useCookie: false
+    test: current.res.status == 400
+  registration:
+    api:
+      /api/payer-aliases:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+            Cookie: JSESSIONID={{ cookie }}
+          body:
+            application/json:
+              payerName: 　架空{{ suffix }}　
+              customerId: '{{ first }}'
+          useCookie: false
+    bind:
+      aliasId: current.res.body.id
+    test: current.res.status == 201 && current.res.body.payerName == '架空' + suffix && current.res.body.active && current.res.body.version == 0 && current.res.body.createdByUserId
+      == actor
+  duplicate:
+    api:
+      /api/payer-aliases:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+            Cookie: JSESSIONID={{ cookie }}
+          body:
+            application/json:
+              payerName: 架空{{ suffix }}
+              customerId: '{{ first }}'
+          useCookie: false
+    test: current.res.status == 409 && current.res.body.code == 'PAYER_ALIAS_EXISTS'
+  sameNameDifferentCustomer:
+    api:
+      /api/payer-aliases:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+            Cookie: JSESSIONID={{ cookie }}
+          body:
+            application/json:
+              payerName: 架空{{ suffix }}
+              customerId: '{{ second }}'
+          useCookie: false
+    test: current.res.status == 201 && current.res.body.customerId == second
+  boundedPage:
+    api:
+      /api/payer-aliases?limit=1:
+        get:
+          body: null
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].active && current.res.body.nextCursor != null
+  badPageSize:
+    invalid:
+      /api/payer-aliases?limit=101:
+        get:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+          body: null
+          useCookie: false
+    test: current.res.status == 400
+  adminCsrf:
+    admin:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      adminAnonymousToken: current.res.body.csrfToken
+      adminAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  adminLogin:
+    admin:
+      /api/auth/login:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ adminAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ adminAnonymousToken }}'
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: '{{ vars.password }}'
+    bind:
+      adminCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  adminSession:
+    admin:
+      /api/session:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ adminCookie }}
+          body: null
+    bind:
+      adminToken: current.res.body.csrfToken
+      adminActor: current.res.body.userId
+    test: current.res.status == 200 && current.res.body.role == 'ADMIN'
+  staleVersion:
+    admin:
+      /api/payer-aliases/{{ aliasId }}/deactivation:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ adminCookie }}
+            X-CSRF-TOKEN: '{{ adminToken }}'
+          body:
+            application/json:
+              version: 1
+              reason: 架空誤登録
+    test: current.res.status == 409 && current.res.body.code == 'VERSION_CONFLICT'
+  deactivation:
+    admin:
+      /api/payer-aliases/{{ aliasId }}/deactivation:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ adminCookie }}
+            X-CSRF-TOKEN: '{{ adminToken }}'
+          body:
+            application/json:
+              version: 0
+              reason: ' 顧客の選択誤り '
+    test: current.res.status == 200 && !current.res.body.active && current.res.body.version == 1 && current.res.body.createdByUserId == actor && current.res.body.deactivatedByUserId
+      == adminActor && current.res.body.deactivationReason == '顧客の選択誤り'
+  retainedDetail:
+    api:
+      /api/payer-aliases/{{ aliasId }}:
+        get:
+          body: null
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && !current.res.body.active && current.res.body.customerId == first && current.res.body.payerName == '架空' + suffix && current.res.body.deactivatedAt
+      != null
+  repeatDeactivation:
+    api:
+      /api/payer-aliases/{{ aliasId }}/deactivation:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+            Cookie: JSESSIONID={{ cookie }}
+          body:
+            application/json:
+              version: 1
+              reason: 再送
+          useCookie: false
+    test: current.res.status == 409 && current.res.body.code == 'VERSION_CONFLICT'
+  reregistration:
+    admin:
+      /api/payer-aliases:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ adminCookie }}
+            X-CSRF-TOKEN: '{{ adminToken }}'
+          body:
+            application/json:
+              payerName: 架空{{ suffix }}
+              customerId: '{{ first }}'
+    test: current.res.status == 201 && current.res.body.id != aliasId && current.res.body.createdByUserId == adminActor
+  betaCsrf:
+    beta:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      betaAnonymousToken: current.res.body.csrfToken
+      betaAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  betaLogin:
+    beta:
+      /api/auth/login:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ betaAnonymousToken }}'
+          body:
+            application/json:
+              email: beta-admin@example.test
+              password: '{{ vars.password }}'
+    bind:
+      betaCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  betaSession:
+    beta:
+      /api/session:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    bind:
+      betaToken: current.res.body.csrfToken
+    test: current.res.status == 200
+  hiddenDetail:
+    beta:
+      /api/payer-aliases/{{ aliasId }}:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-Tenant-Id: 11111111-1111-1111-1111-111111111111111
+          body: null
+    test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'
+  hiddenDeactivation:
+    beta:
+      /api/payer-aliases/{{ aliasId }}/deactivation:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-CSRF-TOKEN: '{{ betaToken }}'
+          body:
+            application/json:
+              version: 0
+              reason: 越境
+    test: current.res.status == 404
+  hiddenCustomer:
+    beta:
+      /api/payer-aliases:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-CSRF-TOKEN: '{{ betaToken }}'
+          body:
+            application/json:
+              payerName: 架空{{ suffix }}
+              customerId: '{{ first }}'
+    test: current.res.status == 404
+  isolatedList:
+    beta:
+      /api/payer-aliases:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 0

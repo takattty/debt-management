@@ -31,6 +31,8 @@ tags:
   description: Tenant-scoped invoice facts and bounded receivables views
 - name: Payments
   description: Immutable incoming JPY payment facts and bounded tenant-scoped pages
+- name: PayerAliases
+  description: Manual tenant-scoped payer-name to customer correspondences without allocation
 - name: Imports
   description: Immutable tenant-scoped CSV previews and explicit all-or-nothing confirmation
 paths:
@@ -175,6 +177,105 @@ paths:
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+  /api/payer-aliases:
+    get:
+      tags: [PayerAliases]
+      operationId: listPayerAliases
+      summary: List active manual payer correspondences in stable ID order
+      description: ADMIN and ACCOUNTANT may read all active pairs in their authenticated tenant. Identical names may correspond to multiple customers; this endpoint does not choose a candidate or change any balance.
+      parameters:
+      - name: cursor
+        in: query
+        schema: {type: string, format: uuid}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        '200':
+          description: Active correspondences only; nextCursor is null at the end
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PayerAliasesPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [PayerAliases]
+      operationId: createPayerAlias
+      summary: Register a manual payer-name to customer correspondence
+      description: ADMIN and ACCOUNTANT may register a pair for an existing customer in the authenticated tenant. Uses the payment CSV text rule, stripping surrounding whitespace only; case, width, kana and Unicode normalization are never applied. The stripped name is 1 through 200 code points; controls, line separators and malformed Unicode are rejected before stripping. An active identical pair returns 409 PAYER_ALIAS_EXISTS. A deactivated pair may be registered again with a new ID, retaining the original row and audit.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PayerAliasCreateRequest'}
+      responses:
+        '201':
+          description: Correspondence and registration audit saved atomically
+          headers:
+            Location: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PayerAliasResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Customer does not exist in the authenticated tenant, content: {application/json: {schema: {$ref: '#/components/schemas/ApiError'}}}}
+        '409': {description: Active payer/customer pair already exists, content: {application/json: {schema: {$ref: '#/components/schemas/ApiError'}}}}
+  /api/payer-aliases/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    get:
+      tags: [PayerAliases]
+      operationId: getPayerAlias
+      summary: Read the original correspondence including its deactivation history
+      description: Retains the original name, customer and registering actor/time after deactivation. Other tenants return 404.
+      responses:
+        '200':
+          description: Active or deactivated correspondence
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PayerAliasResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Correspondence not found in this tenant, content: {application/json: {schema: {$ref: '#/components/schemas/ApiError'}}}}
+  /api/payer-aliases/{id}/deactivation:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    post:
+      tags: [PayerAliases]
+      operationId: deactivatePayerAlias
+      summary: Deactivate an incorrect correspondence with its current version and reason
+      description: ADMIN and ACCOUNTANT may deactivate once, atomically saving actor/time/reason and audit while retaining the original correspondence. A stale version or repeat returns 409 VERSION_CONFLICT. No physical deletion, reactivation or allocation is performed.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PayerAliasDeactivateRequest'}
+      responses:
+        '200':
+          description: Deactivated correspondence
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PayerAliasResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Correspondence not found in this tenant, content: {application/json: {schema: {$ref: '#/components/schemas/ApiError'}}}}
+        '409': {description: Stale version or already deactivated, content: {application/json: {schema: {$ref: '#/components/schemas/ApiError'}}}}
   /api/payments:
     get:
       tags: [Payments]
@@ -963,6 +1064,43 @@ components:
           maxItems: 100
           items: {$ref: '#/components/schemas/ReceivableResponse'}
         nextCursor: {type: string, maxLength: 47, nullable: true}
+    PayerAliasCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [payerName, customerId]
+      properties:
+        payerName: {type: string, minLength: 1, description: 'Surrounding whitespace only is removed; 1 through 200 code points after stripping, using the payment CSV text rule.'}
+        customerId: {type: string, format: uuid}
+    PayerAliasDeactivateRequest:
+      type: object
+      additionalProperties: false
+      required: [version, reason]
+      properties:
+        version: {type: integer, format: int64, minimum: 0}
+        reason: {type: string, minLength: 1, description: 'Required explanation, 1 through 500 code points after stripping; controls and line separators are rejected before stripping.'}
+    PayerAliasResponse:
+      type: object
+      required: [id, payerName, customerId, active, version, createdByUserId, createdAt, deactivatedByUserId, deactivatedAt, deactivationReason]
+      properties:
+        id: {type: string, format: uuid}
+        payerName: {type: string, minLength: 1, maxLength: 200}
+        customerId: {type: string, format: uuid}
+        active: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+        createdByUserId: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        deactivatedByUserId: {type: string, format: uuid, nullable: true}
+        deactivatedAt: {type: string, format: date-time, nullable: true}
+        deactivationReason: {type: string, maxLength: 500, nullable: true}
+    PayerAliasesPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/PayerAliasResponse'}
+        nextCursor: {type: string, format: uuid, nullable: true}
     PaymentResponse:
       type: object
       required: [id, transactionId, transferDate, payerName, amount, unallocatedAmount, sourceBatchId, createdByUserId, createdAt]

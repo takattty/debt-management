@@ -19,6 +19,7 @@ public class ImportStore {
     private final JdbcTemplate batches;
     private final JsonMapper json = JsonMapper.builder().build();
     public record Error(int number, CsvError value) { }
+    public record Snapshot(int recordNumber, int rowNumber, Object typed, java.util.Map<String, ?> references) { }
 
     public ImportStore(JdbcClient jdbc, JdbcTemplate batches) {
         this.jdbc = jdbc;
@@ -26,24 +27,31 @@ public class ImportStore {
     }
 
     public void save(ImportBatch batch, CustomerCsv.Preview preview) {
+        save(batch, preview.rows().stream().map(row -> new Snapshot(row.recordNumber(), row.rowNumber(), row, java.util.Map.of())).toList(),
+                preview.errors());
+    }
+
+    public void save(ImportBatch batch, List<Snapshot> rows, List<CsvError> failures) {
         jdbc.sql("""
                 INSERT INTO import_batch(id,tenant_id,kind,format_version,semantic_fingerprint,status,
                     created_by_user_id,created_at,expires_at,row_count,error_count)
-                VALUES (:id,:tenant,'CUSTOMER',1,decode(:hash,'hex'),:status,:actor,:created,:expires,:rows,:errors)
+                VALUES (:id,:tenant,:kind,:format,decode(:hash,'hex'),:status,:actor,:created,:expires,:rows,:errors)
                 """).param("id", batch.id()).param("tenant", batch.tenantId()).param("hash", batch.semanticFingerprint())
+                .param("kind", batch.kind().name()).param("format", batch.formatVersion())
                 .param("status", batch.status().name()).param("actor", batch.createdByUserId())
                 .param("created", java.sql.Timestamp.from(batch.createdAt())).param("expires", java.sql.Timestamp.from(batch.expiresAt()))
                 .param("rows", batch.rowCount()).param("errors", batch.errorCount()).update();
         batches.batchUpdate("""
                 INSERT INTO import_row(tenant_id,batch_id,record_number,physical_start_line,typed_snapshot,reference_snapshot)
-                VALUES (?,?,?,?,CAST(? AS jsonb),'{}'::jsonb)
-                """, preview.rows(), 500, (statement, row) -> {
+                VALUES (?,?,?,?,CAST(? AS jsonb),CAST(? AS jsonb))
+                """, rows, 500, (statement, row) -> {
                     statement.setObject(1, batch.tenantId()); statement.setObject(2, batch.id());
                     statement.setInt(3, row.recordNumber()); statement.setInt(4, row.rowNumber());
-                    statement.setString(5, json.writeValueAsString(row));
+                    statement.setString(5, json.writeValueAsString(row.typed()));
+                    statement.setString(6, json.writeValueAsString(row.references()));
                 });
-        List<Error> errors = java.util.stream.IntStream.range(0, preview.errors().size())
-                .mapToObj(index -> new Error(index + 1, preview.errors().get(index))).toList();
+        List<Error> errors = java.util.stream.IntStream.range(0, failures.size())
+                .mapToObj(index -> new Error(index + 1, failures.get(index))).toList();
         saveErrors(batch, errors);
     }
 
@@ -63,9 +71,9 @@ public class ImportStore {
 
     public UUID confirmedDuplicate(ImportBatch batch) {
         return jdbc.sql("""
-                SELECT id FROM import_batch WHERE tenant_id=:tenant AND kind='CUSTOMER' AND format_version=:format
+                SELECT id FROM import_batch WHERE tenant_id=:tenant AND kind=:kind AND format_version=:format
                 AND semantic_fingerprint=decode(:hash,'hex') AND status='CONFIRMED' AND id<>:id
-                """).param("tenant", batch.tenantId()).param("format", batch.formatVersion())
+                """).param("tenant", batch.tenantId()).param("kind", batch.kind().name()).param("format", batch.formatVersion())
                 .param("hash", batch.semanticFingerprint()).param("id", batch.id()).query(UUID.class).optional().orElse(null);
     }
 
@@ -78,7 +86,7 @@ public class ImportStore {
     public ImportBatch get(UUID tenant, UUID id, boolean lock) {
         return jdbc.sql("""
                 SELECT *,encode(semantic_fingerprint,'hex') AS fingerprint FROM import_batch
-                WHERE tenant_id=:tenant AND id=:id AND kind='CUSTOMER'
+                WHERE tenant_id=:tenant AND id=:id AND kind IN ('CUSTOMER','INVOICE')
                 """ + (lock ? " FOR UPDATE" : ""))
                 .param("tenant", tenant).param("id", id).query(this::batch).optional().orElseThrow(ImportNotFound::new);
     }
@@ -89,6 +97,14 @@ public class ImportStore {
                 WHERE tenant_id=:tenant AND batch_id=:id AND record_number>:cursor ORDER BY record_number LIMIT :limit
                 """).param("tenant", tenant).param("id", id).param("cursor", cursor).param("limit", limit)
                 .query((result, number) -> json.readValue(result.getString("snapshot"), CustomerCsv.Row.class)).list();
+    }
+
+    public List<InvoiceCsv.Row> invoiceRows(UUID tenant, UUID id, int cursor, int limit) {
+        return jdbc.sql("""
+                SELECT typed_snapshot::text AS snapshot FROM import_row
+                WHERE tenant_id=:tenant AND batch_id=:id AND record_number>:cursor ORDER BY record_number LIMIT :limit
+                """).param("tenant", tenant).param("id", id).param("cursor", cursor).param("limit", limit)
+                .query((result, number) -> json.readValue(result.getString("snapshot"), InvoiceCsv.Row.class)).list();
     }
 
     public List<Error> errors(UUID tenant, UUID id, int cursor, int limit) {
@@ -102,7 +118,7 @@ public class ImportStore {
     }
 
     private ImportBatch batch(ResultSet result, int number) throws SQLException {
-        return new ImportBatch(result.getObject("id", UUID.class), result.getObject("tenant_id", UUID.class), ImportBatch.Kind.CUSTOMER,
+        return new ImportBatch(result.getObject("id", UUID.class), result.getObject("tenant_id", UUID.class), ImportBatch.Kind.valueOf(result.getString("kind")),
                 result.getInt("format_version"), result.getString("fingerprint"), ImportBatch.Status.valueOf(result.getString("status")),
                 result.getLong("version"), result.getObject("created_by_user_id", UUID.class), instant(result, "created_at"),
                 instant(result, "expires_at"), result.getObject("confirmed_by_user_id", UUID.class), instant(result, "confirmed_at"),

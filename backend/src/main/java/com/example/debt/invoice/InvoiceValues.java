@@ -19,7 +19,7 @@ public record InvoiceValues(UUID customerId, String invoiceNumber, LocalDate iss
         if (customerId == null) {
             throw invalid("customer_code", "CUSTOMER_REQUIRED", "Customer is required");
         }
-        invoiceNumber = validateNumber(invoiceNumber);
+        invoiceNumber = parseNumber(invoiceNumber);
         validateDate(issueDate, "issue_date");
         validateDate(dueDate, "due_date");
         if (dueDate.isBefore(issueDate)) {
@@ -54,7 +54,7 @@ public record InvoiceValues(UUID customerId, String invoiceNumber, LocalDate iss
         return amount;
     }
 
-    private static String validateNumber(String value) {
+    public static String parseNumber(String value) {
         if (value == null || value.isBlank()) {
             throw invalid("invoice_number", "NUMBER_REQUIRED", "Invoice number is required");
         }

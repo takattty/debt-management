@@ -518,6 +518,34 @@
           "resolved_at": "2026-10-30T00:11:22+00:00"
         }
       ]
+    },
+    {
+      "key": "source-file-name-assumption",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "invoice-importreadservice-guessed",
+          "summary": "一覧で未確認のImportReadServiceというclass名からpathを作り読込に失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:50:51+00:00"
+        },
+        {
+          "event": "invoice-customerimportconfirmation-guessed",
+          "summary": "CustomerImportConfirmationという未存在class名を推測して同じ読込失敗が再発した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:50:51+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "package内catalogを確認せず責務からclass名を推測し未存在pathを読んだ",
+          "prevention": "rg --filesの出力を先に確認し実在pathだけで次の読込commandを構成する。推測catをdiscoveryと同時に実行しない",
+          "verification": "実在ImportStoreとImportConfirmationTransactionを列挙後に読込成功。invoicepreviewのOpenAPI生成とcompile/Checkstyle成功、対象単体と実PG統合9件成功",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T23:50:51+00:00"
+        }
+      ]
     }
   ]
 }

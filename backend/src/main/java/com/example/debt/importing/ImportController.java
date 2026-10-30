@@ -35,9 +35,10 @@ public class ImportController implements ImportsApi {
     private final ImportStore store;
     private final CurrentUser current;
     private final ConfirmCustomerImport confirmation;
+    private final ConfirmInvoiceImport invoiceConfirmation;
 
-    public ImportController(CustomerImportService service, InvoiceImportService invoices, ImportStore store, CurrentUser current, ConfirmCustomerImport confirmation) {
-        this.service = service; this.invoices = invoices; this.store = store; this.current = current; this.confirmation = confirmation;
+    public ImportController(CustomerImportService service, InvoiceImportService invoices, ImportStore store, CurrentUser current, ConfirmCustomerImport confirmation, ConfirmInvoiceImport invoiceConfirmation) {
+        this.service = service; this.invoices = invoices; this.store = store; this.current = current; this.confirmation = confirmation; this.invoiceConfirmation = invoiceConfirmation;
     }
 
     @Override
@@ -93,8 +94,11 @@ public class ImportController implements ImportsApi {
 
     @Override
     public ResponseEntity<ImportBatchResponse> confirmImport(UUID id, ImportConfirmRequest request) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(response(confirmation.confirm(current.require(), id, request.getVersion())));
+        var user = current.require();
+        var batch = store.get(user.tenantId(), id, false);
+        ImportBatch confirmed = batch.kind() == ImportBatch.Kind.INVOICE
+                ? invoiceConfirmation.confirm(user, id, request.getVersion()) : confirmation.confirm(user, id, request.getVersion());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response(confirmed));
     }
 
     @Override

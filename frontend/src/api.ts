@@ -51,6 +51,13 @@ export const api = {
     { path: '/api/invitations/accept', method: 'POST' }, csrf, body,
   ),
   downloadCustomerImportTemplate: () => download({ path: '/api/imports/customers/template', method: 'GET' }),
+  downloadInvoiceImportTemplate: () => download({ path: '/api/imports/invoices/template', method: 'GET' }),
+  previewInvoiceImport: async (csrf: Csrf, file: File): Promise<ImportBatch> => {
+    const body = new FormData();
+    const field: keyof operations['previewInvoiceImport']['requestBody']['content']['multipart/form-data'] = 'file';
+    body.append(field, file);
+    return readJson<ImportBatch>(await send({ path: '/api/imports/invoices/preview', method: 'POST' }, csrf, body));
+  },
   previewCustomerImport: async (csrf: Csrf, file: File): Promise<ImportBatch> => {
     const body = new FormData();
     const field: keyof operations['previewCustomerImport']['requestBody']['content']['multipart/form-data'] = 'file';
@@ -133,7 +140,7 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
     const importMessages: Record<string, string> = {
       IMPORT_EXPIRED: 'プレビューの有効期限が切れました。CSVをもう一度プレビューしてください。',
       IMPORT_INVALID: 'エラーがあるため1件も登録できません。元のCSVを修正して、もう一度プレビューしてください。',
-      IMPORT_REFERENCE_CONFLICT: 'プレビュー後に顧客コードが登録されました。CSVを修正して、もう一度プレビューしてください。',
+      IMPORT_REFERENCE_CONFLICT: 'プレビュー後に顧客情報や登録内容が変わりました。CSVを修正して、もう一度プレビューしてください。',
       IMPORT_ALREADY_CONFIRMED: '同じ内容はすでに取り込まれています。元の取込結果を確認してください。',
       VERSION_CONFLICT: '取込内容が更新されています。取込状態を確認してください。',
     };

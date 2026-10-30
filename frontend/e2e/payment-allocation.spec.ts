@@ -61,7 +61,13 @@ test('real candidate selection is human, cross-customer, keyset-paged and tenant
   try { await loginPaymentUser(other, 'beta-admin@example.test', new URL('/', page.url()).toString()); expect((await other.request.get(`/api/payments/${payment.id}/candidates`)).status()).toBe(404); }
   finally { await otherContext.close(); }
   await page.getByRole('button', { name: '最新候補を取得して選び直す', exact: true }).click(); await expect(chosen).toHaveCount(0);
-  await page.context().clearCookies(); await page.getByRole('button', { name: '最新候補を取得して選び直す', exact: true }).click(); await expect(page.getByLabel('パスワード', { exact: true })).toHaveValue(''); await expect(page.getByRole('table', { name: '消込候補', exact: true })).toHaveCount(0);
+  // Settle both candidate and history reads before deliberately expiring the session.
+  await expect(page.getByRole('button', { name: '最新候補を取得して選び直す', exact: true })).toBeEnabled();
+  await expect(page.getByRole('region', { name: '消込履歴', exact: true }).getByText('消込履歴はありません。', { exact: true })).toBeVisible();
+  await page.context().clearCookies();
+  const rejected = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/payments/${payment.id}/candidates` && response.status() === 401);
+  await page.getByRole('button', { name: '最新候補を取得して選び直す', exact: true }).click(); expect((await rejected).status()).toBe(401);
+  await expect(page.getByLabel('パスワード', { exact: true })).toHaveValue(''); await expect(page.getByRole('table', { name: '消込候補', exact: true })).toHaveCount(0);
 });
 
 test('real split allocation with explicit fees recovers a lost response using the same immutable operation', async ({ page }) => {

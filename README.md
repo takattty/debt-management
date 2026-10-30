@@ -32,6 +32,8 @@ build-local は成果物の作成用で、テスト成功の証拠にはなり�
 
 請求・入金を含むCompose起動・停止再作成の実証は、別の準備ブランチ `acceptance/invoice-payment-compose` の `docs/verification/compose-invoice-payment.md` にあります。main以外の後続機能を含む統合候補の記録であり、このmainの入金対応や各PRの受入完了を示すものではありません。
 
+managed CloudのVFSでは、container作成でimage全体の複製が必要です。Docker検証は他の重いworkerを止め、`scripts/docker-verify.sh --cloud-local` を使います。実測したimage・build入力・既存container・PG起動余裕に1GiBの空きを残せない場合や、測定不能の場合は作成前に停止します。Cloudでは固定したbase imageを事前に用意し、不足時は所有者と復旧方法を確認してください。guardはpull・cleanup・daemon設定変更を行いません。通常のMac/Desktop/remoteではこのmodeを使わず、上の起動手順と選択済みDocker contextをそのまま使います。
+
 ## Cloud / 開発検証
 
 実PostgreSQLに接続します。H2やAPIモックで統合/E2Eを代替しません。検証は専用の架空データDBで行い、テストは対象テーブルを初期化します。

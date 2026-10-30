@@ -44,6 +44,18 @@
           "summary": "FEのPlaywrightがtest-results mkdirで容量不足となりAPIへ到達する前に失敗した",
           "evidence": "docs/learning/capacity-validation.md",
           "recorded_at": "2026-10-30T01:46:41+00:00"
+        },
+        {
+          "event": "docker-vfs-compose-up-enospc-20261030",
+          "summary": "VFSでCompose3container複製とPG初期化が1GiB検査の残容量を消費し起動失敗した",
+          "evidence": "docs/learning/capacity-validation.md",
+          "recorded_at": "2026-10-30T05:44:20+00:00"
+        },
+        {
+          "event": "collection-fix-review-worktree-enospc-20261030",
+          "summary": "同じ容量枯渇によりCollection fix独立reviewのworktree作成が失敗した",
+          "evidence": "docs/learning/capacity-validation.md",
+          "recorded_at": "2026-10-30T05:44:20+00:00"
         }
       ],
       "resolutions": [
@@ -54,6 +66,14 @@
           "guard": "scripts/check-workspace-capacity.py",
           "event_count": 3,
           "resolved_at": "2026-10-30T01:48:27+00:00"
+        },
+        {
+          "cause": "固定1GiB検査はVFSのimage全量複製とCompose全service起動・PG初期化の同時追加消費を予算化していなかった",
+          "prevention": "managed Cloudの明示local daemonでbuild/up前に実driver・image.Size・build入力・既存image/config一致・PG余裕を測定し複製と1GiBreserveを確保。unknownは作成前拒否。他heavyworker停止とphase再測定。Mac等は通常contextを保持",
+          "verification": "fake CLI/FSと実shell入口10tests、Python全48tests、bash構文とdiff検査成功。実vfs既存rootprojectのread-only planでfree3441127424B/required1578107736Bを算出しPG455836883Bとfrontend再作成48529029Bを別計上。build/up/startを作者は実施せずrootへ計画を引渡す。root復旧後新worktree作成成功、namedvolume保持もroot確認済み",
+          "guard": "scripts/check-docker-capacity.py",
+          "event_count": 5,
+          "resolved_at": "2026-10-30T05:47:55+00:00"
         }
       ]
     },

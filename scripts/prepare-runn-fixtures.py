@@ -53,3 +53,23 @@ for name, data in (('valid', payments), ('invalid', [payments[0], [payments[1][0
         writer = csv.writer(target, lineterminator='\r\n')
         writer.writerow(['transaction_id', 'transfer_date', 'payer_name', 'amount'])
         writer.writerows(data)
+
+candidate_id = str(uuid.uuid4())
+candidate = {
+    'firstCustomerCode': f'CA-{candidate_id}', 'secondCustomerCode': f'CB-{candidate_id}',
+    'transactionId': f'CAND-{candidate_id}', 'payerName': f'ｶｸｳ KAKUU kakuu é é {candidate_id}',
+}
+(root / 'runn-candidate-metadata.json').write_text(json.dumps(candidate, ensure_ascii=False), encoding='utf-8')
+for name, header, data in (
+    ('invoices', ['customer_code', 'invoice_number', 'issue_date', 'due_date', 'amount'], [
+        [candidate['firstCustomerCode'], f'CI-A-{candidate_id}', '0001-01-01', '9999-12-31', '100'],
+        [candidate['secondCustomerCode'], f'CI-B-{candidate_id}', '0001-01-01', '0001-01-01', '100'],
+    ]),
+    ('payment', ['transaction_id', 'transfer_date', 'payer_name', 'amount'], [
+        [candidate['transactionId'], '0001-01-01', f'　{candidate["payerName"]}　', '100'],
+    ]),
+):
+    with (root / f'runn-candidate-{name}.csv').open('w', encoding='utf-8-sig', newline='') as target:
+        writer = csv.writer(target, lineterminator='\r\n')
+        writer.writerow(header)
+        writer.writerows(data)

@@ -1,5 +1,8 @@
 # Frontend
 
+- tracked E2Eと私有work probeのstatus判定は `statusFeedback(scope, expected)` を使い、期待文言で絞ってから元のexpectを行う。複数の通知・loadingが共存するため直接の `getByRole('status')` や `.first()` で曖昧さを隠さない。同文言が複数あるなら所有regionのLocatorをscopeにする。CI lintはhelper以外の直接status selectorを拒否する。
+- 既存DBでguide/probeを実行する場合、mutation前に対象範囲・事前snapshot/fingerprint・source/runtime識別を所有workのartifactへ永続保存する。メモリだけのbefore比較で済ませず、結果不明時はGETで事実を確認してから再操作を判断する。
+
 - React / TypeScript。UI文言とエラーは簡潔な日本語、識別子は英語。
 - component/source名を過去文脈から推測しない。rootの `scripts/read-source.py QUERY --list` で同checkoutの実catalogを別callで観測し、次callでその実pathを読込む。別checkoutは `--worktree` を明示する。
 - 顧客コード・請求書番号等の制約はbackendも検証する。UIだけのテナント制御は禁止。

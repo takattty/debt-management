@@ -1,3 +1,4 @@
+import { statusFeedback } from './status-feedback';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { createInvoice, loginInvoiceUser, sessionHeaders } from './invoice-fixtures';
@@ -17,7 +18,7 @@ test('real invoice correction retains a conflicting draft, compares current fact
     await expect(page.getByLabel('訂正後の請求額（円）')).toHaveValue('110000'); await expect(page.getByLabel('訂正理由', { exact: true })).toHaveValue('架空の契約金額を訂正');
     await expect(page.getByRole('table', { name: '請求履歴' })).toContainText('別の担当者が先に訂正');
     await page.getByRole('checkbox', { name: /最新の登録内容と履歴/ }).check(); await page.getByRole('button', { name: '訂正を保存' }).click();
-    await expect(page.getByRole('status').filter({ hasText: '請求を訂正しました' })).toBeVisible();
+    await expect(statusFeedback(page, '請求を訂正しました')).toBeVisible();
     const stored = await (await page.request.get(`/api/invoices/${invoice.id}`)).json(); expect(stored.amount).toBe(110000); expect(stored.version).toBe(invoice.version + 2); expect(stored.invoiceNumber).toBe(invoiceNumber);
     await page.reload(); await page.getByRole('button', { name: '債権一覧', exact: true }).click();
     await page.getByLabel('請求IDで訂正・履歴を開く（取消済みも参照可）').fill(invoice.id); await page.getByRole('button', { name: '請求を開く', exact: true }).click();

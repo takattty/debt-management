@@ -1,3 +1,4 @@
+import { statusFeedback } from './status-feedback';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -25,7 +26,7 @@ test('customer registration survives cookie-session reload, rejects duplicates a
   await page.getByLabel('顧客コード', { exact: false }).fill(code);
   await page.getByLabel('顧客名', { exact: false }).fill(customerName);
   await page.getByRole('button', { name: '顧客を登録', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('登録しました');
+  await expect(statusFeedback(page, '登録しました')).toContainText('登録しました');
   await expect(page.getByRole('cell', { name: customerName, exact: true })).toBeVisible();
 
   await page.reload();
@@ -52,7 +53,7 @@ test('customer registration survives cookie-session reload, rejects duplicates a
   await other.getByLabel('顧客コード', { exact: false }).fill(code);
   await other.getByLabel('顧客名', { exact: false }).fill(`別企業 ${code}`);
   await other.getByRole('button', { name: '顧客を登録', exact: true }).click();
-  await expect(other.getByRole('status')).toContainText('登録しました');
+  await expect(statusFeedback(other, '登録しました')).toContainText('登録しました');
   await otherContext.close();
 });
 
@@ -70,7 +71,7 @@ test('wrong password is rejected, accountant can register and stale session clea
   await page.getByLabel('顧客コード', { exact: false }).fill(code);
   await page.getByLabel('顧客名', { exact: false }).fill(`架空経理顧客 ${code}`);
   await page.getByRole('button', { name: '顧客を登録', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('登録しました');
+  await expect(statusFeedback(page, '登録しました')).toContainText('登録しました');
 
   // Another tab logs out at the server while this UI still holds its old CSRF state.
   const sessionResponse = await page.request.get('/api/session');

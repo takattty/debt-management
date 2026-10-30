@@ -1,3 +1,4 @@
+import { statusFeedback } from './status-feedback';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { loginPaymentUser, paymentHeader, previewPayments } from './payment-fixtures';
@@ -15,7 +16,7 @@ test('real payment confirmation recovers a lost response, persists boundary date
   await loginPaymentUser(page); await page.getByRole('button', { name: '入金CSV取込', exact: true }).click();
   const batch = await previewPayments(page, '\uFEFF' + paymentHeader + early + late); let confirmations = 0;
   await page.route(`**/api/imports/${batch.id}/confirm`, async (route) => { confirmations++; const real = await route.fetch(); expect(real.status()).toBe(200); await route.abort('failed'); });
-  await page.getByRole('button', { name: '全2件を確定して登録', exact: true }).click(); await expect(page.getByRole('status')).toContainText('2件の入金を登録しました'); expect(confirmations).toBe(1);
+  await page.getByRole('button', { name: '全2件を確定して登録', exact: true }).click(); await expect(statusFeedback(page, '2件の入金を登録しました')).toContainText('2件の入金を登録しました'); expect(confirmations).toBe(1);
   await page.getByRole('button', { name: '入金一覧へ', exact: true }).click(); await filterDates(page, '0001-01-01');
   const list = page.getByRole('table', { name: '入金一覧', exact: true }); await expect(list).toContainText(`${prefix}-EARLY`); await expect(list).toContainText('9,007,199,254,740,991'); await expect(list).toContainText('ｶｸｳ é é');
   const earlyStored: Payment[] = (await (await page.request.get('/api/payments?dateFrom=0001-01-01&dateTo=0001-01-01')).json()).items;
@@ -25,12 +26,12 @@ test('real payment confirmation recovers a lost response, persists boundary date
   await expect(page.getByText(/手数料は入金原本の金額を変更しません/)).toBeVisible();
   await page.getByRole('button', { name: '入金CSV取込', exact: true }).click(); const duplicate = await previewPayments(page, paymentHeader + late + early);
   expect(duplicate.originalBatchId).toBe(batch.id); await expect(page.getByRole('button', { name: /確定して登録/ })).toBeDisabled();
-  await page.getByRole('button', { name: '元の取込結果を確認', exact: true }).click(); await expect(page.getByRole('status')).toContainText('2件の入金を登録しました'); await expect(page.getByRole('table', { name: '入金CSVプレビュー', exact: true })).toContainText(`${prefix}-EARLY`);
+  await page.getByRole('button', { name: '元の取込結果を確認', exact: true }).click(); await expect(statusFeedback(page, '2件の入金を登録しました')).toContainText('2件の入金を登録しました'); await expect(page.getByRole('table', { name: '入金CSVプレビュー', exact: true })).toContainText(`${prefix}-EARLY`);
   const otherContext = await browser.newContext(); const other = await otherContext.newPage();
   try {
     await loginPaymentUser(other, 'beta-admin@example.test', new URL('/', page.url()).toString()); expect((await other.request.get(`/api/imports/${batch.id}/payment-rows`)).status()).toBe(404);
     await other.getByRole('button', { name: '入金CSV取込', exact: true }).click(); const otherBatch = await previewPayments(other, paymentHeader + early + late); expect(otherBatch.status).toBe('PREVIEW_VALID');
-    await other.getByRole('button', { name: '全2件を確定して登録', exact: true }).click(); await expect(other.getByRole('status')).toContainText('2件の入金を登録しました'); await other.getByRole('button', { name: '入金一覧へ', exact: true }).click(); await filterDates(other, '0001-01-01');
+    await other.getByRole('button', { name: '全2件を確定して登録', exact: true }).click(); await expect(statusFeedback(other, '2件の入金を登録しました')).toContainText('2件の入金を登録しました'); await other.getByRole('button', { name: '入金一覧へ', exact: true }).click(); await filterDates(other, '0001-01-01');
     const otherPayments: Payment[] = (await (await other.request.get('/api/payments?dateFrom=0001-01-01&dateTo=0001-01-01')).json()).items;
     const otherStored = otherPayments.find((item) => item.transactionId === stored.transactionId)!; expect(otherStored.id).not.toBe(stored.id); expect(otherStored.sourceBatchId).toBe(otherBatch.id); expect((await page.request.get(`/api/imports/${otherBatch.id}`)).status()).toBe(404);
   } finally { await otherContext.close(); }
@@ -48,7 +49,7 @@ test('real payment list keeps the server keyset and applied date filters across 
   }
   expect(date).not.toBe(''); await page.getByRole('button', { name: '入金CSV取込', exact: true }).click();
   await previewPayments(page, paymentHeader + Array.from({ length: 52 }, (_, index) => `${prefix}-${index + 1},${date},架空ページング振込人,100000`).join('\n') + '\n');
-  await page.getByRole('button', { name: '全52件を確定して登録', exact: true }).click(); await expect(page.getByRole('status')).toContainText('52件の入金を登録しました'); await page.getByRole('button', { name: '入金一覧へ', exact: true }).click();
+  await page.getByRole('button', { name: '全52件を確定して登録', exact: true }).click(); await expect(statusFeedback(page, '52件の入金を登録しました')).toContainText('52件の入金を登録しました'); await page.getByRole('button', { name: '入金一覧へ', exact: true }).click();
   const firstResponse = page.waitForResponse((response) => response.url().includes('/api/payments?') && response.url().includes('dateFrom=')); await filterDates(page, date);
   const first: components['schemas']['PaymentsPage'] = await (await firstResponse).json(); expect(first.items).toHaveLength(50); expect(first.nextCursor).not.toBeNull();
   const list = page.getByRole('table', { name: '入金一覧', exact: true }); await expect(list.getByRole('row')).toHaveCount(51);

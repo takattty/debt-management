@@ -1,3 +1,4 @@
+import { statusFeedback } from './status-feedback';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import { loginInvoiceUser, sessionHeaders } from './invoice-fixtures';
@@ -53,7 +54,7 @@ test('cancelled invoices remain discoverable through state/customer/date pages a
   const allResponse = page.waitForResponse((entry) => entry.url().includes('/api/receivables?') && new URL(entry.url()).searchParams.get('status') === 'ALL'); await page.getByRole('button', { name: '条件で表示', exact: true }).click(); expect(new URL((await allResponse).url()).searchParams.has('cursor')).toBe(false);
   await page.getByRole('button', { name: '次の50件', exact: true }).click(); await expect(list.getByRole('row')).toHaveCount(5); await expect(list).toContainText(`${prefix}-LATE`); await expect(list).toContainText('2026-12-31');
   await page.getByRole('combobox', { name: '請求の状態', exact: true }).selectOption('ACTIVE'); await page.getByRole('button', { name: '条件で表示', exact: true }).click(); await expect(list.getByRole('row')).toHaveCount(3);
-  await list.getByRole('button', { name: `請求 ${prefix}-ACTIVE の訂正・履歴`, exact: true }).click(); await page.getByLabel('取消理由', { exact: true }).fill('架空の有効一覧からの取消'); await page.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ }).check(); await page.getByRole('button', { name: '請求の取消を確定', exact: true }).click(); await expect(page.getByRole('status')).toContainText('請求を取り消しました'); await expect(list.getByRole('cell', { name: `${prefix}-ACTIVE`, exact: true })).toHaveCount(0); await expect(list.getByRole('row')).toHaveCount(2);
+  await list.getByRole('button', { name: `請求 ${prefix}-ACTIVE の訂正・履歴`, exact: true }).click(); await page.getByLabel('取消理由', { exact: true }).fill('架空の有効一覧からの取消'); await page.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ }).check(); await page.getByRole('button', { name: '請求の取消を確定', exact: true }).click(); await expect(statusFeedback(page, '請求を取り消しました')).toContainText('請求を取り消しました'); await expect(list.getByRole('cell', { name: `${prefix}-ACTIVE`, exact: true })).toHaveCount(0); await expect(list.getByRole('row')).toHaveCount(2);
   const otherContext = await browser.newContext({ timezoneId: 'Pacific/Kiritimati' }); const other = await otherContext.newPage();
   try {
     await loginInvoiceUser(other, 'beta-admin@example.test', new URL('/', page.url()).toString()); expect((await other.request.get(`/api/invoices/${original.id}/history`)).status()).toBe(404); expect(await receivables(other, own.id, 'CANCELLED')).toHaveLength(0);

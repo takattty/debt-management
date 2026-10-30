@@ -160,6 +160,8 @@ steps:
       nextMatches: 'filter(current.res.body.items, {#.sourceBatchId == good && #.transactionId == steps.next.res.body.items[0].transactionId})'
       nextPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
   ownNextPayment:
+    bind:
+      secondId: nextMatches[0].id
     test: len(nextMatches) == 1 && nextMatches[0].id != firstId && nextMatches[0].amount == 200000 && nextMatches[0].unallocatedAmount == 200000 && nextMatches[0].createdByUserId != null && nextMatches[0].payerName == '架空入金B' && nextMatches[0].transferDate == '9999-12-31' && nextMatches[0].sourceBatchId == good
   invalidConfirm:
     api:
@@ -210,14 +212,77 @@ steps:
     bind:
       betaToken: current.res.body.csrfToken
     test: current.res.status == 200
+  betaOwnPreview:
+    beta:
+      /api/imports/payments/preview:
+        post:
+          useCookie: false
+          headers: {Cookie: 'JSESSIONID={{ betaCookie }}', X-CSRF-TOKEN: '{{ betaToken }}'}
+          body:
+            multipart/form-data: {file: ../../work/runn-payment-valid.csv}
+    bind:
+      betaBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID' && current.res.body.rowCount == 2
+  betaOwnConfirm:
+    beta:
+      /api/imports/{{ betaBatch }}/confirm:
+        post:
+          useCookie: false
+          headers: {Cookie: 'JSESSIONID={{ betaCookie }}', X-CSRF-TOKEN: '{{ betaToken }}'}
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 200 && current.res.body.status == 'CONFIRMED' && current.res.body.confirmedCount == 2
+  betaPaymentSearch:
+    bind:
+      betaPageSuffix: '""'
+      betaFirstId: '""'
+      betaSecondId: '""'
+      betaReachedEnd: 'false'
   noTenantPayments:
     beta:
-      /api/payments:
+      /api/payments?limit=1{{ betaPageSuffix }}:
         get:
           useCookie: false
           headers: {Cookie: 'JSESSIONID={{ betaCookie }}', X-Tenant-Id: '11111111-1111-1111-1111-111111111111'}
           body: null
-    test: current.res.status == 200 && len(current.res.body.items) == 0
+    bind:
+      # Each expression uses the response/prior state, never a sibling bind entry.
+      betaFirstId: 'len(filter(current.res.body.items, {#.sourceBatchId == betaBatch && #.transactionId == steps.rows.res.body.items[0].transactionId})) == 1 ? filter(current.res.body.items, {#.sourceBatchId == betaBatch && #.transactionId == steps.rows.res.body.items[0].transactionId})[0].id : betaFirstId'
+      betaSecondId: 'len(filter(current.res.body.items, {#.sourceBatchId == betaBatch && #.transactionId == steps.next.res.body.items[0].transactionId})) == 1 ? filter(current.res.body.items, {#.sourceBatchId == betaBatch && #.transactionId == steps.next.res.body.items[0].transactionId})[0].id : betaSecondId'
+      betaReachedEnd: current.res.body.nextCursor == null
+      betaPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    test: 'current.res.status == 200 && len(filter(current.res.body.items, {#.id == firstId || #.id == secondId || #.sourceBatchId == good})) == 0'
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && current.res.body.nextCursor == null
+  betaOwnPaymentsFound:
+    test: betaFirstId != '' && betaSecondId != '' && betaFirstId != betaSecondId && betaReachedEnd
+  alphaPaymentSearch:
+    bind:
+      alphaPageSuffix: '""'
+      alphaFirstSeen: 'false'
+      alphaSecondSeen: 'false'
+      alphaReachedEnd: 'false'
+  noBetaPaymentsInAlpha:
+    api:
+      /api/payments?limit=1{{ alphaPageSuffix }}:
+        get:
+          useCookie: false
+          headers: {Cookie: 'JSESSIONID={{ cookie }}'}
+          body: null
+    bind:
+      alphaFirstSeen: 'alphaFirstSeen || len(filter(current.res.body.items, {#.id == firstId && #.sourceBatchId == good})) == 1'
+      alphaSecondSeen: 'alphaSecondSeen || len(filter(current.res.body.items, {#.id == secondId && #.sourceBatchId == good})) == 1'
+      alphaReachedEnd: current.res.body.nextCursor == null
+      alphaPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    test: 'current.res.status == 200 && len(filter(current.res.body.items, {#.id == betaFirstId || #.id == betaSecondId || #.sourceBatchId == betaBatch})) == 0'
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && current.res.body.nextCursor == null
+  alphaOwnPaymentsStillFound:
+    test: alphaFirstSeen && alphaSecondSeen && alphaReachedEnd
   noTenantRows:
     beta:
       /api/imports/{{ good }}/payment-rows:

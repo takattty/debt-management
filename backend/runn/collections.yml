@@ -123,3 +123,16 @@ steps:
           headers: {Cookie: 'JSESSIONID={{ cookie }}'}
           body: null
     test: current.res.status == 400
+  cancelInvoice:
+    api:
+      /api/invoices/{{ invoiceId }}/cancel:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 0, reason: 架空請求の取消確認}
+    test: current.res.status == 200 && current.res.body.status == 'CANCELLED' && current.res.body.outstandingAmount == 0
+  cancelledCollection:
+    api:
+      /api/collections/{{ invoiceId }}?asOf=2026-12-01:
+        get: {body: null}
+    test: current.res.status == 200 && current.res.body.invoiceStatus == 'CANCELLED' && !current.res.body.eligible && current.res.body.amount == amount && current.res.body.outstandingAmount == 0

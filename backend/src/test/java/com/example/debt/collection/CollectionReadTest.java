@@ -93,12 +93,14 @@ class CollectionReadTest {
     }
 
     @Test
-    void partialCashExplicitFeesFullSettlementAndReversalUseRealConservationWhileHistoryRemains() {
+    void partialCashExplicitFeesFullSettlementAndReversalUseRealConservationWhileHistoryRemains() throws Exception {
         event("NOTE", "請求書再送の依頼", null, false, null, LocalDate.of(2026, 12, 5));
         UUID partial = allocate(39560, 440);
         assertThat(queries.get(AuthFixtures.ALPHA, overdue, AS_OF).balance().outstanding()).isEqualTo(BigInteger.valueOf(60000));
         UUID completed = allocate(60000, 0);
         assertThat(queries.get(AuthFixtures.ALPHA, overdue, AS_OF).eligible()).isFalse();
+        mvc.perform(get("/api/collections/" + overdue + "?asOf=2026-12-01").session(alpha)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(100000)).andExpect(jsonPath("$.outstandingAmount").value(0));
         assertThat(queries.list(AuthFixtures.ALPHA, AS_OF, CollectionQueries.View.ALL, null, 100).items())
                 .extracting(CollectionQueries.Case::invoiceId).doesNotContain(overdue);
         assertThat(queries.history(AuthFixtures.ALPHA, overdue, 0, 100).items()).hasSize(1);
@@ -150,6 +152,23 @@ class CollectionReadTest {
         var extreme = queries.get(AuthFixtures.ALPHA, ancient, LocalDate.of(9999, 12, 31));
         assertThat(extreme.balance().outstanding()).isEqualTo(BigInteger.valueOf(9007199254740991L));
         assertThat(extreme.daysOverdue()).isEqualTo(3652058);
+    }
+
+    @Test
+    void cancelledDetailExcludesOutstandingWithoutChangingOriginalFactsRawConservationOrHistoricalNotes() throws Exception {
+        event("NOTE", "ACTIVE時の確認額100000円", null, false, null, LocalDate.of(2026, 12, 5));
+        var historical = queries.history(AuthFixtures.ALPHA, overdue, 0, 100).items();
+        jdbc.sql("UPDATE invoice SET status='CANCELLED',cancelled_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?")
+                .params(AuthFixtures.ALPHA, overdue).update();
+        var current = queries.get(AuthFixtures.ALPHA, overdue, AS_OF);
+        assertThat(current.balance().amount()).isEqualTo(BigInteger.valueOf(100000));
+        assertThat(current.balance().outstanding()).isEqualTo(BigInteger.valueOf(100000));
+        assertThat(current.effectiveOutstanding()).isZero(); assertThat(current.eligible()).isFalse();
+        assertThat(ledger.invoice(AuthFixtures.ALPHA, overdue).balance().outstanding()).isEqualTo(BigInteger.valueOf(100000));
+        mvc.perform(get("/api/collections/" + overdue + "?asOf=2026-12-01").session(alpha)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.invoiceStatus").value("CANCELLED")).andExpect(jsonPath("$.eligible").value(false))
+                .andExpect(jsonPath("$.amount").value(100000)).andExpect(jsonPath("$.outstandingAmount").value(0));
+        assertThat(queries.history(AuthFixtures.ALPHA, overdue, 0, 100).items()).isEqualTo(historical);
     }
 
     @Test

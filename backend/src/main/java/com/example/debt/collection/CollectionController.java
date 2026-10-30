@@ -44,7 +44,7 @@ public class CollectionController implements CollectionsApi {
                 .invoiceNumber(row.invoiceNumber()).issueDate(row.issueDate()).dueDate(row.dueDate())
                 .invoiceStatus(CollectionCaseResponse.InvoiceStatusEnum.fromValue(row.invoiceStatus())).invoiceVersion(row.invoiceVersion())
                 .amount(row.balance().amount().longValueExact()).cashAllocated(row.balance().cash().longValueExact()).explicitFees(row.balance().fee().longValueExact())
-                .outstandingAmount(row.balance().outstanding().longValueExact()).asOf(row.asOf()).daysOverdue(row.daysOverdue()).eligible(row.eligible())
+                .outstandingAmount(row.effectiveOutstanding().longValueExact()).asOf(row.asOf()).daysOverdue(row.daysOverdue()).eligible(row.eligible())
                 .held(row.held()).holdReason(row.holdReason()).latestNote(row.latestNote()).nextActionDate(row.nextActionDate()).version(row.version());
     }
 }

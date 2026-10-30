@@ -21,7 +21,10 @@ public class CollectionQueries {
     public record Case(UUID invoiceId, UUID customerId, String customerCode, String customerName, String invoiceNumber,
                        LocalDate issueDate, LocalDate dueDate, String invoiceStatus, long invoiceVersion,
                        LedgerBalances.Invoice balance, LocalDate asOf, int daysOverdue, boolean eligible,
-                       boolean held, String holdReason, String latestNote, LocalDate nextActionDate, long version) { }
+                       boolean held, String holdReason, String latestNote, LocalDate nextActionDate, long version) {
+        /** Public collection balance excludes cancelled claims; raw ledger conservation remains unchanged. */
+        public BigInteger effectiveOutstanding() { return invoiceStatus.equals("CANCELLED") ? BigInteger.ZERO : balance.outstanding(); }
+    }
     public record Page(List<Case> items, String nextCursor) { }
     public record Event(long version, String kind, String note, String reason, UUID actorUserId, String actorLabel,
                         Instant occurredAt, boolean held, String holdReason, LocalDate nextActionDate) { }

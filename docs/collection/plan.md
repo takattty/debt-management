@@ -17,6 +17,8 @@
 
 金額集計はV8と同じ有効なCONFIRM（REVERSEがないもの）のcash / explicit feeを分離し、numeric / BigIntegerで厳密に計算する。残高は入力・編集項目にしない。ledgerが空の場合だけ全額未消込となり、partial / 完済 / reversalを次の取得で反映する。一つのSQL snapshotで候補と現在の残高・stateを読む。
 
+公開Collection readmodelのeffective outstandingはCANCELLEDなら0とし、原amountと内部ledgerのraw算術値は保持する。ACTIVEの一部/全額入金は実cash/fee控除後の値を返す。event/history/auditは対応metadataの原本であり金額snapshotを持たず、過去のACTIVE時noteを現在値で上書きしない。取消後の事後NOTEも許すが、新しい金額snapshot項目や誤った未回収額を生成しない。
+
 heldは残高を変更しない。通常ACTIONABLEとHELDを分け、ALLでもheldと理由を返す。完済・取消になってもstate/eventを削除せず、保留を自動解除しない。次回対応日が過去・未来で候補を自動除外しない。次回対応日もYYYY-MM-DD、1〜9999年の実在日とし、未合意の未来日制限は置かない。
 
 ## V9 の責任

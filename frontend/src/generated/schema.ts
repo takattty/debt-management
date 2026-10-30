@@ -709,7 +709,10 @@ export interface components {
             cashAllocated: number;
             /** Format: int64 */
             explicitFees: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Effective collection balance is zero for cancelled invoices; amount preserves the original invoice facts.
+             */
             outstandingAmount: number;
             /**
              * Format: date

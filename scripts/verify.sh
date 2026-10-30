@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+python3 scripts/check-workspace-capacity.py
 source scripts/toolchain-env.sh
 mkdir -p work
 if [ -n "${E2E_BASE_URL:-}" ]; then
@@ -25,7 +26,9 @@ export DB_USERNAME="${DB_USERNAME:-debt}"
 export DB_PASSWORD="${DB_PASSWORD:-debt_local}"
 export LOCAL_SEED_PASSWORD="${LOCAL_SEED_PASSWORD:-debt_local_demo_2026}"
 export SPRING_PROFILES_ACTIVE=local
+python3 scripts/check-workspace-capacity.py
 (cd backend && ./gradlew --no-daemon check bootJar)
+python3 scripts/check-workspace-capacity.py
 npm --prefix frontend ci
 npm --prefix frontend audit --audit-level=high
 npm --prefix frontend run check:api
@@ -51,5 +54,6 @@ done
 if [ "$ready" != true ]; then cat work/backend.log; exit 1; fi
 RUNN_BASE_URL=http://127.0.0.1:8080 scripts/runn.sh run --scopes read:parent backend/runn/*.yml
 bash scripts/verify-proxy.sh
+python3 scripts/check-workspace-capacity.py
 npm --prefix frontend run test:e2e
 kill -0 "$backend_pid" || { cat work/backend.log; exit 1; }

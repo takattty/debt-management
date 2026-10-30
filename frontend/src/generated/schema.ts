@@ -44,6 +44,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/imports/invoices/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the UTF-8 BOM invoice CSV header
+         * @description Header only. Columns are customer_code,invoice_number,issue_date,due_date,amount. Numbers strip surrounding whitespace without case or Unicode normalization. Dates are strict YYYY-MM-DD with year 0001 through 9999; amount is a positive integer no greater than 9007199254740991 yen.
+         */
+        get: operations["downloadInvoiceImportTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/invoices/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Store an invoice CSV preview without creating any invoice
+         * @description Customers must already exist in the authenticated tenant. Duplicate invoice numbers invalidate the whole batch, including numbers reserved by cancelled invoices. Due date must be on or after issue date. Stores immutable facts and customer versions for 24 hours. This slice supports preview and correction only; confirm returns IMPORT_KIND_UNSUPPORTED. Maximum 10MiB and 10000 data records.
+         */
+        post: operations["previewInvoiceImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports/{id}": {
         parameters: {
             query?: never;
@@ -354,7 +394,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            kind: "CUSTOMER";
+            kind: "CUSTOMER" | "INVOICE";
             /** @enum {string} */
             status: "PREVIEW_VALID" | "PREVIEW_INVALID" | "CONFIRMED";
             /** Format: int64 */
@@ -379,6 +419,11 @@ export interface components {
             rowNumber: number;
             customerCode: string;
             customerName: string;
+            invoiceNumber?: string | null;
+            issueDate?: string | null;
+            dueDate?: string | null;
+            /** @description Invoice preview value, canonical integer text when valid; original input when invalid. Not a mutable balance. */
+            amount?: string | null;
             valid: boolean;
         };
         ImportErrorResponse: {
@@ -625,6 +670,69 @@ export interface operations {
             };
         };
     };
+    downloadInvoiceImportTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fixed-format CSV template */
+            200: {
+                headers: {
+                    /** @description Attachment filename invoices-template.csv */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    previewInvoiceImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Immutable valid or invalid preview; business rows remain unchanged */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Multipart upload exceeds its bounded size */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getImportBatch: {
         parameters: {
             query?: never;
@@ -713,7 +821,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["ImportNotFound"];
-            /** @description IMPORT_INVALID, IMPORT_EXPIRED, VERSION_CONFLICT, IMPORT_REFERENCE_CONFLICT or IMPORT_ALREADY_CONFIRMED. For confirmed content in a different batch, errors contains field batchId and message with the original UUID. */
+            /** @description IMPORT_INVALID, IMPORT_EXPIRED, VERSION_CONFLICT, IMPORT_REFERENCE_CONFLICT, IMPORT_ALREADY_CONFIRMED or IMPORT_KIND_UNSUPPORTED. For confirmed content in a different batch, errors contains field batchId and message with the original UUID. */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -37,6 +37,7 @@ public class ImportConfirmationTransaction {
     @Transactional
     public ImportBatch confirm(TenantUser user, UUID id, long expectedVersion) {
         ImportBatch batch = store.get(user.tenantId(), id, true);
+        if (batch.kind() != ImportBatch.Kind.CUSTOMER) { throw new ImportRejected("IMPORT_KIND_UNSUPPORTED"); }
         if (batch.status() == ImportBatch.Status.CONFIRMED
                 && (expectedVersion == batch.version() - 1 || expectedVersion == batch.version())) { return batch; }
         if (batch.version() != expectedVersion) { throw new ImportRejected("VERSION_CONFLICT"); }

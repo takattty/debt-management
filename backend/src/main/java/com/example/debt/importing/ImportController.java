@@ -31,12 +31,13 @@ import jakarta.servlet.ServletException;
 public class ImportController implements ImportsApi {
     private static final MediaType CSV = new MediaType("text", "csv", StandardCharsets.UTF_8);
     private final CustomerImportService service;
+    private final InvoiceImportService invoices;
     private final ImportStore store;
     private final CurrentUser current;
     private final ConfirmCustomerImport confirmation;
 
-    public ImportController(CustomerImportService service, ImportStore store, CurrentUser current, ConfirmCustomerImport confirmation) {
-        this.service = service; this.store = store; this.current = current; this.confirmation = confirmation;
+    public ImportController(CustomerImportService service, InvoiceImportService invoices, ImportStore store, CurrentUser current, ConfirmCustomerImport confirmation) {
+        this.service = service; this.invoices = invoices; this.store = store; this.current = current; this.confirmation = confirmation;
     }
 
     @Override
@@ -46,7 +47,23 @@ public class ImportController implements ImportsApi {
     }
 
     @Override
+    public ResponseEntity<Resource> downloadInvoiceImportTemplate() {
+        current.require();
+        return csv(new ByteArrayResource(("\ufeff" + InvoiceCsv.HEADER).getBytes(StandardCharsets.UTF_8)), "invoices-template.csv");
+    }
+
+    @Override
+    public ResponseEntity<ImportBatchResponse> previewInvoiceImport(MultipartFile file) {
+        return previewFile(file, invoices::preview);
+    }
+
+    @Override
     public ResponseEntity<ImportBatchResponse> previewCustomerImport(MultipartFile file) {
+        return previewFile(file, service::preview);
+    }
+
+    private ResponseEntity<ImportBatchResponse> previewFile(MultipartFile file,
+            java.util.function.BiFunction<com.example.debt.access.TenantUser, java.io.InputStream, ImportBatch> preview) {
         var user = current.require();
         var request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
         MultipartHttpServletRequest multipart = WebUtils.getNativeRequest(request, MultipartHttpServletRequest.class);
@@ -62,7 +79,7 @@ public class ImportController implements ImportsApi {
             throw new IllegalArgumentException("Exactly one file and no extra parameters are allowed");
         }
         try (var source = file.getInputStream()) {
-            ImportBatch batch = service.preview(user, source);
+            ImportBatch batch = preview.apply(user, source);
             return ResponseEntity.created(URI.create("/api/imports/" + batch.id())).cacheControl(CacheControl.noStore()).body(response(batch));
         } catch (IOException exception) {
             throw new IllegalArgumentException("Cannot read the uploaded file", exception);
@@ -83,7 +100,16 @@ public class ImportController implements ImportsApi {
     @Override
     public ResponseEntity<ImportRowsPage> listImportRows(UUID id, Integer cursor, Integer limit) {
         var user = current.require();
-        store.get(user.tenantId(), id, false);
+        ImportBatch batch = store.get(user.tenantId(), id, false);
+        if (batch.kind() == ImportBatch.Kind.INVOICE) {
+            var rows = store.invoiceRows(user.tenantId(), id, cursor, limit + 1);
+            var invalid = store.invalidLines(user.tenantId(), id, rows.stream().map(InvoiceCsv.Row::rowNumber).toList());
+            var items = rows.stream().limit(limit).map(row -> new ImportRowResponse(row.recordNumber(), row.rowNumber(),
+                    row.customerCode(), row.customerName(), row.valid() && !invalid.contains(row.rowNumber()))
+                    .invoiceNumber(row.invoiceNumber()).issueDate(row.issueDate()).dueDate(row.dueDate()).amount(row.amount())).toList();
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                    .body(new ImportRowsPage(items, rows.size() > limit ? items.getLast().getRecordNumber() : 0));
+        }
         var rows = store.rows(user.tenantId(), id, cursor, limit + 1);
         var invalid = store.invalidLines(user.tenantId(), id, rows.stream().map(CustomerCsv.Row::rowNumber).toList());
         var items = rows.stream().limit(limit).map(row -> new ImportRowResponse(row.recordNumber(), row.rowNumber(),
@@ -119,7 +145,7 @@ public class ImportController implements ImportsApi {
     }
 
     ImportBatchResponse response(ImportBatch batch) {
-        return new ImportBatchResponse(batch.id(), ImportBatchResponse.KindEnum.CUSTOMER,
+        return new ImportBatchResponse(batch.id(), ImportBatchResponse.KindEnum.fromValue(batch.kind().name()),
                 ImportBatchResponse.StatusEnum.fromValue(batch.status().name()), batch.version(), batch.rowCount(), batch.errorCount(),
                 batch.createdAt().atOffset(ZoneOffset.UTC), batch.expiresAt().atOffset(ZoneOffset.UTC),
                 batch.confirmedAt() == null ? null : batch.confirmedAt().atOffset(ZoneOffset.UTC),

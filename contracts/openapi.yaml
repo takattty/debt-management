@@ -81,6 +81,57 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ApiError'}
+  /api/imports/invoices/template:
+    get:
+      tags: [Imports]
+      operationId: downloadInvoiceImportTemplate
+      summary: Download the UTF-8 BOM invoice CSV header
+      description: Header only. Columns are customer_code,invoice_number,issue_date,due_date,amount. Numbers strip surrounding whitespace without case or Unicode normalization. Dates are strict YYYY-MM-DD with year 0001 through 9999; amount is a positive integer no greater than 9007199254740991 yen.
+      responses:
+        '200':
+          description: Fixed-format CSV template
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+              description: Attachment filename invoices-template.csv
+          content:
+            text/csv:
+              schema: {type: string, format: binary}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/imports/invoices/preview:
+    post:
+      tags: [Imports]
+      operationId: previewInvoiceImport
+      summary: Store an invoice CSV preview without creating any invoice
+      description: Customers must already exist in the authenticated tenant. Duplicate invoice numbers invalidate the whole batch, including numbers reserved by cancelled invoices. Due date must be on or after issue date. Stores immutable facts and customer versions for 24 hours. This slice supports preview and correction only; confirm returns IMPORT_KIND_UNSUPPORTED. Maximum 10MiB and 10000 data records.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201':
+          description: Immutable valid or invalid preview; business rows remain unchanged
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImportBatchResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '413':
+          description: Multipart upload exceeds its bounded size
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
   /api/imports/{id}:
     parameters:
     - {$ref: '#/components/parameters/ImportId'}
@@ -146,7 +197,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/ImportNotFound'}
         '409':
-          description: IMPORT_INVALID, IMPORT_EXPIRED, VERSION_CONFLICT, IMPORT_REFERENCE_CONFLICT or IMPORT_ALREADY_CONFIRMED. For confirmed content in a different batch, errors contains field batchId and message with the original UUID.
+          description: IMPORT_INVALID, IMPORT_EXPIRED, VERSION_CONFLICT, IMPORT_REFERENCE_CONFLICT, IMPORT_ALREADY_CONFIRMED or IMPORT_KIND_UNSUPPORTED. For confirmed content in a different batch, errors contains field batchId and message with the original UUID.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ApiError'}
@@ -575,7 +626,7 @@ components:
       required: [id, kind, status, version, rowCount, errorCount, createdAt, expiresAt, confirmedAt, confirmedCount]
       properties:
         id: {type: string, format: uuid}
-        kind: {type: string, enum: [CUSTOMER]}
+        kind: {type: string, enum: [CUSTOMER, INVOICE]}
         status: {type: string, enum: [PREVIEW_VALID, PREVIEW_INVALID, CONFIRMED]}
         version: {type: integer, format: int64, minimum: 0}
         rowCount: {type: integer, minimum: 0, maximum: 10000}
@@ -597,6 +648,14 @@ components:
         rowNumber: {type: integer, minimum: 2}
         customerCode: {type: string, maxLength: 2048}
         customerName: {type: string, maxLength: 2048}
+        invoiceNumber: {type: string, maxLength: 2048, nullable: true}
+        issueDate: {type: string, maxLength: 2048, nullable: true}
+        dueDate: {type: string, maxLength: 2048, nullable: true}
+        amount:
+          type: string
+          maxLength: 2048
+          nullable: true
+          description: Invoice preview value, canonical integer text when valid; original input when invalid. Not a mutable balance.
         valid: {type: boolean}
     ImportErrorResponse:
       type: object

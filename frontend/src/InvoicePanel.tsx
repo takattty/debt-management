@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type Customer, type Invoice, type InvoiceHistory, type Session } from './api';
 import InvoiceCancellation from './InvoiceCancellation';
+import { formatJstTimestamp } from './timestamp-presentation';
 
 type Props = { id: string; customers: Customer[]; session: Session; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void; onChanged: () => Promise<void>; onClose: () => void };
 const yen = (amount: number) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(amount);
@@ -87,7 +88,7 @@ function InvoiceEditor({ initial, ...props }: Props & { initial: Initial }) {
   }
   return <section className="panel" aria-labelledby="invoice-title">
     <h2 id="invoice-title">請求の訂正・履歴：{current.invoiceNumber}</h2>
-    <p>請求ID：<code>{current.id}</code>（取消後もこのIDで履歴を開けます）</p>
+    <p>請求ID：<code>{current.id}</code>（取消済みの一覧からも履歴を開けます）</p>
     <h3>現在の登録内容</h3>
     <dl className="invoice-facts" aria-label="現在の請求内容"><dt>状態</dt><dd>{status(current)}</dd><dt>顧客</dt><dd>{current.customerCode} — {current.customerName}</dd><dt>請求日</dt><dd>{current.issueDate}</dd><dt>支払期日</dt><dd>{current.dueDate}</dd><dt>請求額</dt><dd>{yen(current.amount)}</dd><dt>未回収額</dt><dd>{yen(current.outstandingAmount)}</dd><dt>版</dt><dd>{current.version}</dd></dl>
     <p>請求書番号は変更できません。訂正できるのは有効で未消込の請求です。消込がある場合は先に対象消込を取り消してください。</p>
@@ -108,8 +109,8 @@ function InvoiceEditor({ initial, ...props }: Props & { initial: Initial }) {
       const page = await api.listInvoiceHistory(props.id); setHistory(page.items); setCursor(page.nextCursor);
       await props.onChanged(); setNeedsReload(false);
     }} />
-    <h3>請求の全履歴（原本から順に表示）</h3>
-    <div className="table-scroll"><table aria-label="請求履歴"><thead><tr><th>操作・版</th><th>記録日時・担当者</th><th>理由</th><th>その時点の請求内容</th><th>元の取込ID</th></tr></thead><tbody>{history.map((entry) => <tr key={entry.revision}><td>{entry.operation === 'CREATED' ? '登録時の原本' : entry.operation === 'CORRECTED' ? '訂正' : '取消'}<br />版 {entry.snapshot.version}</td><td><time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString('ja-JP')}</time><br />担当者ID：{entry.actorUserId}</td><td>{entry.reason ?? 'CSV確定による登録'}</td><td>{entry.snapshot.invoiceNumber}<br />{entry.snapshot.customerCode} — {entry.snapshot.customerName}<br />請求日 {entry.snapshot.issueDate} / 支払期日 {entry.snapshot.dueDate}<br />{yen(entry.snapshot.amount)} / {status(entry.snapshot)}</td><td>{entry.snapshot.sourceBatchId}</td></tr>)}</tbody></table></div>
+    <h3>請求の全履歴（原本から順に表示）</h3><p className="import-guide">担当者は現在の登録メールアドレスで表示します。監査用の担当者IDも確認できます。</p>
+    <div className="table-scroll"><table aria-label="請求履歴"><thead><tr><th>操作・版</th><th>記録日時（日本時間）・担当者</th><th>理由</th><th>その時点の請求内容</th><th>元の取込ID</th></tr></thead><tbody>{history.map((entry) => <tr key={entry.revision}><td>{entry.operation === 'CREATED' ? '登録時の原本' : entry.operation === 'CORRECTED' ? '訂正' : '取消'}<br />版 {entry.snapshot.version}</td><td><time dateTime={entry.occurredAt}>{formatJstTimestamp(entry.occurredAt)}</time><br />担当者：{entry.actorEmail}<details><summary>監査用の担当者ID</summary><code>{entry.actorUserId}</code></details></td><td>{entry.reason ?? 'CSV確定による登録'}</td><td>{entry.snapshot.invoiceNumber}<br />{entry.snapshot.customerCode} — {entry.snapshot.customerName}<br />請求日 {entry.snapshot.issueDate} / 支払期日 {entry.snapshot.dueDate}<br />{yen(entry.snapshot.amount)} / {status(entry.snapshot)}</td><td>{entry.snapshot.sourceBatchId}</td></tr>)}</tbody></table></div>
     <p>{history.length}件の履歴を表示中。{cursor === null ? 'すべての履歴を表示しています。' : '続きの履歴があります。'}</p><button type="button" className="secondary-button" disabled={busy || cursor === null} onClick={moreHistory}>履歴の次の50件</button>
   </section>;
 }

@@ -1,5 +1,11 @@
 # Bounded source output
 
+## 再開の最初のcallでguardを適用する
+
+2026-10-30のpublisher再開時、指定operatorのbounded確認より先にenvironment全envelopeとpolicy/AGENTSの合算を表示し、同じcallの出力が切断された実1件を追加した。既存guardの存在確認が初回tool実行より後だったため予防が効かなかった。複数のtruncation表示は同callの1eventとして数え、過去eventと重複させない。
+
+AGENTS冒頭へ実行可能な環境3scalar recipe、delivery-loop入口へbootstrap完了後だけ本taskへ進む二段階委譲を固定した。raw environment objectへfallbackしない。実policyのversion/vpn/type/host_countは4scalar 80bytes、全出力cap4KiBで確認した。巨大な未表示fieldを持つfake envelopeでも3scalarだけを出し、本文が漏れないことを確認した。実行境界と判定証拠はpublisher保存の`work/bootstrap-output-route-proof.json`。新runtime/build/DB操作は行っていない。
+
 ## Resource診断での再発と表示側のbyte検査
 
 `resource-diagnosis-batched-evidence-truncated-20261030` は新たな実切断1件である。最新operator guardを読む前に旧treeのAGENTSと複数の大JSONを合算表示し、外側応答に `Warning: truncated output (original token count: 18189)` を観測した。nested3読込を3件と数えず、欠落JSONをparse/読了扱いしていない。正本は `/workspace/debt-ar-final-acceptance/work/resource-diagnosis-20261030-output-incident-fragment.json`。既存15eventsと全resolutionを保持して16件へ追記する。

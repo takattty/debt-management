@@ -177,3 +177,47 @@ if __name__ == "__main__":
         raise SystemExit(2)
 PY
 ```
+
+## Hidden-partもsource helperの対象外
+
+2026-10-30の再開で、catalog済み`.github/scripts/review-gate.cjs`をsource専用helperへ渡した別の実1件が拒否された。前回のMarkdown/JSON guardはsuffixを強調していたため、hidden-partを除外する実catalogとの境界が操作の入口に反映されなかった。拒否後の同helper反復は行わず、観測済みのtrusted Git blobをboundedに読む経路へ切り替えた。
+
+source helperを選ぶ場合の実行可能判定は次の通り。`catalog`はGit管理、suffix、hidden-part、work/build/dependency、secret名、symlinkを実装どおり検査する。candidateの推測実行で可否を調べない。
+
+```sh
+python3 - /absolute/operator /absolute/owner observed/relative/path <<'PY'
+import importlib.util
+from pathlib import Path
+import sys
+operator, owner, relative = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("source_catalog", Path(operator) / "scripts/read-source.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print({"source_helper_allowed": relative in module.catalog(Path(owner).resolve())})
+PY
+```
+
+実境界8件（通常TS/Pythonはallowed、Markdown/packageJSON/`.github` script/workflow/`.agents` skill/learning Markdownはexcluded）を同catalogで確認した。対象外のworkは明示ownerのwork限定reader、catalog済みMarkdown/JSONは前節、今回の残作業のcatalog済みGit blobは次の固定経路を使う。対象は先callの`git ls-tree`/`git ls-files`実出力から選び、秘密・設定の汎用readerにしない。
+
+```sh
+python3 - /absolute/owner HEAD observed/relative/path 1 30 <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+owner, ref, relative, first, last = sys.argv[1:]
+root = Path(owner).resolve()
+path = Path(relative)
+if path.is_absolute() or ".." in path.parts:
+    raise SystemExit(2)
+entries = subprocess.check_output(["git", "-C", str(root), "ls-tree", "-r", "--name-only", ref, "--", relative], text=True).splitlines()
+if entries != [relative] or not (1 <= int(first) <= int(last)):
+    raise SystemExit(2)
+raw = subprocess.check_output(["git", "-C", str(root), "show", f"{ref}:{relative}"])
+if len(raw) > 2 * 1024 * 1024:
+    raise SystemExit(2)
+output = f"{relative}:{first}-{last}\n" + "".join(raw.decode().splitlines(keepends=True)[int(first)-1:int(last)])
+if len(output.encode()) > 3500:
+    raise SystemExit(2)
+sys.stdout.write(output)
+PY
+```

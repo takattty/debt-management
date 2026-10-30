@@ -3,6 +3,8 @@ package com.example.debt.importing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.example.debt.access.AuthFixtures;
 import com.example.debt.access.TenantUser;
@@ -16,6 +18,8 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +30,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 @SpringBootTest
 @ActiveProfiles("auth-test")
@@ -33,7 +38,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 class CustomerImportConfirmationTest {
     @Autowired CustomerImportService previews;
     @Autowired ConfirmCustomerImport confirmation;
-    @Autowired ImportStore store;
+    @MockitoSpyBean ImportStore store;
     @Autowired UserAccounts users;
     @Autowired JdbcClient jdbc;
     @MockitoBean(name = "importClock") Clock clock;
@@ -123,6 +128,93 @@ class CustomerImportConfirmationTest {
                 .singleElement().extracting(ImportRejected::code).isEqualTo("IMPORT_REFERENCE_CONFLICT");
         assertThat(customers()).isEqualTo(2);
         assertThat(customerAudits()).isEqualTo(2);
+    }
+
+    @Test
+    void equivalentWinnerCommitsBetweenDuplicateAndExistingCodeReadsReturnsOriginal() throws Exception {
+        winnerCommitsBetweenDuplicateAndExistingCodeReads(true);
+    }
+
+    @Test
+    void differentContentWinnerBetweenReadsRejectsEveryRowIncludingNonConflictingCode() throws Exception {
+        winnerCommitsBetweenDuplicateAndExistingCodeReads(false);
+    }
+
+    @Test
+    void equivalentConfirmedContentInAnotherTenantCannotReplaceARealCustomerCodeConflict() {
+        var batch = preview(twoRows("A", "B"));
+        TenantUser beta = TenantUser.from(users.byId(AuthFixtures.BETA_ADMIN).orElseThrow());
+        var foreign = previews.preview(beta, new ByteArrayInputStream(twoRows("A", "B").getBytes(StandardCharsets.UTF_8)));
+        assertThat(foreign.semanticFingerprint()).isEqualTo(batch.semanticFingerprint());
+        try {
+            assertThat(confirmation.confirm(beta, foreign.id(), 0).status()).isEqualTo(ImportBatch.Status.CONFIRMED);
+            jdbc.sql("INSERT INTO customer(id,tenant_id,code,name) VALUES (?,?,?,'Fictional independent registration')")
+                    .params(UUID.randomUUID(), user.tenantId(), prefix + "-1").update();
+            assertThatThrownBy(() -> confirmation.confirm(user, batch.id(), 0)).isInstanceOfSatisfying(ImportRejected.class, rejected -> {
+                assertThat(rejected.code()).isEqualTo("IMPORT_REFERENCE_CONFLICT");
+                assertThat(rejected.originalBatchId()).isNull();
+            });
+            assertThat(store.get(user.tenantId(), batch.id(), false).status()).isEqualTo(ImportBatch.Status.PREVIEW_INVALID);
+            assertThat(store.errors(user.tenantId(), batch.id(), 0, 10)).singleElement()
+                    .extracting(error -> error.value().reasonCode()).isEqualTo("CUSTOMER_EXISTS");
+            assertThat(customers()).isEqualTo(1);
+            assertThat(customerAudits()).isZero();
+        } finally {
+            jdbc.sql("DELETE FROM audit_event WHERE tenant_id=? AND (entity_id=? OR entity_id IN (SELECT id FROM customer WHERE tenant_id=? AND code LIKE ?))")
+                    .params(beta.tenantId(), foreign.id(), beta.tenantId(), prefix + "%").update();
+            jdbc.sql("DELETE FROM customer WHERE tenant_id=? AND code LIKE ?").params(beta.tenantId(), prefix + "%").update();
+        }
+    }
+
+    private void winnerCommitsBetweenDuplicateAndExistingCodeReads(boolean equivalent) throws Exception {
+        var first = preview(twoRows("A", "B"));
+        var second = preview(equivalent ? "\ufeffcustomer_code,customer_name\n" + prefix + "-2,B\n" + prefix + "-1,A\n"
+                : CustomerCsv.HEADER + prefix + "-2,Changed B\n" + prefix + "-3,New C\n");
+        var snapshot = store.rows(user.tenantId(), second.id(), 0, 10);
+        CountDownLatch duplicateRead = new CountDownLatch(1);
+        CountDownLatch winnerCommitted = new CountDownLatch(1);
+        AtomicBoolean paused = new AtomicBoolean();
+        // Read the real DB first, then force the READ COMMITTED statement boundary that used to misclassify.
+        // No query result or production transaction is mocked, retried or replaced by a test-only endpoint.
+        doAnswer(invocation -> {
+            UUID original = (UUID) invocation.callRealMethod();
+            ImportBatch candidate = invocation.getArgument(0);
+            if (candidate.id().equals(second.id()) && paused.compareAndSet(false, true)) {
+                assertThat(original).isNull();
+                duplicateRead.countDown();
+                assertThat(winnerCommitted.await(10, TimeUnit.SECONDS)).isTrue();
+            }
+            return original;
+        }).when(store).confirmedDuplicate(any(ImportBatch.class));
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var delayed = executor.submit(() -> {
+                try { return (Object) confirmation.confirm(user, second.id(), 0); }
+                catch (ImportRejected rejected) { return rejected; }
+            });
+            try {
+                assertThat(duplicateRead.await(10, TimeUnit.SECONDS)).isTrue();
+                var winner = confirmation.confirm(user, first.id(), 0);
+                assertThat(winner.status()).isEqualTo(ImportBatch.Status.CONFIRMED);
+                winnerCommitted.countDown();
+                assertThat(delayed.get(15, TimeUnit.SECONDS)).isInstanceOfSatisfying(ImportRejected.class, rejected -> {
+                    assertThat(rejected.code()).isEqualTo(equivalent ? "IMPORT_ALREADY_CONFIRMED" : "IMPORT_REFERENCE_CONFLICT");
+                    assertThat(rejected.originalBatchId()).isEqualTo(equivalent ? winner.id() : null);
+                });
+                var loser = store.get(user.tenantId(), second.id(), false);
+                assertThat(loser.status()).isEqualTo(ImportBatch.Status.PREVIEW_INVALID);
+                assertThat(loser.version()).isEqualTo(1);
+                assertThat(store.errors(user.tenantId(), second.id(), 0, 10)).singleElement()
+                        .extracting(error -> error.value().reasonCode()).isEqualTo(equivalent ? "IMPORT_ALREADY_CONFIRMED" : "CUSTOMER_EXISTS");
+                assertThat(store.rows(user.tenantId(), second.id(), 0, 10)).isEqualTo(snapshot);
+                assertThat(confirmation.confirm(user, first.id(), 0)).isEqualTo(winner);
+                assertThat(customers()).isEqualTo(2);
+                assertThat(customerAudits()).isEqualTo(2);
+                assertThat(jdbc.sql("SELECT count(*) FROM customer WHERE tenant_id=? AND code=?")
+                        .params(user.tenantId(), prefix + "-3").query(Long.class).single()).isZero();
+                assertThat(jdbc.sql("SELECT count(*) FROM audit_event WHERE tenant_id=? AND entity_id IN (?,?) AND action='CUSTOMER_IMPORT_CONFIRMED'")
+                        .params(user.tenantId(), first.id(), second.id()).query(Long.class).single()).isEqualTo(1);
+            } finally { winnerCommitted.countDown(); }
+        }
     }
 
     @Test

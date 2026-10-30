@@ -33,6 +33,8 @@ patch適用前に対象の行全体を読み、部分行を完全なcontext行�
 
 GitHub metadata取得は応答ごとの契約を確認する。PRのhead/baseはREST pulls/{number}のhead.sha/base.shaを用いる。combined statusはcreatorを省略するため、発行者確認はcommits/{sha}/statusesを用いる。gh pr viewのJSON選択肢はGraphQL全fieldと同じではなく、未対応field名を推測して反復しない。metadata不足ではmergeを止め、guard条件を緩めず正しいendpointへ直す。
 
+2026-10-30のPR38再開で同じCLI field誤用が再発したため、head/baseは `python3 /absolute/active-checkout/scripts/gh-pr-metadata.py takattty/debt-management 38` で取得する。repositoryとPR番号は必須で、REST `repos/{repository}/pulls/{number}` を明示hostに対してGETする。出力は `number,url,state,merged,headRefOid,headRefName,baseRefOid,baseRefName` のJSON。head/base SHA・ref、PR番号・URL・状態の契約が欠けた場合は出力せず失敗し、API失敗の終了値も保つ。`gh-repo.sh` は `pr view` の `--json baseRefOid` / `--json=baseRefOid` をGitHub呼出し前に拒否してhelperへ案内する。レビュー・チェック等は引き続き対応fieldまたは対応endpointで取得する。実検証は [PR metadata validation](github-metadata-validation.md) に保存する。
+
 worktreeと検証物の所有先を明示する。新worktreeを作るcommandは既存cwdから実行し、作成成功とHEADを確認してからそのpathをcwdに使う。別treeのwork配下の証拠は所有treeの絶対pathで読み、相対pathが現在のtreeを指すことを仮定しない。
 
 GitHub CLIもcwdによるrepository推測に依存しない。`scripts/gh-repo.sh takattty/debt-management run view RUN_ID --json status,conclusion` のようにrepositoryを必須引数にする。省略時はCLIを起動せず拒否する。checkout外cwdと誤った継承GH_REPOでも選択先が固定される回帰テストをCIで実行する。

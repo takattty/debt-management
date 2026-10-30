@@ -114,6 +114,12 @@
           "summary": "gh pr viewのJSON選択にGraphQLと同じbaseRefOidを指定して失敗した",
           "evidence": "docs/learning/README.md",
           "recorded_at": "2026-10-29T15:47:15+00:00"
+        },
+        {
+          "event": "cli-baserefoid-recurrence-20261030-pr38-resume",
+          "summary": "PR38再開時にgh pr viewへbaseRefOidを含むJSON選択を渡し未対応fieldで終了値1となった。既存文書guardで防げず再発した",
+          "evidence": "docs/learning/github-metadata-validation.md",
+          "recorded_at": "2026-10-30T01:25:46+00:00"
         }
       ],
       "resolutions": [
@@ -124,6 +130,14 @@
           "guard": "docs/learning/README.md",
           "event_count": 2,
           "resolved_at": "2026-10-29T15:47:15+00:00"
+        },
+        {
+          "cause": "gh pr viewの選択fieldをGraphQLと同一視した。前回の文書guardだけでは再発操作を実行前に止められなかった",
+          "prevention": "head/baseはREST pulls専用helperの固定JSON契約で取得し、欠落不正を拒否する。gh-repoは既知のbaseRefOid選択を通信前に拒否しhelperへ案内する。AGENTSとlearningへ使用法を保存した",
+          "verification": "Python全18tests成功。専用8testsで不正metadata拒否・API終了値保持・明示repo/host・既知CLI誤用の未起動拒否を検証。実API PR38はhead2050adaf462c93093a8ef4f9159e6fa83a62130f/base9e46a14a705740122e58f9f87e00bbcf1d553d3cを取得。bash構文とdiff検査成功。詳細はdocs/learning/github-metadata-validation.md",
+          "guard": "scripts/gh-pr-metadata.py",
+          "event_count": 3,
+          "resolved_at": "2026-10-30T01:28:01+00:00"
         }
       ]
     },

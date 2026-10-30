@@ -15,7 +15,8 @@ B05/Q02: 手動の名義→顧客対応を優先し、未回収額一致、期�
 | 2 原子的確定と入金一覧 | 版・期限・取引ID・semantic fingerprintを再確認し、全入金/監査/batchを一transactionで確定。再送・並行確定・監査失敗rollback。bounded一覧 | 実PG race/rollback/retry、runn全件拒否と確定結果。ledger未導入の間だけ未充当=入金額と明記 |
 | 3 手動名義対応 | B05の名義→顧客の登録、active一覧、誤登録の理由/版付き無効化と原対応の詳細。V7はpayer_alias専用 | 共通名義ルール、実PG activepair race/監査rollback/tenant FK、runn ADMIN/ACCOUNTANT・CSRF・未知field・越境 |
 | 4 公開残高と請求変更 guard | V8の同snapshot残高とinvoice lock内の実eligibility。現金/手数料1円でも訂正・取消を拒否し、全取消後だけ解禁。[設計](public-read-design.md) | CIの実PG/public read/lock待機/監査rollbackと既存全回帰 |
-| 後続 候補・ledger | B05の候補理由、手動確定、複数請求・一部充当・明示手数料・過入金・取消の保存則。ledgerはV8以降 | 実ledgerと請求訂正/取消race、現金/手数料1円でも有効なら訂正拒否、取消後の解禁 |
+| 5 理由付き候補read-only | B05の手動対応→現在額一致→期日/UUID順。全eligible請求を返し、曖昧さ・人の確認を明示。V8の同snapshot。[設計](candidate-design.md) | 名前variants、独立残高対照、snapshot race、tenant/no GET write、keyset/real10k、通常runn |
+| 後続 ledger command | B06の同tenant顧客横断、B07の同confirm内明示手数料・reverse/reconfirmを満たす手動確定と取消 | 認証/権限/CSRF/version/idempotency、保存則と原履歴、実PG race・通常runn/E2E |
 
 前後空白以外は変換しない。取引ID100、名義200 code points、制御文字・改行はstrip前に拒否する。日付の将来日制限は合意されておらず追加しない。
 semantic fingerprintはkind/formatと長さ付き各値を用い、BOM・改行・行順に依存せず、重複行の個数を保持する。予約はCONFIRMEDだけで、プレビューは予約しない。

@@ -1,0 +1,366 @@
+desc: Read-only B05 candidate reasons, current balances, ambiguity and tenant isolation
+concurrency: debt-api-acceptance
+labels:
+- api
+- payments
+- candidates
+- security
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: false
+  beta:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: false
+  invalid:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: false
+    skipValidateRequest: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+  fixture: json://../../work/runn-candidate-metadata.json
+secrets:
+- vars.password
+- anonymousToken
+- anonymousCookie
+- cookie
+- token
+- betaAnonymousToken
+- betaAnonymousCookie
+- betaCookie
+steps:
+  unauthenticated:
+    invalid:
+      /api/payments/00000000-0000-0000-0000-000000000000/candidates:
+        get:
+          useCookie: false
+          body: null
+    test: current.res.status == 401
+  csrf:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      anonymousToken: current.res.body.csrfToken
+      anonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  login:
+    api:
+      /api/auth/login:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: alpha-accountant@example.test
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ anonymousCookie }}
+            X-CSRF-TOKEN: '{{ anonymousToken }}'
+    bind:
+      cookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  session:
+    api:
+      /api/session:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      token: current.res.body.csrfToken
+    test: current.res.status == 200
+  firstCustomer:
+    api:
+      /api/customers:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              code: '{{ vars.fixture.firstCustomerCode }}'
+              name: 架空候補顧客first
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      firstCustomer: current.res.body.id
+    test: current.res.status == 201
+  secondCustomer:
+    api:
+      /api/customers:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              code: '{{ vars.fixture.secondCustomerCode }}'
+              name: 架空候補顧客second
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      secondCustomer: current.res.body.id
+    test: current.res.status == 201
+  invoicePreview:
+    api:
+      /api/imports/invoices/preview:
+        post:
+          useCookie: false
+          body:
+            multipart/form-data:
+              file: ../../work/runn-candidate-invoices.csv
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      invoiceBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID'
+  invoiceConfirm:
+    api:
+      /api/imports/{{ invoiceBatch }}/confirm:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              version: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.confirmedCount == 2
+  firstInvoice:
+    api:
+      /api/receivables?customerId={{ firstCustomer }}&limit=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      firstInvoice: current.res.body.items[0].id
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].customerId == firstCustomer
+  secondInvoice:
+    api:
+      /api/receivables?customerId={{ secondCustomer }}&limit=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      secondInvoice: current.res.body.items[0].id
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].customerId == secondCustomer
+  paymentPreview:
+    api:
+      /api/imports/payments/preview:
+        post:
+          useCookie: false
+          body:
+            multipart/form-data:
+              file: ../../work/runn-candidate-payment.csv
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      paymentBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID'
+  paymentConfirm:
+    api:
+      /api/imports/{{ paymentBatch }}/confirm:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              version: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.confirmedCount == 1
+  paymentSearch:
+    bind:
+      paymentPageSuffix: '""'
+  payments:
+    api:
+      /api/payments?dateFrom=0001-01-01&dateTo=0001-01-01&limit=100{{ paymentPageSuffix }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      ownPayment: filter(current.res.body.items, {#.transactionId == vars.fixture.transactionId})
+      paymentPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && (len(ownPayment) == 1 || current.res.body.nextCursor == null)
+  selectPayment:
+    bind:
+      paymentId: ownPayment[0].id
+    test: len(ownPayment) == 1
+  unregisteredSearch:
+    bind:
+      pageSuffix: '""'
+      firstSeen: 'false'
+      secondSeen: 'false'
+  unregistered:
+    api:
+      /api/payments/{{ paymentId }}/candidates?limit=100{{ pageSuffix }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      firstSeen: firstSeen || len(filter(current.res.body.items, {#.invoiceId == firstInvoice})) == 1
+      secondSeen: secondSeen || len(filter(current.res.body.items, {#.invoiceId == secondInvoice})) == 1
+      pageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    test: current.res.status == 200 && current.res.body.payerMatchStatus == 'UNREGISTERED' && current.res.body.matchedCustomerCount == 0 && current.res.body.requiresHumanConfirmation
+      && len(filter(current.res.body.items, {#.manualPayerMatch})) == 0
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && ((firstSeen && secondSeen) || current.res.body.nextCursor == null)
+  allCustomersVisible:
+    test: firstSeen && secondSeen
+  manualFirst:
+    api:
+      /api/payer-aliases:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              payerName: '{{ vars.fixture.payerName }}'
+              customerId: '{{ firstCustomer }}'
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      firstAlias: current.res.body.id
+    test: current.res.status == 201
+  unique:
+    api:
+      /api/payments/{{ paymentId }}/candidates?limit=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      next: current.res.body.nextCursor
+    test: current.res.status == 200 && current.res.body.payerMatchStatus == 'UNIQUE' && current.res.body.requiresHumanConfirmation && current.res.body.expectedPaymentVersion
+      == '0' && current.res.body.unallocatedAmount == 100 && current.res.body.cashCandidateStatus == 'AVAILABLE' && current.res.body.items[0].invoiceId == firstInvoice
+      && current.res.body.items[0].manualPayerMatch && current.res.body.items[0].exactAmountMatch && current.res.body.items[0].expectedInvoiceVersion == '0' && current.res.body.items[0].dueDate
+      == '9999-12-31' && next != null
+  outsideCorrespondence:
+    api:
+      /api/payments/{{ paymentId }}/candidates?limit=1&cursor={{ next }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && !current.res.body.items[0].manualPayerMatch
+  malformedCursor:
+    invalid:
+      /api/payments/{{ paymentId }}/candidates?cursor=bad:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 400
+  badLimit:
+    invalid:
+      /api/payments/{{ paymentId }}/candidates?limit=101:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 400
+  manualSecond:
+    api:
+      /api/payer-aliases:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              payerName: '{{ vars.fixture.payerName }}'
+              customerId: '{{ secondCustomer }}'
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 201
+  multiple:
+    api:
+      /api/payments/{{ paymentId }}/candidates?limit=2:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.payerMatchStatus == 'MULTIPLE_CUSTOMERS' && current.res.body.matchedCustomerCount == 2 && current.res.body.requiresHumanConfirmation
+      && current.res.body.items[0].invoiceId == secondInvoice && current.res.body.items[0].dueDate == '0001-01-01' && current.res.body.items[1].invoiceId == firstInvoice
+      && current.res.body.items[0].manualPayerMatch && current.res.body.items[1].manualPayerMatch
+  deactivate:
+    api:
+      /api/payer-aliases/{{ firstAlias }}/deactivation:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              version: 0
+              reason: 架空候補対応の見直し
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200
+  onlySecondCorrespondence:
+    api:
+      /api/payments/{{ paymentId }}/candidates?limit=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.payerMatchStatus == 'UNIQUE' && current.res.body.matchedCustomerCount == 1 && current.res.body.items[0].invoiceId
+      == secondInvoice
+  betaCsrf:
+    beta:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      betaAnonymousToken: current.res.body.csrfToken
+      betaAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  betaLogin:
+    beta:
+      /api/auth/login:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: beta-admin@example.test
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ betaAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ betaAnonymousToken }}'
+    bind:
+      betaCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  noTenantPayment:
+    beta:
+      /api/payments/{{ paymentId }}/candidates:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-Tenant-Id: 11111111-1111-1111-1111-111111111111
+    test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'

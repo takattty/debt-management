@@ -6,6 +6,8 @@
 
 ## CLI
 
+scriptを初めて実行するときもsource名を推測しない。先のcallで `rg --files scripts` のcatalogを観測し、次callで観測済みpathを実行する。容量検査の実名を未確認のまま別名で実行した再発に対し、読込だけだったguardを実行時にも拡張した。
+
 repository root で実行する。
 
 ```sh

@@ -44,6 +44,8 @@ Cloudのログ保存付き検証は `bash /absolute/checkout/scripts/verify-clou
 
 ## PR と API 契約
 
+repository内scriptの実行にもcatalog確認を適用する。新しいscript名は責務や過去文脈から作らず、先のcallで `rg --files scripts` の実出力を観測し、次callで観測した実pathだけを実行する。読込helperだけを使っても、未確認名を `python3` / `bash` へ渡せば同じ誤りになる。
+
 - PR本文・まとまったレビュー/検証コメントは [PRとコメントの書き方](docs/pr-writing.md) とrepoテンプレートに従う。本文は概要・何をやったか・なぜ・何をやらなかったか・ユーザーへの影響・検証・その他を埋め、結果/証拠は表にする。公開前とmerge直前に最新本文を検査し、空欄やSHAだけの説明で済ませない。
 - PRは目的を一つに絞り、設計・契約・BE・FE・実行基盤を依存関係付きの小さなPRへ分ける。生成物は明示し、巨大な差分へ手書きの変更を埋めない。
 - FE/BEの契約源は `contracts/openapi.yaml`。型とAPI interfaceを生成し、生成物の手編集や別々のtransport型の定義を避ける。契約変更と生成整合をCIで検証する。

@@ -430,6 +430,12 @@
           "summary": "Coordinatorが未列挙のInvoiceDetailsService.javaを責務から推測してsedで読み込み不存在の終了値2となった。解決済み文書guardでは再発を防げなかった",
           "evidence": "docs/learning/source-read-validation.md",
           "recorded_at": "2026-10-30T01:32:53+00:00"
+        },
+        {
+          "event": "capacity-script-guessed-20261030",
+          "summary": "容量preflightの実名を観測せずcheck-capacity.pyと推測して実行し、不存在の終了値2となった。読込以外のscript実行にもcatalog確認が必要だった",
+          "evidence": "docs/learning/capacity-validation.md",
+          "recorded_at": "2026-10-30T01:55:22+00:00"
         }
       ],
       "resolutions": [
@@ -456,6 +462,14 @@
           "guard": "scripts/read-source.py",
           "event_count": 5,
           "resolved_at": "2026-10-30T01:33:56+00:00"
+        },
+        {
+          "cause": "source名の観測guardを読込だけに適用し、新scriptの実行名を未確認で推測した",
+          "prevention": "新scriptの実行も先callのrg catalog出力を観測してから次callでその実pathだけを実行する。AGENTSへ実行境界も明記した",
+          "verification": "実catalogからscripts/check-workspace-capacity.pyを観測後、次callで同実pathを実行し2.24GiBで成功。Python全30件が成功し、以前のsource readerとmetadata guardも保持した",
+          "guard": "AGENTS.md",
+          "event_count": 6,
+          "resolved_at": "2026-10-30T01:56:00+00:00"
         }
       ]
     },

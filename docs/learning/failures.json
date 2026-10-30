@@ -1204,6 +1204,34 @@
           "resolved_at": "2026-10-30T11:15:31+00:00"
         }
       ]
+    },
+    {
+      "key": "test-required-label-exact-match",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "home-nav-unit-required-label-http-201-20261030",
+          "summary": "共有brand guardのHTTP201ケースが必須suffixを含む顧客コードlabelへのexact照会で停止。navigation挙動まで未到達",
+          "evidence": "work/home-navigation-1401-required-label-red.log",
+          "recorded_at": "2026-10-30T12:27:55.903696+00:00"
+        },
+        {
+          "event": "home-nav-unit-required-label-http-409-20261030",
+          "summary": "共有brand guardのHTTP409ケースが必須suffixを含む顧客コードlabelへのexact照会で停止。navigation挙動まで未到達",
+          "evidence": "work/home-navigation-1401-required-label-red.log",
+          "recorded_at": "2026-10-30T12:27:55.903696+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "新しい回帰testが顧客コード/顧客名のlabel文字列に必須表示が含まれることを見落とし、短い文字列のexact照会を使った",
+          "prevention": "実DOMとfor/idの対象fieldを先に確認し、既存の必須suffixを含むaccessible nameを一意な先頭一致で照会する。生産UIのlabelをtest都合で変更しない",
+          "verification": "元ログの2ケースと行25を保存。実DOMの必須suffixを確認して先頭一致selectorへ修正。新guard2単体・全unit・型・lint/必須statusguard4・API生成整合・buildがPASS。製品navigation不具合とtest selector不備は別分類",
+          "guard": "frontend/src/AppNavigation.test.tsx",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T12:27:55.903696+00:00"
+        }
+      ]
     }
   ]
 }

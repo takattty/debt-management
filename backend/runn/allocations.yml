@@ -559,6 +559,8 @@ steps:
           headers:
             Cookie: JSESSIONID={{ cookie }}
             X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      changedFeeOperation: current.res.body.id
     test: current.res.status == 200 && current.res.body.paymentVersion == '3'
   reconfirmed:
     api:
@@ -628,3 +630,138 @@ steps:
             Cookie: JSESSIONID={{ betaCookie }}
             X-CSRF-TOKEN: '{{ betaToken }}'
     test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'
+  feeZeroPaymentPreview:
+    api:
+      /api/imports/payments/preview:
+        post:
+          useCookie: false
+          body:
+            multipart/form-data:
+              file: ../../work/runn-allocation-fee-zero-payment.csv
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      feeZeroPaymentBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID'
+  feeZeroPaymentConfirm:
+    api:
+      /api/imports/{{ feeZeroPaymentBatch }}/confirm:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              version: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.confirmedCount == 1
+  feeZeroPaymentSearch:
+    bind:
+      feeZeroPaymentSuffix: '""'
+  feeZeroPaymentPages:
+    api:
+      /api/payments?dateFrom=0001-01-01&dateTo=0001-01-01&limit=100{{ feeZeroPaymentSuffix }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      feeZeroPaymentItems: filter(current.res.body.items, {#.transactionId == vars.fixture.feeZeroTransactionId})
+      feeZeroPaymentSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && (len(feeZeroPaymentItems) == 1 || current.res.body.nextCursor == null)
+  feeZeroPaymentSelected:
+    bind:
+      feeZeroPaymentId: feeZeroPaymentItems[0].id
+    test: len(feeZeroPaymentItems) == 1 && feeZeroPaymentItems[0].amount == 99560 && feeZeroPaymentItems[0].unallocatedAmount == 99560 && feeZeroPaymentItems[0].sourceBatchId == feeZeroPaymentBatch
+  restoreInvoiceForFeeZeroExample:
+    api:
+      /api/payments/{{ paymentId }}/allocations/{{ changedFeeOperation }}/reversal:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '3'
+              reason: EX-M04の手数料0の例を自fixtureで確認するため全体取消
+              invoices:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '3'
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '3'
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.kind == 'REVERSE' && current.res.body.reversesId == changedFeeOperation && current.res.body.paymentVersion == '4'
+  feeZeroInvoiceRestored:
+    api:
+      /api/invoices/{{ firstInvoice }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.amount == 100000 && current.res.body.outstandingAmount == 100000 && current.res.body.version == 4
+  confirmFeeZeroExample:
+    api:
+      /api/payments/{{ feeZeroPaymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '0'
+              reason: EX-M04 入金99560円を手数料0円で確定して440円を残す
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '4'
+                cashAmount: 99560
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      feeZeroOperation: current.res.body.id
+    test: current.res.status == 200 && current.res.body.kind == 'CONFIRM' && current.res.body.paymentVersion == '1'
+  feeZeroOutstanding:
+    api:
+      /api/invoices/{{ firstInvoice }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.amount == 100000 && current.res.body.outstandingAmount == 440 && current.res.body.version == 5
+  feeZeroHistory:
+    api:
+      /api/payments/{{ feeZeroPaymentId }}/allocations?limit=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id == feeZeroOperation && current.res.body.items[0].kind == 'CONFIRM' && current.res.body.items[0].reversedByOperationId == null && len(current.res.body.items[0].lines) == 1 && current.res.body.items[0].lines[0].invoiceId == firstInvoice && current.res.body.items[0].lines[0].cashAmount == 99560 && current.res.body.items[0].lines[0].feeAmount == 0
+  feeZeroReloadSearch:
+    bind:
+      feeZeroReloadSuffix: '""'
+  feeZeroReloadPages:
+    api:
+      /api/payments?dateFrom=0001-01-01&dateTo=0001-01-01&limit=100{{ feeZeroReloadSuffix }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      feeZeroReloadItems: filter(current.res.body.items, {#.id == feeZeroPaymentId})
+      feeZeroReloadSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && (len(feeZeroReloadItems) == 1 || current.res.body.nextCursor == null)
+  feeZeroPaymentExhausted:
+    test: len(feeZeroReloadItems) == 1 && feeZeroReloadItems[0].amount == 99560 && feeZeroReloadItems[0].unallocatedAmount == 0

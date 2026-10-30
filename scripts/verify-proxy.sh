@@ -26,4 +26,4 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 if [ "$proxy_ready" != true ]; then docker_local logs "$proxy_container_id"; exit 1; fi
-RUNN_BASE_URL="http://127.0.0.1:$proxy_port" scripts/runn.sh run --scopes read:parent backend/runn/proxy/uploads.yml
+RUNN_BASE_URL="http://127.0.0.1:$proxy_port" scripts/runn.sh run --scopes read:parent backend/runn/proxy/*.yml

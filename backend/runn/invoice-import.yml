@@ -17,7 +17,7 @@ runners:
 vars:
   password: ${LOCAL_SEED_PASSWORD}
   fixture: json://../../work/runn-invoice-metadata.json
-secrets: [vars.password, anonymousToken, anonymousCookie, cookie, token, betaToken, betaAnonymousCookie]
+secrets: [vars.password, anonymousToken, anonymousCookie, cookie, token, betaToken, betaAnonymousCookie, betaCookie]
 steps:
   unauthenticatedTemplate:
     invalid:
@@ -224,6 +224,8 @@ steps:
             application/json:
               email: beta-admin@example.test
               password: '{{ vars.password }}'
+    bind:
+      betaCookie: current.res.cookies.JSESSIONID.Value
     test: current.res.status == 204
   noTenantLeak:
     beta:

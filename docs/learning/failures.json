@@ -108,6 +108,28 @@
       ]
     },
     {
+      "key": "e2e-global-status-selector",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "allocation-e2e-recovery-status-scope-20261030",
+          "summary": "確定recovery直後のglobal status locatorが候補と一覧のloading2件へstrict競合した。操作のregion内へscopeする必要があった",
+          "evidence": "work/settlement-fe-20261030T0833-e2e.log",
+          "recorded_at": "2026-10-30T08:34:36+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "非同期画面の複数の進捗statusをglobal locatorで対象操作と見なした",
+          "prevention": "確定は消込内容の確認region内statusを選び、取消は消込履歴region内の取消完了文を持つstatusへscopeする",
+          "verification": "全操作完了assertが対象regionにscopeされ、履歴loadingと取消完了が並ぶ間も文で選べることをsource検査。型/lint/113unit成功、real再実行は次phase",
+          "guard": "frontend/e2e/payment-allocation.spec.ts",
+          "event_count": 1,
+          "resolved_at": "2026-10-30T08:35:35+00:00"
+        }
+      ]
+    },
+    {
       "key": "github-integration-permissions",
       "status": "resolved",
       "events": [
@@ -502,6 +524,28 @@
           "guard": "scripts/fetch-main.sh",
           "event_count": 2,
           "resolved_at": "2026-10-29T14:14:55+00:00"
+        }
+      ]
+    },
+    {
+      "key": "test-fixture-global-order-assumption",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "allocation-e2e-crosscustomer-page-distribution-20261030",
+          "summary": "候補E2EがUUID順の次page2件に先頭選択と別顧客が必ず含まれると誤仮定した。実データから異なる顧客のpairを選ぶ必要があった",
+          "evidence": "work/settlement-fe-20261030T0833-e2e.log",
+          "recorded_at": "2026-10-30T08:34:36+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "UUID順で次pageの少数行に両顧客が必ず残ると仮定した",
+          "prevention": "両pageの実応答から自fixtureのinvoiceId/customerIdを調べ、異なるcustomerのpairを選択する。先頭行のcustomerと次pageの分布を仮定しない",
+          "verification": "実sourceを検査して次pageの自fixtureを先に特定し、firstpageのcustomerId不一致を検索するguardを確認。typecheck/lint/unit113成功。realE2E再実行は次phase、初回失敗log保持",
+          "guard": "frontend/e2e/payment-allocation.spec.ts",
+          "event_count": 1,
+          "resolved_at": "2026-10-30T08:35:35+00:00"
         }
       ]
     },

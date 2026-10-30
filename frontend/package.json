@@ -15,7 +15,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit --pretty false",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint . --max-warnings 0 && node --test scripts/status-feedback.test.mjs",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:e2e": "playwright test && npm run test:bfcache",

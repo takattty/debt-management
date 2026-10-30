@@ -100,25 +100,77 @@ steps:
     api:
       /api/imports/{{ good }}/payment-rows?limit=1:
         get: {body: null}
-    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.nextCursor == 1 && current.res.body.items[0].valid && current.res.body.items[0].amount == '100000' && current.res.body.items[0].payerName == '架空入金A'
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.nextCursor == 1 && current.res.body.items[0].valid && current.res.body.items[0].amount == '100000' && current.res.body.items[0].payerName == '架空入金A' && current.res.body.items[0].transferDate == '0001-01-01'
   next:
     api:
       /api/imports/{{ good }}/payment-rows?cursor=1&limit=1:
         get: {body: null}
-    test: current.res.status == 200 && current.res.body.nextCursor == 0 && current.res.body.items[0].amount == '200000'
+    test: current.res.status == 200 && current.res.body.nextCursor == 0 && current.res.body.items[0].amount == '200000' && current.res.body.items[0].transferDate == '9999-12-31'
   unsupportedRows:
     api:
       /api/imports/{{ good }}/rows:
         get: {body: null}
     test: current.res.status == 409 && current.res.body.code == 'IMPORT_KIND_UNSUPPORTED'
-  unavailableConfirm:
+  confirm:
     api:
       /api/imports/{{ good }}/confirm:
         post:
           headers: {X-CSRF-TOKEN: '{{ token }}'}
           body:
             application/json: {version: 0}
-    test: current.res.status == 409 && current.res.body.code == 'IMPORT_KIND_UNSUPPORTED'
+    test: current.res.status == 200 && current.res.body.status == 'CONFIRMED' && current.res.body.confirmedCount == 2
+  resend:
+    api:
+      /api/imports/{{ good }}/confirm:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 200 && compare(current.res.body, steps.confirm.res.body)
+  firstPaymentSearch:
+    bind:
+      firstPageSuffix: '""'
+  payments:
+    loop:
+      count: 10000
+      interval: 0
+      until: 'current.res.status == 200 && (len(firstMatches) == 1 || current.res.body.nextCursor == null)'
+    api:
+      /api/payments?dateFrom=0001-01-01&dateTo=0001-01-01&limit=1{{ firstPageSuffix }}:
+        get: {body: null}
+    bind:
+      firstMatches: 'filter(current.res.body.items, {#.sourceBatchId == good && #.transactionId == steps.rows.res.body.items[0].transactionId})'
+      firstPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+  ownFirstPayment:
+    bind:
+      firstId: firstMatches[0].id
+    test: len(firstMatches) == 1 && firstMatches[0].amount == 100000 && firstMatches[0].unallocatedAmount == 100000 && firstMatches[0].createdByUserId != null && firstMatches[0].payerName == '架空入金A' && firstMatches[0].transferDate == '0001-01-01' && firstMatches[0].sourceBatchId == good
+  nextPaymentSearch:
+    bind:
+      nextPageSuffix: '""'
+  nextPayment:
+    loop:
+      count: 10000
+      interval: 0
+      until: 'current.res.status == 200 && (len(nextMatches) == 1 || current.res.body.nextCursor == null)'
+    api:
+      /api/payments?dateFrom=9999-12-31&dateTo=9999-12-31&limit=1{{ nextPageSuffix }}:
+        get: {body: null}
+    bind:
+      nextMatches: 'filter(current.res.body.items, {#.sourceBatchId == good && #.transactionId == steps.next.res.body.items[0].transactionId})'
+      nextPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+  ownNextPayment:
+    bind:
+      secondId: nextMatches[0].id
+    test: len(nextMatches) == 1 && nextMatches[0].id != firstId && nextMatches[0].amount == 200000 && nextMatches[0].unallocatedAmount == 200000 && nextMatches[0].createdByUserId != null && nextMatches[0].payerName == '架空入金B' && nextMatches[0].transferDate == '9999-12-31' && nextMatches[0].sourceBatchId == good
+  invalidConfirm:
+    api:
+      /api/imports/{{ bad }}/confirm:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 409 && current.res.body.code == 'IMPORT_INVALID'
   originalErrors:
     api:
       /api/imports/{{ bad }}:
@@ -160,6 +212,77 @@ steps:
     bind:
       betaToken: current.res.body.csrfToken
     test: current.res.status == 200
+  betaOwnPreview:
+    beta:
+      /api/imports/payments/preview:
+        post:
+          useCookie: false
+          headers: {Cookie: 'JSESSIONID={{ betaCookie }}', X-CSRF-TOKEN: '{{ betaToken }}'}
+          body:
+            multipart/form-data: {file: ../../work/runn-payment-valid.csv}
+    bind:
+      betaBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID' && current.res.body.rowCount == 2
+  betaOwnConfirm:
+    beta:
+      /api/imports/{{ betaBatch }}/confirm:
+        post:
+          useCookie: false
+          headers: {Cookie: 'JSESSIONID={{ betaCookie }}', X-CSRF-TOKEN: '{{ betaToken }}'}
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 200 && current.res.body.status == 'CONFIRMED' && current.res.body.confirmedCount == 2
+  betaPaymentSearch:
+    bind:
+      betaPageSuffix: '""'
+      betaFirstId: '""'
+      betaSecondId: '""'
+      betaReachedEnd: 'false'
+  noTenantPayments:
+    beta:
+      /api/payments?limit=1{{ betaPageSuffix }}:
+        get:
+          useCookie: false
+          headers: {Cookie: 'JSESSIONID={{ betaCookie }}', X-Tenant-Id: '11111111-1111-1111-1111-111111111111'}
+          body: null
+    bind:
+      # Each expression uses the response/prior state, never a sibling bind entry.
+      betaFirstId: 'len(filter(current.res.body.items, {#.sourceBatchId == betaBatch && #.transactionId == steps.rows.res.body.items[0].transactionId})) == 1 ? filter(current.res.body.items, {#.sourceBatchId == betaBatch && #.transactionId == steps.rows.res.body.items[0].transactionId})[0].id : betaFirstId'
+      betaSecondId: 'len(filter(current.res.body.items, {#.sourceBatchId == betaBatch && #.transactionId == steps.next.res.body.items[0].transactionId})) == 1 ? filter(current.res.body.items, {#.sourceBatchId == betaBatch && #.transactionId == steps.next.res.body.items[0].transactionId})[0].id : betaSecondId'
+      betaReachedEnd: current.res.body.nextCursor == null
+      betaPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    test: 'current.res.status == 200 && len(filter(current.res.body.items, {#.id == firstId || #.id == secondId || #.sourceBatchId == good})) == 0'
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && current.res.body.nextCursor == null
+  betaOwnPaymentsFound:
+    test: betaFirstId != '' && betaSecondId != '' && betaFirstId != betaSecondId && betaReachedEnd
+  alphaPaymentSearch:
+    bind:
+      alphaPageSuffix: '""'
+      alphaFirstSeen: 'false'
+      alphaSecondSeen: 'false'
+      alphaReachedEnd: 'false'
+  noBetaPaymentsInAlpha:
+    api:
+      /api/payments?limit=1{{ alphaPageSuffix }}:
+        get:
+          useCookie: false
+          headers: {Cookie: 'JSESSIONID={{ cookie }}'}
+          body: null
+    bind:
+      alphaFirstSeen: 'alphaFirstSeen || len(filter(current.res.body.items, {#.id == firstId && #.sourceBatchId == good})) == 1'
+      alphaSecondSeen: 'alphaSecondSeen || len(filter(current.res.body.items, {#.id == secondId && #.sourceBatchId == good})) == 1'
+      alphaReachedEnd: current.res.body.nextCursor == null
+      alphaPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    test: 'current.res.status == 200 && len(filter(current.res.body.items, {#.id == betaFirstId || #.id == betaSecondId || #.sourceBatchId == betaBatch})) == 0'
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && current.res.body.nextCursor == null
+  alphaOwnPaymentsStillFound:
+    test: alphaFirstSeen && alphaSecondSeen && alphaReachedEnd
   noTenantRows:
     beta:
       /api/imports/{{ good }}/payment-rows:
@@ -177,3 +300,20 @@ steps:
           body:
             application/json: {version: 0}
     test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'
+  reupload:
+    api:
+      /api/imports/payments/preview:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ cookie }}', X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            multipart/form-data: {file: ../../work/runn-payment-valid.csv}
+    bind: {duplicate: current.res.body.id}
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_INVALID' && current.res.body.originalBatchId == good
+  rejectDuplicate:
+    api:
+      /api/imports/{{ duplicate }}/confirm:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ cookie }}', X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 0}
+    test: current.res.status == 409 && current.res.body.code == 'IMPORT_ALREADY_CONFIRMED' && current.res.body.errors[0].message == good

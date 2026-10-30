@@ -21,7 +21,9 @@ semantic fingerprintはkind/formatと長さ付き各値を用い、BOM・改行�
 
 ## 契約と責務
 
-顧客/請求のImportRowResponseは維持し、入金は正本OpenAPIのPaymentImportRowResponseからJava/TypeScriptを生成する。GET /api/imports/{id}/payment-rowsは入金専用。共通rowsは入金に409、他tenantには404。共通batch/errorsを再利用し、段階1のconfirmは同tenant入金に409 IMPORT_KIND_UNSUPPORTED、他tenantには404を返す。
+顧客/請求のImportRowResponseは維持し、入金は正本OpenAPIのPaymentImportRowResponseからJava/TypeScriptを生成する。GET /api/imports/{id}/payment-rowsは入金専用。共通rowsは入金に409、他tenantには404。共通batch/errorsを再利用し、段階2のconfirmはkindごとの確定ユースケースへdispatchし、他tenantには404を返す。
 paymentはtenant/取引ID/振込日/名義/金額/source batch/actor/記録時刻を持ち、更新・削除をDBでも拒否する。source batchとactorをtenant付きFKで検証する。顧客対応や可変残高を入金事実へ混ぜない。
 
 入金取込だけではdebt.reconciliation.enabledを有効化しない。InvoiceMutationEligibilityのpreSettlement guardは実Allocation adapter導入まで維持する。V7以降のledger設計は別段階。手数料と顧客横断充当の業務例は後続ledger段階で扱い、このプレビューには含めない。
+
+段階2はGET /api/paymentsをtransfer_date,id順・limit1〜100で取得し、任意のdateFrom/dateToを含むkeysetページングで読む。記録者・記録時刻・sourceBatchIdを返す。ledger未導入の間だけunallocatedAmount=amountであり、reconciliation有効化前に必ず実ledger由来へ置換する。入金事実や監査に部分成功を残さず、期限がtransaction途中に切れた場合もrollbackする。

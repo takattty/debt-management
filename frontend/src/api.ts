@@ -8,6 +8,8 @@ export type InvitationIssued = components['schemas']['InvitationIssuedResponse']
 export type ImportBatch = components['schemas']['ImportBatchResponse'];
 export type ImportRow = components['schemas']['ImportRowResponse'];
 export type PaymentImportRow = components['schemas']['PaymentImportRowResponse'];
+export type Payment = components['schemas']['PaymentResponse'];
+export type PaymentsQuery = NonNullable<operations['listPayments']['parameters']['query']>;
 export type ImportError = components['schemas']['ImportErrorResponse'];
 export type Receivable = components['schemas']['ReceivableResponse'];
 export type Invoice = components['schemas']['InvoiceResponse'];
@@ -39,6 +41,11 @@ export const api = {
   login: (body: LoginInput, csrf: Csrf) => request({ path: '/api/auth/login', method: 'POST' }, csrf, body),
   getSession: () => request({ path: '/api/session', method: 'GET' }, undefined),
   listCustomers: () => request({ path: '/api/customers', method: 'GET' }, undefined),
+  listPayments: (query: PaymentsQuery = {}) => {
+    const parameters = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => { if (value !== undefined) parameters.set(key, String(value)); });
+    return request({ path: '/api/payments', method: 'GET', url: `/api/payments?${parameters}` }, undefined);
+  },
   getInvoice: (id: string) => request({ path: '/api/invoices/{id}', method: 'GET', url: invoiceUrl(id) }, undefined),
   listInvoiceHistory: (id: string, cursor = -1) => request({ path: '/api/invoices/{id}/history', method: 'GET', url: `${invoiceUrl(id)}/history?cursor=${cursor}&limit=50` }, undefined),
   correctInvoice: (csrf: Csrf, id: string, body: operations['correctInvoice']['requestBody']['content']['application/json']) => request(
@@ -153,7 +160,8 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
         : endpoint.path === '/api/invitations' ? '招待先のメールアドレスと権限を確認してください。'
           : invitation ? '入力したメールアドレスとパスワードの条件を確認してください。'
             : importing ? 'CSVファイルと入力形式を確認して、もう一度プレビューしてください。'
-              : endpoint.path === '/api/receivables' ? '顧客と支払期日の検索条件を確認してください。' : '顧客コード・顧客名の形式や文字数を確認してください。',
+              : endpoint.path === '/api/receivables' ? '顧客と支払期日の検索条件を確認してください。'
+                : endpoint.path === '/api/payments' ? '振込日の検索条件を確認してください。' : '顧客コード・顧客名の形式や文字数を確認してください。',
       401: endpoint.path === '/api/auth/login' ? 'メールアドレスまたはパスワードを確認してください。' : 'ログインの有効期限が切れました。もう一度ログインしてください。',
       403: code === 'ACCESS_DENIED' ? 'この操作を行う権限がありません。管理者にご確認ください。'
         : code === 'CSRF_INVALID' ? 'ログインの有効期限が切れました。もう一度ログインしてください。'

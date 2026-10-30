@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { api, ApiError, type Customer, type Receivable, type ReceivablesQuery } from './api';
+import { api, ApiError, type Customer, type Receivable, type ReceivablesQuery, type Session } from './api';
+
+import InvoicePanel from './InvoicePanel';
 
 const yen = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
 const message = (failure: unknown) => failure instanceof Error ? failure.message : '債権一覧を取得できませんでした。もう一度お試しください。';
 
-export default function ReceivablesPanel({ customers, onBusyChange, onSessionExpired }: { customers: Customer[]; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void }) {
+export default function ReceivablesPanel({ customers, session, onBusyChange, onSessionExpired }: { customers: Customer[]; session: Session; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void }) {
+  const [selectedId, setSelectedId] = useState('');
+  const [lookupId, setLookupId] = useState('');
   const [items, setItems] = useState<Receivable[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [customerId, setCustomerId] = useState('');
@@ -50,6 +54,8 @@ export default function ReceivablesPanel({ customers, onBusyChange, onSessionExp
 
   return <section className="panel" aria-labelledby="receivables-title">
     <div className="panel-heading"><span className="step-number">一覧</span><div><h2 id="receivables-title">登録済みの債権</h2><p>確定した請求と未回収額を、支払期日順に表示します。</p></div></div>
+    <form onSubmit={(event) => { event.preventDefault(); setSelectedId(lookupId.trim()); }}><label htmlFor="invoice-lookup">請求IDで訂正・履歴を開く（取消済みも参照可）<input id="invoice-lookup" required value={lookupId} disabled={busy} onChange={(event) => setLookupId(event.target.value)} /></label><button type="submit" className="secondary-button" disabled={busy}>請求を開く</button></form>
+    {selectedId && <InvoicePanel key={selectedId} id={selectedId} customers={customers} session={session} onBusyChange={onBusyChange} onSessionExpired={onSessionExpired} onChanged={() => load(activeQuery)} onClose={() => setSelectedId('')} />}
     <form className="receivables-filters" onSubmit={search}>
       <div><label htmlFor="receivable-customer">顧客で絞り込む</label><select id="receivable-customer" value={customerId} onChange={(event) => setCustomerId(event.target.value)} disabled={busy}><option value="">すべての顧客</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.code} — {customer.name}</option>)}</select></div>
       <label htmlFor="receivable-due-from">支払期日（開始）<input id="receivable-due-from" type="date" value={dueFrom} onChange={(event) => setDueFrom(event.target.value)} disabled={busy} /></label>
@@ -58,7 +64,7 @@ export default function ReceivablesPanel({ customers, onBusyChange, onSessionExp
     </form>
     {error && <p className="error" role="alert">{error}</p>}
     {busy ? <p role="status">債権一覧を読み込んでいます…</p> : items.length === 0 ? !error && <p className="import-guide">表示する債権はありません。請求CSVを確定するか、検索条件を変更してください。</p> : <>
-      <div className="table-scroll"><table aria-label="債権一覧"><thead><tr><th scope="col">請求書番号</th><th scope="col">顧客</th><th scope="col">請求日</th><th scope="col">支払期日</th><th scope="col">請求額</th><th scope="col">未回収額</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{item.invoiceNumber}</td><td>{item.customerCode}<br />{item.customerName}</td><td>{item.issueDate}</td><td>{item.dueDate}</td><td>{yen.format(item.amount)}</td><td>{yen.format(item.outstandingAmount)}</td></tr>)}</tbody></table></div>
+      <div className="table-scroll"><table aria-label="債権一覧"><thead><tr><th scope="col">請求書番号</th><th scope="col">顧客</th><th scope="col">請求日</th><th scope="col">支払期日</th><th scope="col">請求額</th><th scope="col">未回収額</th><th scope="col">操作</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{item.invoiceNumber}</td><td>{item.customerCode}<br />{item.customerName}</td><td>{item.issueDate}</td><td>{item.dueDate}</td><td>{yen.format(item.amount)}</td><td>{yen.format(item.outstandingAmount)}</td><td><button type="button" className="text-button" disabled={busy} aria-label={`請求 ${item.invoiceNumber} の訂正・履歴`} onClick={() => { setSelectedId(item.id); setLookupId(item.id); }}>訂正・履歴</button></td></tr>)}</tbody></table></div>
       <p className="import-guide">{pageNumber}ページ目・{items.length}件を表示しています。金額・未回収額は登録内容から取得した値です。</p>
     </>}
     <div className="button-row"><button type="button" className="secondary-button" disabled={busy} onClick={() => load(activeQuery)}>最初のページを再取得</button><button type="button" className="secondary-button" disabled={busy || !nextCursor} onClick={() => load({ ...activeQuery, cursor: nextCursor ?? undefined }, pageNumber + 1)}>次の50件</button></div>

@@ -126,3 +126,54 @@ for field, expected in (("next", dict), ("merged", list), ("checkpoints", list))
 ```
 
 private実行helperにも同検査を導入し、GitHub取得/更新前とstate保存前に実行する。実state1ケースと誤ったcollection型/entry型の5否定fixtureをnetwork0で検査した。merge後のローカルstate保存が失敗した場合、PRのGETでmerged状態を確認し、成功済みmergeを再送せず記録だけ復旧する。2実事象と6fixtureの証拠はpublisherのignored `work/private-state-shape-observations.json` / `work/private-state-shape-guard-proof.json`に保存した。
+
+## Markdown/package JSONはsource専用helperへ渡さない
+
+source catalogの`read-source.py`はMarkdown文書とpackage JSONの読取経路ではない。先に対象ownerで`git ls-files -- docs/path.md`等を観測し、次の実行可能recipeへ絶対ownerと実relative path、狭い行範囲を渡す。sourceファイルはsource専用helper、ignored work証拠は`read-evidence.py`の絶対helper＋明示`--worktree`を使う。候補だけの拒否後に同じhelperでqueryを反復しない。
+
+以下はprivate実行wrapperとbyte同一の標準Pythonコードで、別Cloud contextでもそのまま実行できる。3500 UTF-8 byteにはheaderと末尾改行を含め、超過/非対象はstdout空でexit2、原本は変更しない。Markdown/JSONの成功2件とsource/過大の拒否2件、実Markdownの読取と原本hash不変を検証した。
+
+```sh
+python3 - /absolute/target-worktree docs/path.md 1 20 <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+
+CAP = 3500
+
+def render(label, suffix, raw, start, end):
+    if suffix not in (".md", ".json"):
+        raise ValueError("Use read-source for source files; this route accepts .md/.json")
+    if len(raw) > 2 * 1024 * 1024 or start < 1 or end < start:
+        raise ValueError("Invalid bounded text input/range")
+    selected = "".join(raw.decode("utf-8").splitlines(keepends=True)[start-1:end])
+    result = label + "\n" + selected
+    if not result.endswith("\n"):
+        result += "\n"
+    if len(result.encode("utf-8")) > CAP:
+        raise ValueError("Text exceeds 3500 UTF-8 bytes; narrow the line range")
+    return result
+
+def main():
+    root_raw, relative, start, end = sys.argv[1:]
+    root = Path(root_raw).resolve()
+    rel = Path(relative)
+    if rel.is_absolute() or ".." in rel.parts or rel.suffix not in (".md", ".json"):
+        raise ValueError("Expected catalogued relative .md/.json path")
+    path = (root / rel).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError("Target must remain in explicit owner worktree")
+    subprocess.run(["git", "-C", str(root), "ls-files", "--error-unmatch", "--", relative],
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if path.stat().st_size > 2 * 1024 * 1024:
+        raise ValueError("Input exceeds 2 MiB")
+    sys.stdout.write(render(str(path), rel.suffix, path.read_bytes(), int(start), int(end)))
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        sys.stderr.write(type(error).__name__ + ": bounded text route refused\n")
+        raise SystemExit(2)
+PY
+```

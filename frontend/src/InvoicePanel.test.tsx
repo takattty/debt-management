@@ -16,6 +16,14 @@ function setup(options: { conflict?: boolean; lost?: boolean; paged?: boolean; s
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     if (path.includes('/history?')) return json({ items: path.includes('cursor=0&') ? [{ ...original, revision: 1, operation: 'CORRECTED', reason: '架空の過去の訂正' }] : [original], nextCursor: options.paged && !path.includes('cursor=0&') ? 0 : null });
+    if (init?.method === 'POST' && path.endsWith('/cancel')) {
+      writes++;
+      if (options.denied) return json({ code: 'ACCESS_DENIED' }, 403);
+      if (options.conflict && writes === 1) { current = { ...current, amount: 120000, outstandingAmount: 120000, version: 1 }; return json({ code: 'VERSION_CONFLICT' }, 409); }
+      current = { ...current, status: 'CANCELLED', outstandingAmount: 0, version: current.version + 1 };
+      if (options.lost) throw new TypeError('lost response');
+      return json(current);
+    }
     if (init?.method === 'PUT') {
       writes++;
       if (options.denied) return json({ code: 'ACCESS_DENIED' }, 403);
@@ -44,10 +52,10 @@ describe('Invoice correction and immutable history', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('他の担当者');
     expect(screen.getByRole('button', { name: '訂正を保存' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: '最新内容・処理結果を取得' }));
-    expect(await screen.findByRole('checkbox')).not.toBeChecked();
+    expect(await screen.findByRole('checkbox', { name: /最新の登録内容と履歴/ })).not.toBeChecked();
     expect(screen.getByLabelText('訂正後の請求額（円）')).toHaveValue('110000'); expect(screen.getByLabelText('訂正理由')).toHaveValue('契約金額の記載誤り');
-    expect(screen.getAllByText(/120,000/)).toHaveLength(2);
-    await user.click(screen.getByRole('checkbox')); await user.click(screen.getByRole('button', { name: '訂正を保存' }));
+    expect(within(screen.getByLabelText('現在の請求内容')).getAllByText(/120,000/)).toHaveLength(2);
+    await user.click(screen.getByRole('checkbox', { name: /最新の登録内容と履歴/ })); await user.click(screen.getByRole('button', { name: '訂正を保存' }));
     expect(await screen.findByRole('status')).toHaveTextContent('請求を訂正しました');
     const writes = fetch.mock.calls.filter(([, init]) => init?.method === 'PUT');
     expect(writes).toHaveLength(2);
@@ -59,8 +67,8 @@ describe('Invoice correction and immutable history', () => {
     await user.click(screen.getByRole('button', { name: '訂正を保存' }));
     await screen.findByRole('alert'); expect(screen.getByRole('button', { name: '訂正を保存' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: '最新内容・処理結果を取得' }));
-    await screen.findByRole('checkbox');
-    expect(screen.getAllByText(/110,000/)).toHaveLength(2);
+    await screen.findByRole('checkbox', { name: /最新の登録内容と履歴/ });
+    expect(within(screen.getByLabelText('現在の請求内容')).getAllByText(/110,000/)).toHaveLength(2);
     expect(screen.getByRole('button', { name: '訂正を保存' })).toBeDisabled();
     expect(fetch.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1);
   });
@@ -79,5 +87,51 @@ describe('Invoice correction and immutable history', () => {
     const { user, expired, fetch } = setup({ denied: true }); await draft(user); await user.click(screen.getByRole('button', { name: '訂正を保存' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('権限'); expect(expired).not.toHaveBeenCalled();
     expect(screen.getByLabelText('訂正理由')).toHaveValue('契約金額の記載誤り'); expect(fetch.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1);
+  });
+});
+
+async function cancellationDraft(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(await screen.findByLabelText('取消理由'), '架空の二重請求を取消');
+  await user.click(screen.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ }));
+}
+
+describe('Invoice cancellation confirmation', () => {
+  it('requires an explicit reason and impact confirmation, sending only the displayed version', async () => {
+    const { user, fetch, changed } = setup();
+    expect(await screen.findByRole('button', { name: '請求の取消を確定' })).toBeDisabled();
+    await user.type(screen.getByLabelText('取消理由'), '架空の二重請求を取消');
+    expect(screen.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ }));
+    await user.click(screen.getByRole('button', { name: '請求の取消を確定' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('未回収額は0円');
+    expect(screen.getByRole('button', { name: '訂正を保存' })).toBeDisabled(); expect(screen.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled();
+    const writes = fetch.mock.calls.filter(([, init]) => init?.method === 'POST'); expect(writes).toHaveLength(1);
+    expect(JSON.parse(String(writes[0][1]?.body))).toEqual({ version: 0, reason: '架空の二重請求を取消' }); expect(changed).toHaveBeenCalled();
+  });
+  it('keeps cancellation reason on conflict and requires confirmation against newly read facts', async () => {
+    const { user, fetch } = setup({ conflict: true }); await cancellationDraft(user);
+    await user.click(screen.getByRole('button', { name: '請求の取消を確定' })); await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '取消の最新内容・処理結果を取得' }));
+    expect(await screen.findByText(/現在の登録内容と履歴を確認し/)).toBeVisible();
+    expect(screen.getByLabelText('取消理由')).toHaveValue('架空の二重請求を取消'); expect(screen.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ })); await user.click(screen.getByRole('button', { name: '請求の取消を確定' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('請求を取り消しました');
+    const writes = fetch.mock.calls.filter(([, init]) => init?.method === 'POST'); expect(JSON.parse(String(writes[1][1]?.body)).version).toBe(1);
+  });
+  it('recovers a committed cancellation after response loss without sending another cancellation', async () => {
+    const { user, fetch } = setup({ lost: true }); await cancellationDraft(user);
+    await user.click(screen.getByRole('button', { name: '請求の取消を確定' })); await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: '訂正を保存' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '取消の最新内容・処理結果を取得' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('再送しません');
+    expect(screen.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled(); expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+  });
+  it('invalidates a checked cancellation confirmation when a correction changes the displayed version', async () => {
+    const { user } = setup(); await cancellationDraft(user); await draft(user);
+    await user.click(screen.getByRole('button', { name: '訂正を保存' })); await screen.findByRole('status');
+    expect(screen.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled();
   });
 });

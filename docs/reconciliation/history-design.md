@@ -1,0 +1,26 @@
+# 消込操作履歴の公開read
+
+GET `/api/payments/{paymentId}/allocations` は認証済みtenantの操作履歴を
+paymentVersion昇順、limit1〜100、decimal string cursorで取得する。
+同じ支払versionの操作・全lineを一page内で返し、line途中で分割しない。
+空履歴でもpaymentの存在を確認し、他tenantまたは不存在は404。
+GETはpayment state初期化・row lock・audit・更新を行わない。
+
+元operation ID/requestId/kind/reversesId/actorUUID/reason/timeとcash/feeは不変記録。
+CONFIRMのreversedByOperationId、actorEmail、請求番号/顧客名/顧客ID、
+currentInvoiceVersionとpage.expectedPaymentVersionは現在の同一SQL snapshotの表示情報。
+REVERSEにも元CONFIRMのlineとobservedInvoiceVersionを表示し、取消の対象を確認できる。
+original lineのobservedInvoiceVersionを取消時の版として使わない。
+すべての版とcursorはexact decimal string、金額は安全なJPY整数。
+
+FEはoperation ID/requestIdで応答喪失から復元し、未取消CONFIRMを選び、
+page.expectedPaymentVersionと全line.currentInvoiceVersionで取消を送る。
+取得後の競合は既存409と再読込で扱う。page間の固定snapshotは保証しない。
+actorEmailは現在の表示用連絡先であり、actorの不変識別はUUIDを用いる。
+時刻はISO8601で返し、JSTの日時表示はFEが行う。
+
+正本OpenAPIとTypeScript型を先に固定し、repository/Controller/実PGとrunn受入を
+後続の小sliceにする。DB schemaやimmutable commandはこのreadで変更しない。
+
+空の cursor query は Spring の既定値で `0` に正規化する。省略時と同じ先頭 page を返し、非空の不正な cursor は 400 とする。
+独立した AllocationHistory API interface により、契約追加だけで既存 command Controller の実装を要求しない。

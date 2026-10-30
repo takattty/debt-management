@@ -60,9 +60,9 @@ test('invoice CSV repairs errors, confirms all rows and reloads server receivabl
   await page.getByRole('button', { name: '全3件を確定して登録' }).click();
   await expect(page.getByRole('status')).toContainText('3件の請求を登録しました');
   await page.getByRole('button', { name: '債権一覧へ' }).click();
-  await expect(page.getByRole('table', { name: '債権一覧' })).toContainText(`${prefix}-1`);
   await page.getByRole('combobox', { name: '顧客で絞り込む' }).selectOption(customer.id);
   await page.getByRole('button', { name: '条件で表示' }).click();
+  await expect(page.getByRole('table', { name: '債権一覧' })).toContainText(`${prefix}-1`);
   await expect(page.getByRole('table', { name: '債権一覧' }).getByRole('row')).toHaveCount(4);
   await expect(page.getByRole('table', { name: '債権一覧' })).toContainText('100,000');
   const confirmed = (await (await page.request.get(`/api/receivables?customerId=${customer.id}`)).json()).items;
@@ -70,6 +70,8 @@ test('invoice CSV repairs errors, confirms all rows and reloads server receivabl
   expect(confirmed.every((item: { amount: number; outstandingAmount: number }) => item.amount === item.outstandingAmount)).toBe(true);
   await page.reload();
   await page.getByRole('button', { name: '債権一覧', exact: true }).click();
+  await page.getByRole('combobox', { name: '顧客で絞り込む' }).selectOption(customer.id);
+  await page.getByRole('button', { name: '条件で表示' }).click();
   await expect(page.getByRole('table', { name: '債権一覧' })).toContainText(`${prefix}-3`);
 
   const otherContext = await browser.newContext(); const other = await otherContext.newPage();
@@ -114,6 +116,8 @@ test('customer changes between preview and confirmation invalidate all invoices 
     await page.getByRole('button', { name: '全1件を確定して登録' }).click();
     await expect(page.getByRole('status')).toContainText('1件の請求を登録しました');
     await page.getByRole('button', { name: '債権一覧へ' }).click();
+    await page.getByRole('combobox', { name: '顧客で絞り込む' }).selectOption(customer.id);
+    await page.getByRole('button', { name: '条件で表示' }).click();
     await expect(page.getByRole('table', { name: '債権一覧' })).toContainText(`${prefix}-1`);
     await expect(page.getByRole('table', { name: '債権一覧' })).toContainText(changedName);
   } finally { await otherContext.close(); }

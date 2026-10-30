@@ -42,6 +42,8 @@ Cloudのログ保存付き検証は `bash /absolute/checkout/scripts/verify-clou
 
 新worktree・複数worker開始前は `df -h /workspace` と `python3 /absolute/active-checkout/scripts/check-workspace-capacity.py /workspace` で空き容量を確認する。重いbuild/npm/E2Eは1GiB未満または測定不能なら停止する。cleanupは所有者が完了を確認したtreeの再取得可能な `frontend/node_modules` / `work/npm-cache` だけを、`git check-ignore` とsymlinkでないことを確認して対象別に行う。稼働中tree・source・jar・DB・証拠/logを保持し、worktreeやnode_modulesを無差別に削除しない。verify/CIの容量gateをskipしない。read helperやgit読取を容量gateで止めない。
 
+API/runn/proxyとbrowser E2Eは同じruntimeで並行実行しない。verifyはAPI phase後に同一artifact・同一DBのbackendを正常停止/再起動し、process内login counterをphase間で分離する。limiterの閾値・window・CSRFを変えず、固定sleepや429再送で検証を通さない。phaseごとのbackend logと失敗終了値を保持する。
+
 ## PR と API 契約
 
 repository内scriptの実行にもcatalog確認を適用する。新しいscript名は責務や過去文脈から作らず、先のcallで `rg --files scripts` の実出力を観測し、次callで観測した実pathだけを実行する。読込helperだけを使っても、未確認名を `python3` / `bash` へ渡せば同じ誤りになる。

@@ -52,6 +52,6 @@ jobs:
         with:
           name: verification-evidence
           path: |
-            work/backend.log
+            work/backend-*.log
             backend/build/reports
             frontend/playwright-report

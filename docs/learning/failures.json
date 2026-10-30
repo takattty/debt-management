@@ -524,6 +524,34 @@
       ]
     },
     {
+      "key": "test-auth-rate-window-sharing",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "alias-review-runn-repeat-rate-limit-20261030",
+          "summary": "同runtimeで全runn11冊を連続実行すると2回目の複数loginがIP制限60回/60秒へ到達し429となった",
+          "evidence": "docs/learning/auth-phase-validation.md",
+          "recorded_at": "2026-10-30T02:38:44+00:00"
+        },
+        {
+          "event": "alias-ui-runn-e2e-window-sharing-20261030",
+          "summary": "同runtimeのrunn11冊とE2E22件の並行実行でlogin後到達待ち6件が失敗し、単独実行は全22件成功した。共有login windowへの検証traffic集中が原因となった",
+          "evidence": "docs/learning/auth-phase-validation.md",
+          "recorded_at": "2026-10-30T02:38:45+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "同processのIP単位60回/60秒login counterをAPI正常異常系とbrowser検証が共有し、trafficの累積で業務目的と無関係の制限へ到達した",
+          "prevention": "API/runn/proxyとE2Eを直列phase化し同一artifact同一DBでbackendを正常再起動。死活/port解放/容量/SHAを確認し、limiterやCSRFを変更せず各logと終了値を保持する",
+          "verification": "全Python37件成功。実同artifact/API8096/同DBでrunn11→Nginx相当1→正常再起動→E2E23（既存22＋API原行のbrowser再読込1）とnativeBFCache2が全成功。元14alias/audit18 fingerprintとAPI phase行を再起動/browser後まで保持。docs/learning/auth-phase-validation.md",
+          "guard": "scripts/verify.sh",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T02:48:33+00:00"
+        }
+      ]
+    },
+    {
       "key": "worktree-path-assumption",
       "status": "resolved",
       "events": [
@@ -574,6 +602,12 @@
           "summary": "新worktreeでverifyの外側リダイレクトがwork作成より先に評価されログを開けなかった",
           "evidence": "docs/learning/README.md",
           "recorded_at": "2026-10-30T00:11:15+00:00"
+        },
+        {
+          "event": "phase-proxy-generator-older-checkout-20261030",
+          "summary": "実phase検証のproxy harnessが新generatorを未導入の古いalias checkoutへ指定し、runn11成功後にhelper起動前の不在で停止した",
+          "evidence": "docs/learning/auth-phase-validation.md",
+          "recorded_at": "2026-10-30T02:44:59+00:00"
         }
       ],
       "resolutions": [
@@ -640,6 +674,14 @@
           "guard": "docs/learning/README.md",
           "event_count": 8,
           "resolved_at": "2026-10-30T00:11:22+00:00"
+        },
+        {
+          "cause": "新proxy generatorの所有checkoutを確認せず、同名helperが未導入の古いalias checkoutにあると仮定した。harness側の手書き絶対pathが既存の自己cwd guardを迂回した",
+          "prevention": "相当検証もcatalogで観測したactive checkoutへhelperとbookを一緒に固定する。canonical verify-proxy.shの自己cwd固定とlocal helper呼出しを継承する",
+          "verification": "active checkoutで実generator/bookを別callで観測後にproxy相当1冊成功。続く同artifact再起動/E2E23/native2まで完走し、失敗時の最初のbackend cleanupも確認した",
+          "guard": "scripts/verify-proxy.sh",
+          "event_count": 9,
+          "resolved_at": "2026-10-30T02:48:33+00:00"
         }
       ]
     },

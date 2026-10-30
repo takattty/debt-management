@@ -882,6 +882,40 @@
           "resolved_at": "2026-10-30T05:05:33+00:00"
         }
       ]
+    },
+    {
+      "key": "playwright-status-selector-ambiguity",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "pr47-correction-status-strict-831-20261030",
+          "summary": "PR47の訂正成功assertがsuccessと一覧loadingの2statusに一致しstrict失敗。初期summary起点の後保存rawを直接照合した",
+          "evidence": "docs/learning/status-feedback-validation.md",
+          "recorded_at": "2026-10-30T06:45:22+00:00"
+        },
+        {
+          "event": "guide-cancellation-status-strict-20261030",
+          "summary": "guide取消assertが既存の訂正successと一覧loadingの2statusに一致しstrict失敗。取消commitはread-only resumeで確認した",
+          "evidence": "docs/learning/status-feedback-validation.md",
+          "recorded_at": "2026-10-30T06:45:22+00:00"
+        },
+        {
+          "event": "allocation-e2e-recovery-status-scope-20261030",
+          "summary": "確定recovery直後のglobal status locatorが候補と一覧のloading2件へstrict競合した。操作のregion内へscopeする必要があった",
+          "evidence": "work/settlement-fe-20261030T0833-e2e.log",
+          "recorded_at": "2026-10-30T08:34:36+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "共有画面の複数statusをroleだけで単一通知と仮定した。2件の局所対策では新E2E直書きの再発を止められなかった",
+          "prevention": "Pageまたは所有regionと期待文言をstatusFeedbackへ渡す共通3行helperを使用する。E2E-only ESLint AST ruleはhelper以外の直接status selectorを拒否し、必須lint内でknownREDと許可fixtureを検査する",
+          "verification": "移植後lintで直書き・filter付き・computed・statictemplateの4拒否パターン、Page/region許可・helper例外・product/unit除外の4tests成功。全113unitと型検査も成功。3つの実eventIDを保存し今回局所keyをcanonical causeへ統合した。最終full browserはまだ未実施で次phaseへ保存する",
+          "guard": "frontend/eslint.config.js",
+          "event_count": 3,
+          "resolved_at": "2026-10-30T08:38:04+00:00"
+        }
+      ]
     }
   ]
 }

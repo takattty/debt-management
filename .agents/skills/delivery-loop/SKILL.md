@@ -23,6 +23,8 @@ description: Issue・対象commit・検証・別コンテキストレビュー�
 
 ## Independent review
 
+私有のguide/browser probeもFEの `statusFeedback(scope, expected)` と共通fixture規約を使う。metadata担当を含め、既存DBへのmutation前に対象table/fixtureの事前snapshot・fingerprintとsource/runtime識別を所有workへ永続保存し、事後比較できる形にする。メモリだけのbefore比較や、結果不明な更新の盲目的再送で検証を続けない。
+
 Reviewer は実装時の会話を共有しない別コンテキストとする。渡す情報：
 
 - 対象 Issue と受入条件、仕様・業務例・ADR。

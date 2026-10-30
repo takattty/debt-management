@@ -1,3 +1,4 @@
+import { statusFeedback } from './status-feedback';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 
@@ -37,7 +38,7 @@ async function accept(page: Page, email: string) {
   await page.getByLabel('招待されたメールアドレス', { exact: true }).fill(email);
   await page.getByLabel('新しいパスワード', { exact: true }).fill(invitedPassword);
   await page.getByRole('button', { name: '招待を受けて登録', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('アカウントを登録しました');
+  await expect(statusFeedback(page, 'アカウントを登録しました')).toContainText('アカウントを登録しました');
   expect((await page.request.get('/api/session')).status()).toBe(401);
 }
 
@@ -48,7 +49,7 @@ test('administrator manually invites an accountant; fragment disappears, accepta
   const link = await issue(page, email, 'ACCOUNTANT');
   await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('Clipboard unavailable')) } }); });
   await page.getByRole('button', { name: 'リンクをコピー', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('手動でコピー');
+  await expect(statusFeedback(page, '手動でコピー')).toContainText('手動でコピー');
   expect(await page.getByLabel('招待リンク', { exact: true }).evaluate((input: HTMLInputElement) => input.selectionStart === 0 && input.selectionEnd === input.value.length)).toBe(true);
   await openInvitation(page, link);
   await expect(page.getByRole('table')).toHaveCount(0);

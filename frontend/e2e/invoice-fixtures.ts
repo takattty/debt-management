@@ -1,3 +1,4 @@
+import { statusFeedback } from './status-feedback';
 import { expect, type Page } from '@playwright/test';
 import type { Customer, Receivable, Session } from '../src/api';
 
@@ -21,7 +22,7 @@ export async function createInvoice(page: Page) {
   await page.getByRole('button', { name: '請求CSV取込', exact: true }).click();
   await page.getByLabel('請求CSVファイル').setInputFiles({ name: 'invoice.csv', mimeType: 'text/csv', buffer: Buffer.from(`customer_code,invoice_number,issue_date,due_date,amount\n${code},${invoiceNumber},2026-10-30,2026-11-30,100000\n`) });
   await page.getByRole('button', { name: 'CSVをプレビュー', exact: true }).click();
-  await page.getByRole('button', { name: '全1件を確定して登録' }).click(); await expect(page.getByRole('status')).toContainText('1件の請求を登録しました');
+  await page.getByRole('button', { name: '全1件を確定して登録' }).click(); await expect(statusFeedback(page, '1件の請求を登録しました')).toContainText('1件の請求を登録しました');
   await page.getByRole('button', { name: '債権一覧へ' }).click();
   await filterInvoicesForCustomer(page, customer.id);
   await expect(page.getByRole('table', { name: '債権一覧' })).toContainText(invoiceNumber);

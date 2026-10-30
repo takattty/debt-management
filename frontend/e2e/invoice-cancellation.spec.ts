@@ -1,3 +1,4 @@
+import { statusFeedback } from './status-feedback';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { createInvoice, filterInvoicesForCustomer, sessionHeaders } from './invoice-fixtures';
@@ -17,7 +18,7 @@ test('real cancellation requires renewed confirmation after conflict, removes re
   await expect(page.getByRole('table', { name: '請求履歴' })).toContainText('取消前に別の担当者が訂正');
   await page.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ }).check();
   await page.getByRole('button', { name: '請求の取消を確定' }).click();
-  await expect(page.getByRole('status')).toContainText('請求を取り消しました');
+  await expect(statusFeedback(page, '請求を取り消しました')).toContainText('請求を取り消しました');
   await expect(page.getByLabel('現在の請求内容')).toContainText('取消済み');
   await expect(page.getByLabel('現在の請求内容')).toContainText('￥0');
   await expect(page.getByRole('button', { name: '訂正を保存' })).toBeDisabled(); await expect(page.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled();
@@ -43,7 +44,7 @@ test('lost real cancellation response is recovered from PostgreSQL without a sec
   await page.getByLabel('取消理由', { exact: true }).fill('架空の通信障害時の取消'); await page.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ }).check();
   await page.getByRole('button', { name: '請求の取消を確定' }).click(); await expect(page.getByRole('alert')).toBeVisible(); await expect(page.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled();
   await page.getByRole('button', { name: '取消の最新内容・処理結果を取得' }).click();
-  await expect(page.getByRole('status')).toContainText('再送しません'); await expect(page.getByRole('table', { name: '請求履歴' })).toContainText('架空の通信障害時の取消');
+  await expect(statusFeedback(page, '再送しません')).toContainText('再送しません'); await expect(page.getByRole('table', { name: '請求履歴' })).toContainText('架空の通信障害時の取消');
   await expect(page.getByRole('button', { name: '請求の取消を確定' })).toBeDisabled(); expect(cancellations).toBe(1);
   await expect(page.getByRole('table', { name: '債権一覧' })).toHaveCount(0);
   const current = await (await page.request.get(`/api/invoices/${invoice.id}`)).json(); expect(current.status).toBe('CANCELLED'); expect(current.outstandingAmount).toBe(0); expect(current.version).toBe(invoice.version + 1);

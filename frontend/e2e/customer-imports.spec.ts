@@ -1,3 +1,4 @@
+import { statusFeedback } from './status-feedback';
 import { readFile } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
@@ -33,7 +34,7 @@ test('customer CSV repairs an existing-code error, downloads guidance and confir
   await page.getByLabel('顧客コード', { exact: false }).fill(existingCode);
   await page.getByLabel('顧客名', { exact: false }).fill(`既存の架空顧客 ${prefix}`);
   await page.getByRole('button', { name: '顧客を登録', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('登録しました');
+  await expect(statusFeedback(page, '登録しました')).toContainText('登録しました');
   await page.getByRole('button', { name: '顧客CSV取込', exact: true }).click();
 
   const templateDownload = page.waitForEvent('download');
@@ -67,7 +68,7 @@ test('customer CSV repairs an existing-code error, downloads guidance and confir
   await expect(page.getByRole('table', { name: 'CSVエラー一覧' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '全2件を確定して登録' })).toBeEnabled();
   await page.getByRole('button', { name: '全2件を確定して登録' }).click();
-  await expect(page.getByRole('status')).toContainText('2件の顧客を登録しました');
+  await expect(statusFeedback(page, '2件の顧客を登録しました')).toContainText('2件の顧客を登録しました');
   await page.getByRole('button', { name: '顧客一覧へ' }).click();
   await expect(page.getByRole('cell', { name: firstName, exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: secondName, exact: true })).toBeVisible();
@@ -97,7 +98,7 @@ test('accountant confirms customer CSV independently and expired session clears 
   await page.getByRole('button', { name: '顧客CSV取込', exact: true }).click();
   await preview(page, `customer_code,customer_name\n${code},架空経理CSV顧客\n`);
   await page.getByRole('button', { name: '全1件を確定して登録' }).click();
-  await expect(page.getByRole('status')).toContainText('1件の顧客を登録しました');
+  await expect(statusFeedback(page, '1件の顧客を登録しました')).toContainText('1件の顧客を登録しました');
   await page.getByRole('button', { name: '顧客一覧へ' }).click();
   await expect(page.getByRole('cell', { name: code, exact: true })).toBeVisible();
   await page.getByRole('button', { name: '顧客CSV取込', exact: true }).click();

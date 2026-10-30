@@ -1,3 +1,4 @@
+import { statusFeedback } from './status-feedback';
 import { readFile } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
@@ -58,7 +59,7 @@ test('invoice CSV repairs errors, confirms all rows and reloads server receivabl
   await expect(page.getByRole('table', { name: '請求CSVプレビュー' })).toContainText('300000');
   await expect(page.getByRole('button', { name: '全3件を確定して登録' })).toBeEnabled();
   await page.getByRole('button', { name: '全3件を確定して登録' }).click();
-  await expect(page.getByRole('status')).toContainText('3件の請求を登録しました');
+  await expect(statusFeedback(page, '3件の請求を登録しました')).toContainText('3件の請求を登録しました');
   await page.getByRole('button', { name: '債権一覧へ' }).click();
   await page.getByRole('combobox', { name: '顧客で絞り込む' }).selectOption(customer.id);
   await page.getByRole('button', { name: '条件で表示' }).click();
@@ -114,7 +115,7 @@ test('customer changes between preview and confirmation invalidate all invoices 
     const fresh = await preview(page, csv); expect(fresh.id).not.toBe(first.id);
     await expect(page.getByRole('table', { name: '請求CSVプレビュー' })).toContainText(changedName);
     await page.getByRole('button', { name: '全1件を確定して登録' }).click();
-    await expect(page.getByRole('status')).toContainText('1件の請求を登録しました');
+    await expect(statusFeedback(page, '1件の請求を登録しました')).toContainText('1件の請求を登録しました');
     await page.getByRole('button', { name: '債権一覧へ' }).click();
     await page.getByRole('combobox', { name: '顧客で絞り込む' }).selectOption(customer.id);
     await page.getByRole('button', { name: '条件で表示' }).click();

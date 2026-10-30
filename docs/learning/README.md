@@ -53,6 +53,10 @@ helperが未導入の古い証拠checkoutから相対pathでhelperを呼ぶ失�
 
 行数だけでは単一巨大行のtool出力を制限できない。通常readerはheader込みUTF-8 16KiBを超えるとstdout空で拒否する。巨大JSON/logはfileへ保存し、`--json-chunk --offset N --size 4096` のbounded JSONを使う。owner/path・offset・実size・total・whole SHA256を揃えて再結合し、最後にhashを照合する。exec/tool応答の完了・exit0・truncationなしをJSON parseより先に確認し、切断prefixを除去してparseを再試行しない。2実失敗と実archive再結合の記録は[Evidence output validation](evidence-output-validation.md)を参照する。
 
+source readerはcatalog/candidate・header・行番号を含む総stdoutをUTF-8 8KiBに制限し、超過はstdout空・exit2で拒否する。原則1 bounded readerを1 tool callで表示し、`max_output_tokens` は8192以上を確保する。各文書を短くしても合算token予算を超えるため、文字数・byte数・token数を混同せずstdout総UTF-8 byte数とwrapperの余裕を確認する。raw `git diff` とIssue/GitHub応答はwork保存、stdoutはID・URL・byte数・hash等の小さいscalar metadataだけにする。環境statusもready/enforced等のflagsに絞り、allowed-host一覧全文とsourceを同じ応答に出さない。固定版の実8件の履歴、8KiB guard、分割復元は[Source output validation](source-output-validation.md)を参照する。
+
+最初のdiscoveryより先に指定operatorのAGENTS・learningを確認する。環境toolは戻り値の `structuredContent` からreadiness/stateのscalarだけを抽出し、raw objectを表示しない。worktree一覧とGitHub本文は先にworkへ保存し、path・ID・URL・bytes・hashだけを表示する。[実行recipeと追補](source-output-validation.md#最初のdiscoveryとscalar表示)は実truncationの最終15件と、切断のない環境全文表示near missを区別する。過去実行の遅延記録は予防後の再発回数と混同しない。token予算指定だけに頼らず、helper byte capと1reader1callとmetadata表示を組み合わせる。
+
 新worktreeにはworkディレクトリがない。`verify.sh >work/log` はscript内のmkdirより先に失敗するため、Cloudの保存付き検証は `bash /absolute/checkout/scripts/verify-cloud.sh` を外側リダイレクトなしで実行する。wrapperが保存先を作り、verifyの終了値を保ったままwork/cloud-verify.logへ保存する。読み取りは既存readerで行う。
 
 source classのfilenameも推測しない。最初に`rg --files`で対象packageの実在pathを列挙し、出力を確認した次のcommandで列挙済みpathだけを読む。discoveryと未確認の`cat`を同じbatchに組み込まず、名前の近いclassや責務からfilenameを作らない。
@@ -62,6 +66,8 @@ FE packageコマンドをrepository rootから実行してpackage.json不在と�
 複数fileのpatchでは、各fileの前に正しい `Update File` を一つ置く。同一pathへのDeleteとAddを一つのpatchへ重ねず、既存fileの置換はUpdateを使う。適用前に全file headerと実際のcontextを確認し、toolの拒否後は変更有無を確認してからpatchを作り直す。
 
 source名の推測読込も再発したため、同checkoutの `read-source.py QUERY --list` を別callで先に観測し、次callに実出力の相対pathを渡す。helperはGit管理下の実在するJava/TS/JS/Python/shell/SQL/CSS/HTML等のsourceだけを対象にし、dotfile・work/build・既知のsecret名・symlink・未追跡fileを除外する。設定・鍵fileの汎用readerとして使わない。部分名または `--regex` で探し、一意なら `--start/--end` の範囲を表示する。複数候補・不一致は内容を読まず実catalog候補を返す。絶対path・親directory参照をqueryに渡さない。helper所有先と対象checkoutが違う場合はhelper絶対pathと `--worktree /absolute/target` を明示する。
+
+Git blobの存在検査・hash proofもsource名guardの対象とする。対象SHAの `git ls-tree` / `git diff --name-only` を先のcallで観測し、次callで実出力のpathだけを `SHA:path` へ渡す。未catalogのfilenameを推測して `git rev-parse` へ埋め込まない。古い証拠treeでも最新operator側のAGENTS・learningとhelperを使い、対象treeを明示する。
 
 Cloudの容量不足はworktree mkdir・Gradle report・E2E resultsの書込で別々に再発した。新worktree/worker前にdfと `scripts/check-workspace-capacity.py /workspace` で測定し、重い処理は1GiB未満・測定不能で停止する。verify-cloudはログ作成前、verifyは開始時と重いphase前、標準Linux CIも容量gateを必須実行する。完了と所有者を確認したtreeの再取得可能依存だけを、ignore状態・symlinkを確認して整理する。source・jar・DB・log/証拠・稼働中treeは保持し、無差別削除で回避しない。詳細は [Capacity validation](capacity-validation.md)。
 

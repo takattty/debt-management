@@ -96,3 +96,93 @@ class SourceReaderTest(unittest.TestCase):
         ], text=True, capture_output=True, check=False)
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
+
+    def test_single_huge_source_line_refuses_without_header_or_body(self):
+        path = self.repository / "backend/InvoiceQueries.java"
+        original = "private-source-marker" * 1000 + "\n"
+        path.write_text(original)
+        result = self.run_cli("backend/InvoiceQueries.java", "--end", "1")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("8192", result.stderr)
+        self.assertIn("--start/--end", result.stderr)
+        self.assertNotIn("private-source-marker", result.stderr)
+        self.assertEqual(path.read_text(), original)
+
+    def test_utf8_byte_limit_includes_path_header_and_line_number_at_boundary(self):
+        relative = "backend/InvoiceQueries.java"
+        overhead = len(f"{relative}:1-1\n1: \n".encode("utf-8"))
+        budget = 8192 - overhead
+        payload = "日" * (budget // 3) + "x" * (budget % 3)
+        path = self.repository / relative
+        path.write_text(payload + "\n", encoding="utf-8")
+        result = self.run_cli(relative, "--end", "1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(result.stdout.encode("utf-8")), 8192)
+        self.assertTrue(result.stdout.endswith(payload + "\n"))
+        path.write_text(payload + "x\n", encoding="utf-8")
+        result = self.run_cli(relative, "--end", "1")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+
+    def test_japanese_characters_cannot_bypass_byte_budget(self):
+        (self.repository / "backend/InvoiceQueries.java").write_text("名" * 3000, encoding="utf-8")
+        result = self.run_cli("backend/InvoiceQueries.java")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+
+    def test_many_catalog_matches_refuse_in_list_and_ambiguity_modes(self):
+        names = []
+        for number in range(120):
+            name = f"backend/Many{number:03d}" + "X" * 64 + ".java"
+            (self.repository / name).write_text("catalog source body must not escape\n")
+            names.append(name)
+        subprocess.run(["git", "-C", str(self.repository), "add", "backend"], check=True)
+        for args in (("Many", "--list"), ("Many",)):
+            result = self.run_cli(*args)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(result.stdout, "")
+            self.assertIn("narrow the query", result.stderr)
+        result = self.run_cli(names[0], "--list")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, names[0] + "\n")
+
+    def test_oversized_candidate_fallback_also_refuses_without_partial_catalog(self):
+        for number in range(10):
+            path = self.repository / ("long" + "x" * 170) / ("nested" + "y" * 170) / ("more" + "z" * 170)
+            path /= "deep" + "q" * 170
+            path /= "extra" + "r" * 170
+            path.mkdir(parents=True, exist_ok=True)
+            (path / ("Similar" + str(number) + ".java")).write_text("hidden body\n")
+        subprocess.run(["git", "-C", str(self.repository), "add", "."], check=True)
+        result = self.run_cli("SimilarMissing.java")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("8192", result.stderr)
+        self.assertNotIn("hidden body", result.stderr)
+
+    def test_line_number_bytes_are_bounded_and_narrow_ranges_keep_exact_lines(self):
+        path = self.repository / "backend/InvoiceQueries.java"
+        path.write_text("0123456789\n" * 600)
+        self.assertLess(path.stat().st_size, 8192)
+        result = self.run_cli("backend/InvoiceQueries.java", "--end", "600")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        result = self.run_cli("backend/InvoiceQueries.java", "--start", "591", "--end", "600")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[1:], [f"{n}: 0123456789" for n in range(591, 601)])
+
+    def test_huge_secret_source_stays_excluded_instead_of_reading_its_payload(self):
+        secret = self.repository / "backend/Passwords.java"
+        secret.write_text("private-token-body" * 1000)
+        subprocess.run(["git", "-C", str(self.repository), "add", str(secret)], check=True)
+        result = self.run_cli("Passwords.java")
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("Passwords.java", result.stdout)
+        self.assertNotIn("private-token-body", result.stdout + result.stderr)
+
+    def test_invalid_utf8_rejects_without_leaking_a_header_or_partial_source(self):
+        (self.repository / "backend/InvoiceQueries.java").write_bytes(b"first\n\xffprivate\n")
+        result = self.run_cli("backend/InvoiceQueries.java")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")

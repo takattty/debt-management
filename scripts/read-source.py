@@ -3,6 +3,7 @@
 
 import argparse
 import difflib
+from itertools import chain
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
@@ -13,6 +14,22 @@ ROOT = Path(__file__).resolve().parents[1]
 SUFFIXES = {".java", ".kt", ".kts", ".ts", ".tsx", ".js", ".jsx", ".cjs", ".mjs",
             ".py", ".sh", ".sql", ".css", ".html"}
 SECRET_NAME = re.compile(r"(^|[._-])(secrets?|credentials?|tokens?|passwords?)([._-]|$)", re.I)
+MAX_OUTPUT_BYTES = 8192
+
+
+class OutputLimit(ValueError):
+    pass
+
+
+def emit(lines):
+    output = bytearray()
+    for line in lines:
+        encoded = (line + "\n").encode("utf-8")
+        if len(output) + len(encoded) > MAX_OUTPUT_BYTES:
+            raise OutputLimit()
+        output.extend(encoded)
+    # Buffer all selected output first: no header, path, or body escapes on refusal.
+    sys.stdout.buffer.write(output)
 
 
 def catalog(root):
@@ -66,10 +83,10 @@ def main():
             print("No tracked source match. Candidate paths only; refine the query:", file=sys.stderr)
             candidates = sorted(paths, key=lambda path: difflib.SequenceMatcher(
                 None, args.query.casefold(), Path(path).name.casefold()).ratio(), reverse=True)[:10]
-            print("\n".join(candidates))
+            emit(candidates)
             return 1
         if args.list or len(matches) > 1:
-            print("\n".join(matches))
+            emit(matches)
             if not args.list:
                 print("Multiple matches; select an observed path and invoke again.", file=sys.stderr)
                 return 2
@@ -77,10 +94,14 @@ def main():
         # The read path comes exclusively from the observed, filtered Git catalog.
         selected = matches[0]
         lines = (root / selected).read_text(encoding="utf-8").splitlines()
-        print(f"{selected}:{args.start}-{min(args.end, len(lines))}")
-        for number in range(args.start, min(args.end, len(lines)) + 1):
-            print(f"{number}: {lines[number - 1]}")
+        emit(chain([f"{selected}:{args.start}-{min(args.end, len(lines))}"],
+                   (f"{number}: {lines[number - 1]}"
+                    for number in range(args.start, min(args.end, len(lines)) + 1))))
         return 0
+    except OutputLimit:
+        print("Source output exceeds 8192 UTF-8 bytes; narrow the query or --start/--end range. "
+              "No payload emitted.", file=sys.stderr)
+        return 2
     except (OSError, UnicodeError, ValueError, re.error, subprocess.CalledProcessError):
         print("Source read rejected: invalid pattern, catalog, or source file.", file=sys.stderr)
         return 2

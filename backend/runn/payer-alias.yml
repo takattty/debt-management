@@ -181,6 +181,8 @@ steps:
               customerId: '{{ second }}'
           useCookie: false
     test: current.res.status == 201 && current.res.body.customerId == second
+    bind:
+      otherAliasId: current.res.body.id
   boundedPage:
     api:
       /api/payer-aliases?limit=1:
@@ -299,6 +301,8 @@ steps:
               payerName: 架空{{ suffix }}
               customerId: '{{ first }}'
     test: current.res.status == 201 && current.res.body.id != aliasId && current.res.body.createdByUserId == adminActor
+    bind:
+      replacementId: current.res.body.id
   betaCsrf:
     beta:
       /api/csrf:
@@ -371,12 +375,79 @@ steps:
               payerName: 架空{{ suffix }}
               customerId: '{{ first }}'
     test: current.res.status == 404
-  isolatedList:
+  betaCustomer:
+    beta:
+      /api/customers:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-CSRF-TOKEN: '{{ betaToken }}'
+          body:
+            application/json:
+              code: BA-{{ suffix }}
+              name: 架空名義顧客Beta
+    bind:
+      betaCustomerId: current.res.body.id
+    test: current.res.status == 201
+  betaRegistration:
     beta:
       /api/payer-aliases:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-CSRF-TOKEN: '{{ betaToken }}'
+          body:
+            application/json:
+              payerName: 架空{{ suffix }}
+              customerId: '{{ betaCustomerId }}'
+    bind:
+      betaAliasId: current.res.body.id
+    test: current.res.status == 201 && current.res.body.active && current.res.body.customerId == betaCustomerId
+  betaPageSearch:
+    bind:
+      betaPageSuffix: '""'
+      betaOwnSeen: 'false'
+  isolatedList:
+    beta:
+      /api/payer-aliases?limit=100{{ betaPageSuffix }}:
         get:
           useCookie: false
           headers:
             Cookie: JSESSIONID={{ betaCookie }}
           body: null
-    test: current.res.status == 200 && len(current.res.body.items) == 0
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && current.res.body.nextCursor == null
+    bind:
+      betaOwnSeen: betaOwnSeen || len(filter(current.res.body.items, {#.id == betaAliasId})) == 1
+      betaPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    test: 'current.res.status == 200 && len(filter(current.res.body.items, {#.id == aliasId || #.id == otherAliasId || #.id == replacementId})) == 0'
+  betaOwnPresent:
+    test: betaOwnSeen
+  alphaPageSearch:
+    bind:
+      alphaPageSuffix: '""'
+      alphaFirstSeen: 'false'
+      alphaSecondSeen: 'false'
+  isolatedAlphaList:
+    api:
+      /api/payer-aliases?limit=100{{ alphaPageSuffix }}:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+          body: null
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && current.res.body.nextCursor == null
+    bind:
+      alphaFirstSeen: alphaFirstSeen || len(filter(current.res.body.items, {#.id == replacementId})) == 1
+      alphaSecondSeen: alphaSecondSeen || len(filter(current.res.body.items, {#.id == otherAliasId})) == 1
+      alphaPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    test: current.res.status == 200 && len(filter(current.res.body.items, {#.id == betaAliasId})) == 0
+  alphaOwnPresent:
+    test: alphaFirstSeen && alphaSecondSeen

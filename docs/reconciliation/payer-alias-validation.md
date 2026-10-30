@@ -28,3 +28,20 @@ FE型生成はlockが一致した既存datefix checkoutのnode_modulesを読取s
 名義対応のUI・browser E2E・候補提示・ledger・残高更新・消込は実装していない。reconciliation有効化とInvoiceMutationEligibilityのguardを変更していない。B06/B07は未回答のまま維持する。独立レビューとGitHub CIはこの実装作業では未実施。
 
 開始前は空き2.24GiB、HTTP検証前は2.95GiB、全検証後の再測定では他作業の増分により0.14GiBとなり容量guardが停止した。その後の重い処理は行わず、無断cleanupも行っていない。既存失敗log・DB・jar・証拠を保持する。
+
+## 既存データを保持した受入テストの訂正
+
+独立reviewerは既存Beta対応を正規APIで登録し、全11冊中のalias bookだけが「Beta一覧の全件数=0」という仮定で失敗することを確認した。実APIのtenant分離は正常だった。受入テストを、自bookのIDで検証する形へ訂正した。
+
+Betaにも顧客と名義対応を正規APIで作り、ID keysetで各tenantの全pageを辿る。Betaでは自fixtureの存在と自bookのAlpha対応3IDの不在、Alphaでは有効な自fixture2件の存在とBeta自fixtureの不在を確認する。既存の正当なAlpha/Beta対応は件数に関わらず許容し、DB初期化・既存record削除を行わない。loop内のtestはretry待機ではなく各pageの不漏洩を即座に検査するため意図的に維持している。
+
+| 検証 | 結果・証拠 |
+| --- | --- |
+| 対象環境 | reviewerの377実jar・API8094/pool4・専用DB review_payer_aliasを維持。本番/API/契約/DB変更なし |
+| 既存原本 | Alpha/Beta両tenantの既存alias19行と関連audit22行を、実行前の固定ID集合でsnapshot |
+| 全11冊1回目 | 0skipped/0failures。work/alias-runn-existing-first.log |
+| 全11冊2回目 | 同DBの新規fixtureも残したまま0skipped/0failures。work/alias-runn-existing-second.log |
+| 既存原本保持 | 前・1回目後・2回目後の固定subsetは同一。SHA256 `652400cbbe543c740ec45d6b45d386771f33e95c966908cd3cc3f19d69dc3716`。work/alias-fixture-repeat.log と3つのsnapshot JSON |
+| learning | 旧2events/resolutionと今回の3event目をwork/alias-fixture-learning-entry.jsonへopenのまま保存。旧guardのFEfileはこのbaseに未導入なので歴史を書き換えず、mainでのkey unionと正式resolveをCoordinatorへ引き継ぐ |
+
+この訂正ではrunnと検証文書だけを変更し、BE再build・型再生成・UI検証を実施していない。元377の本番コードは同一で、独立再レビューは別途必要。

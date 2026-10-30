@@ -2,7 +2,6 @@ package com.example.debt.importing;
 
 import com.example.debt.access.TenantUser;
 import com.example.debt.invoice.InvoiceValues;
-import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -86,7 +85,7 @@ public class InvoiceConfirmationTransaction {
                 """, created, 500, (statement, invoice) -> {
                     statement.setObject(1, invoice.id()); statement.setObject(2, user.tenantId());
                     statement.setObject(3, invoice.values().customerId()); statement.setString(4, invoice.values().invoiceNumber());
-                    statement.setDate(5, Date.valueOf(invoice.values().issueDate())); statement.setDate(6, Date.valueOf(invoice.values().dueDate()));
+                    statement.setObject(5, invoice.values().issueDate()); statement.setObject(6, invoice.values().dueDate());
                     statement.setLong(7, invoice.values().amountJpy()); statement.setObject(8, id);
                 });
         var now = clock.instant();

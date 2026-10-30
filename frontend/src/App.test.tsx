@@ -50,6 +50,17 @@ async function login() {
 }
 
 describe('Customer workspace with cookie authentication', () => {
+  it.each(['\u00a0', ' '])('forwards customer text with surrounding %j unchanged for server canonicalization', async (space) => {
+    const fetch = mockApi({ authenticated: true }); render(<App />);
+    const user = userEvent.setup();
+    const code = `${space}RAW-001${space}`; const name = `${space}架空商事${space}`;
+    await user.type(await screen.findByLabelText(/顧客コード/), code);
+    await user.type(screen.getByLabelText(/顧客名/), name);
+    await user.click(screen.getByRole('button', { name: '顧客を登録' }));
+    const write = fetch.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(JSON.parse(String(write?.[1]?.body))).toEqual({ code, name });
+  });
+
   it('keeps login available and explains incorrect credentials without identifying an account', async () => {
     mockApi({ loginStatus: 401 });
     render(<App />);

@@ -45,6 +45,32 @@ async function draft(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('訂正理由'), '契約金額の記載誤り');
 }
 
+describe.each([
+  ['訂正理由', '訂正を保存', 'PUT'], ['取消理由', '請求の取消を確定', 'POST'],
+])('%s transport parity', (label, button, method) => {
+  it.each([
+    ['supplementary characters', '𠮷'.repeat(1000)],
+    ['significant NBSP', `\u00a0${'𠮷'.repeat(998)}\u00a0`],
+    ['ASCII', 'a'.repeat(1000)],
+  ])('retains 1001 raw code points, then accepts 1000 %s unchanged', async (_, valid) => {
+    const { user, fetch } = setup();
+    const input = await screen.findByLabelText(label);
+    const invalid = ` ${valid}`;
+    expect(input).not.toHaveAttribute('maxlength');
+    await user.click(input); await user.paste(invalid);
+    if (method === 'POST') await user.click(screen.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ }));
+    await user.click(screen.getByRole('button', { name: button }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('1000文字以内');
+    expect(input).toHaveValue(invalid);
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === method)).toHaveLength(0);
+    await user.clear(input); await user.paste(valid);
+    if (method === 'POST') await user.click(screen.getByRole('checkbox', { name: /この請求の最新内容と取消の影響/ }));
+    await user.click(screen.getByRole('button', { name: button }));
+    const writes = fetch.mock.calls.filter(([, init]) => init?.method === method);
+    expect(writes).toHaveLength(1); expect(JSON.parse(String(writes[0][1]?.body)).reason).toBe(valid);
+  });
+});
+
 describe('Invoice correction and immutable history', () => {
   it('shows the current actor email and JST recorded time while keeping the original audit ID available', async () => {
     const { user } = setup({ occurredAt: '2026-12-31T15:00:00Z' });

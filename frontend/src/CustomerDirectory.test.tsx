@@ -8,8 +8,8 @@ const customer: Customer = { id: '11111111-1111-1111-1111-111111111150', code: '
 const session: Session = { userId: '11111111-1111-1111-1111-111111111112', tenantId: '11111111-1111-1111-1111-111111111111', email: 'alpha-accountant@example.test', role: 'ACCOUNTANT', csrfToken: 'csrf', csrfHeaderName: 'X-CSRF-TOKEN' };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 
-function mockServer(options: { firstFailure?: { status: number; code: string }; reloadFails?: boolean; lostResponse?: boolean; missing?: boolean } = {}) {
-  let current = { ...customer };
+function mockServer(options: { firstFailure?: { status: number; code: string }; reloadFails?: boolean; lostResponse?: boolean; missing?: boolean; initial?: Customer } = {}) {
+  let current = { ...(options.initial ?? customer) };
   let updates = 0;
   let reads = 0;
   const fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -50,6 +50,27 @@ async function changeName(user: ReturnType<typeof userEvent.setup>, name = '自�
 }
 
 describe('Versioned customer editing', () => {
+  it('keeps existing NBSP code and name unchanged when saving without edits', async () => {
+    const initial = { ...customer, code: '\u00a0EDIT-001\u00a0', name: '\u00a0架空商事\u00a0' };
+    const fetch = mockServer({ initial }); const user = userEvent.setup(); render(<App />);
+    await user.click(await screen.findByRole('button', { name: '顧客 EDIT-001 を編集' }));
+    expect(screen.getByLabelText('編集中の顧客コード')).toHaveValue(initial.code);
+    expect(screen.getByLabelText('編集中の顧客名')).toHaveValue(initial.name);
+    await user.click(screen.getByRole('button', { name: '変更を保存' }));
+    const write = fetch.mock.calls.find(([, init]) => init?.method === 'PUT');
+    expect(JSON.parse(String(write?.[1]?.body))).toEqual({ code: initial.code, name: initial.name, version: 0 });
+  });
+
+  it('sends ordinary surrounding whitespace for the server to canonicalize', async () => {
+    const fetch = mockServer(); const user = await edit();
+    await user.clear(screen.getByLabelText('編集中の顧客コード'));
+    await user.type(screen.getByLabelText('編集中の顧客コード'), ' EDIT-002 ');
+    await changeName(user, ' 架空商事 ');
+    await user.click(screen.getByRole('button', { name: '変更を保存' }));
+    const write = fetch.mock.calls.find(([, init]) => init?.method === 'PUT');
+    expect(JSON.parse(String(write?.[1]?.body))).toEqual({ code: ' EDIT-002 ', name: ' 架空商事 ', version: 0 });
+  });
+
   it('uses the generated update operation with expected version and rereads the stored list after success', async () => {
     const fetch = mockServer();
     const user = await edit();

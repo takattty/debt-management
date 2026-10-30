@@ -89,3 +89,11 @@ for name, header, data in (
         writer = csv.writer(target, lineterminator='\r\n')
         writer.writerow(header)
         writer.writerows(data)
+
+collection_customer = f'COL-C-{uuid.uuid4()}'
+(root / 'runn-collection-metadata.json').write_text(json.dumps({'customerCode': collection_customer}), encoding='utf-8')
+with (root / 'runn-collection.csv').open('w', encoding='utf-8-sig', newline='') as target:
+    writer = csv.writer(target, lineterminator='\r\n')
+    writer.writerow(['customer_code', 'invoice_number', 'issue_date', 'due_date', 'amount'])
+    writer.writerow([collection_customer, f'COL-{uuid.uuid4()}', '2026-10-29', '2026-11-30', '100000'])
+    writer.writerow([collection_customer, f'COL-{uuid.uuid4()}', '2026-10-29', '2026-11-30', '40000'])

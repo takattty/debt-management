@@ -47,6 +47,7 @@ public class SessionAccess {
                         .requestMatchers(HttpMethod.POST, "/api/invitations").hasRole("ADMIN")
                         .requestMatchers("/api/payments/*/allocations", "/api/payments/*/allocations/**").hasAnyRole("ADMIN", "ACCOUNTANT")
                         .requestMatchers("/api/payer-aliases", "/api/payer-aliases/**").hasAnyRole("ADMIN", "ACCOUNTANT")
+                        .requestMatchers("/api/collections", "/api/collections/**").hasAnyRole("ADMIN", "ACCOUNTANT")
                         .anyRequest().authenticated())
                 .securityContext(context -> context.securityContextRepository(contexts).requireExplicitSave(true))
                 .requestCache(AbstractHttpConfigurer::disable)

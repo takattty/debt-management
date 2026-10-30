@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import PaymentAllocationPanel from './PaymentAllocationPanel';
-import { api, ApiError, type Payment, type PaymentsQuery } from './api';
+import { api, ApiError, type Payment, type PaymentsQuery, type Session } from './api';
 
 const yen = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
-type Props = { onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void };
-export default function PaymentsPanel({ onBusyChange, onSessionExpired }: Props) {
+type Props = { session: Session; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void };
+export default function PaymentsPanel({ session, onBusyChange, onSessionExpired }: Props) {
   const [selected, setSelected] = useState<Payment | null>(null);
   const allocationBusy = useCallback((value: boolean) => { setBusy(value); onBusyChange(value); }, [onBusyChange]);
   const [items, setItems] = useState<Payment[]>([]);
@@ -45,7 +45,7 @@ export default function PaymentsPanel({ onBusyChange, onSessionExpired }: Props)
   return <section className="panel" aria-labelledby="payments-title">
     <div className="panel-heading"><span className="step-number">一覧</span><div><h2 id="payments-title">登録済みの入金</h2><p>確定した受取入金を振込日順に表示します。取引ID・振込日・振込名義・金額は登録後に変更できません。</p></div></div>
     <p className="import-guide">未充当額は現金の未使用分です。手数料は入金原本の金額を変更しません。</p>
-    {selected && <PaymentAllocationPanel key={selected.id} payment={selected} onBusyChange={allocationBusy} onSessionExpired={onSessionExpired} onClose={() => setSelected(null)} />}
+    {selected && <PaymentAllocationPanel key={selected.id} payment={selected} session={session} onChanged={() => load(activeQuery)} onBusyChange={allocationBusy} onSessionExpired={onSessionExpired} onClose={() => setSelected(null)} />}
     <form className="receivables-filters" onSubmit={search}>
       <label htmlFor="payment-date-from">振込日（開始）<input id="payment-date-from" type="date" value={dateFrom} disabled={busy} onChange={(event) => setDateFrom(event.target.value)} /></label>
       <label htmlFor="payment-date-to">振込日（終了）<input id="payment-date-to" type="date" value={dateTo} disabled={busy} onChange={(event) => setDateTo(event.target.value)} /></label>

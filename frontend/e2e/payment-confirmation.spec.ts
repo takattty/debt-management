@@ -22,7 +22,7 @@ test('real payment confirmation recovers a lost response, persists boundary date
   const stored = earlyStored.find((item) => item.transactionId === `${prefix}-EARLY`)!; expect(stored.amount).toBe(9007199254740991); expect(stored.unallocatedAmount).toBe(stored.amount); expect(stored.transferDate).toBe('0001-01-01'); expect(stored.sourceBatchId).toBe(batch.id);
   await filterDates(page, '9999-12-31'); await expect(list).toContainText(`${prefix}-LATE`); await expect(list).toContainText('9999-12-31');
   await page.reload(); await page.getByRole('button', { name: '入金一覧', exact: true }).click(); await filterDates(page, '9999-12-31'); await expect(list).toContainText(`${prefix}-LATE`);
-  await expect(page.getByText(/消込機能はまだ利用できません/)).toBeVisible();
+  await expect(page.getByText(/手数料は入金原本の金額を変更しません/)).toBeVisible();
   await page.getByRole('button', { name: '入金CSV取込', exact: true }).click(); const duplicate = await previewPayments(page, paymentHeader + late + early);
   expect(duplicate.originalBatchId).toBe(batch.id); await expect(page.getByRole('button', { name: /確定して登録/ })).toBeDisabled();
   await page.getByRole('button', { name: '元の取込結果を確認', exact: true }).click(); await expect(page.getByRole('status')).toContainText('2件の入金を登録しました'); await expect(page.getByRole('table', { name: '入金CSVプレビュー', exact: true })).toContainText(`${prefix}-EARLY`);

@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { api, ApiError, type Payment, type PaymentCandidate, type PaymentCandidates } from './api';
+import AllocationConfirmation from './AllocationConfirmation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, ApiError, type Payment, type PaymentCandidate, type PaymentCandidates, type Session } from './api';
 
 const yen = (value: number) => Number.isSafeInteger(value) && value >= 0 ? `${value.toLocaleString('ja-JP')}円` : '金額を確認できません';
-type Props = { payment: Payment; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void; onClose: () => void };
-export default function PaymentAllocationPanel({ payment, onBusyChange, onSessionExpired, onClose }: Props) {
+type Props = { payment: Payment; session: Session; onChanged: () => Promise<void>; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void; onClose: () => void };
+export default function PaymentAllocationPanel({ payment, session, onChanged, onBusyChange, onSessionExpired, onClose }: Props) {
+  const allocationBusy = useCallback((value: boolean) => { setBusy(value); onBusyChange(value); }, [onBusyChange]);
   const [page, setPage] = useState<PaymentCandidates | null>(null);
   const [selected, setSelected] = useState<PaymentCandidate[]>([]);
   const [busy, setBusy] = useState(true);
@@ -47,7 +49,7 @@ export default function PaymentAllocationPanel({ payment, onBusyChange, onSessio
         <button type="button" className="secondary-button" disabled={busy || !page.nextCursor} onClick={() => load(page.nextCursor ?? undefined)}>次の候補50件</button>
       </>}
     </>}
-    {selected.length > 0 && <section aria-label="選択した請求"><h3>選択した請求（{selected.length}件）</h3><ul>{selected.map((item) => <li key={item.invoiceId}>{item.customerCode} / {item.invoiceNumber} / 未回収 {yen(item.outstandingAmount)} / version {item.expectedInvoiceVersion}<button type="button" disabled={busy} onClick={() => choose(item)}>選択解除 {item.invoiceNumber}</button></li>)}</ul><p>選択だけでは残高は変わりません。</p></section>}
+    {selected.length > 0 && <section aria-label="選択した請求"><h3>選択した請求（{selected.length}件）</h3><ul>{selected.map((item) => <li key={item.invoiceId}>{item.customerCode} / {item.invoiceNumber} / 未回収 {yen(item.outstandingAmount)} / version {item.expectedInvoiceVersion}<button type="button" disabled={busy} onClick={() => choose(item)}>選択解除 {item.invoiceNumber}</button></li>)}</ul><p>選択だけでは残高は変わりません。</p><AllocationConfirmation key={selected.map((item) => item.invoiceId).join()} paymentId={payment.id} selected={selected} session={session} onBusyChange={allocationBusy} onSessionExpired={onSessionExpired} onConfirmed={async () => { setPage(await api.listPaymentCandidates(payment.id)); await onChanged(); }} /></section>}
     <div className="button-row"><button type="button" className="secondary-button" disabled={busy} onClick={() => load()}>最新候補を取得して選び直す</button><button type="button" className="text-button" disabled={busy} onClick={onClose}>消込を閉じる</button></div>
   </section>;
 }

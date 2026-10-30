@@ -8,6 +8,7 @@ export type InvitationIssued = components['schemas']['InvitationIssuedResponse']
 export type ImportBatch = components['schemas']['ImportBatchResponse'];
 export type ImportRow = components['schemas']['ImportRowResponse'];
 export type PaymentImportRow = components['schemas']['PaymentImportRowResponse'];
+export type AllocationConfirmation = operations['confirmAllocation']['requestBody']['content']['application/json'];
 export type PaymentCandidate = components['schemas']['PaymentCandidateResponse'];
 export type PaymentCandidates = components['schemas']['PaymentCandidatesPage'];
 export type Payment = components['schemas']['PaymentResponse'];
@@ -48,6 +49,7 @@ export const api = {
     Object.entries(query).forEach(([key, value]) => { if (value !== undefined) parameters.set(key, String(value)); });
     return request({ path: '/api/payments', method: 'GET', url: `/api/payments?${parameters}` }, undefined);
   },
+  confirmAllocation: (csrf: Csrf, id: string, body: AllocationConfirmation) => request({ path: '/api/payments/{paymentId}/allocations', method: 'POST', url: `/api/payments/${encodeURIComponent(id)}/allocations` }, csrf, body),
   listPaymentCandidates: (id: string, cursor?: string) => request({ path: '/api/payments/{id}/candidates', method: 'GET', url: `/api/payments/${encodeURIComponent(id)}/candidates?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` }, undefined),
   getInvoice: (id: string) => request({ path: '/api/invoices/{id}', method: 'GET', url: invoiceUrl(id) }, undefined),
   listInvoiceHistory: (id: string, cursor = -1) => request({ path: '/api/invoices/{id}/history', method: 'GET', url: `${invoiceUrl(id)}/history?cursor=${cursor}&limit=50` }, undefined),
@@ -157,6 +159,7 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       ? failure.code : undefined;
     const invitation = endpoint.path.startsWith('/api/invitations');
     const importing = endpoint.path.startsWith('/api/imports');
+    const allocating = endpoint.path.startsWith('/api/payments/');
     const invoicing = endpoint.path.startsWith('/api/invoices');
     const messages: Record<number, string> = {
       400: endpoint.path === '/api/auth/login' ? 'メールアドレスとパスワードの入力内容を確認してください。'
@@ -193,7 +196,9 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       NOT_FOUND: '請求が見つかりません。請求IDと一覧を確認してください。',
     };
     const invoiceMessage = invoicing ? (code ? invoiceMessages[code] : undefined) ?? (response.status === 400 ? '顧客・日付・正の円整数の金額・理由を確認してください。' : response.status === 404 ? invoiceMessages.NOT_FOUND : undefined) : undefined;
-    throw new ApiError(response.status, invoiceMessage ?? (importing && code ? importMessages[code] : undefined) ?? messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
+    const allocationMessages: Record<string, string> = { VERSION_CONFLICT: '他の担当者が残高を更新しました。最新内容を再取得して確認してください。', INSUFFICIENT_BALANCE: '現金または請求の残高が不足しています。最新内容を確認してください。', INVOICE_NOT_ACTIVE: '選択した請求は取消済みです。最新候補から選び直してください。', ALREADY_REVERSED: 'この消込はすでに取消済みです。履歴を再取得してください。', IDEMPOTENCY_CONFLICT: '同じ操作IDに別の内容が指定されました。履歴を確認してください。', VERSION_EXHAUSTED: 'versionの上限に達しました。管理者にご確認ください。' };
+    const allocationMessage = allocating ? (code ? allocationMessages[code] : undefined) ?? (response.status === 400 ? '現金・明示した手数料・理由を確認してください。' : response.status === 404 ? '入金または請求が見つかりません。最新内容を確認してください。' : undefined) : undefined;
+    throw new ApiError(response.status, allocationMessage ?? invoiceMessage ?? (importing && code ? importMessages[code] : undefined) ?? messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
   }
   return response;
 }

@@ -60,7 +60,7 @@ class PaymentConfirmationTest {
     void resetTestFactsUsingExplicitTestOnlyTruncate() {
         jdbc.sql("DELETE FROM audit_event WHERE tenant_id=? AND entity_id IN (SELECT id FROM payment WHERE tenant_id=?)")
                 .params(user.tenantId(), user.tenantId()).update();
-        jdbc.sql("TRUNCATE payment").update();
+        jdbc.sql("TRUNCATE allocation_line,allocation_operation,reconciliation_payment_state,payment").update();
         for (UUID id : batchIds) {
             jdbc.sql("DELETE FROM audit_event WHERE tenant_id=? AND entity_id=?").params(user.tenantId(), id).update();
             for (String table : List.of("import_error", "import_row", "import_batch")) {

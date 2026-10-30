@@ -31,6 +31,8 @@ tags:
   description: Tenant-scoped invoice facts and bounded receivables views
 - name: Payments
   description: Immutable incoming JPY payment facts and bounded tenant-scoped pages
+- name: PaymentCandidates
+  description: Read-only matching suggestions requiring human confirmation from current V8 balances
 - name: PayerAliases
   description: Manual tenant-scoped payer-name to customer correspondences without allocation
 - name: Imports
@@ -276,6 +278,38 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {description: Correspondence not found in this tenant, content: {application/json: {schema: {$ref: '#/components/schemas/ApiError'}}}}
         '409': {description: Stale version or already deactivated, content: {application/json: {schema: {$ref: '#/components/schemas/ApiError'}}}}
+  /api/payments/{id}/candidates:
+    get:
+      tags: [PaymentCandidates]
+      operationId: listPaymentCandidates
+      summary: Explain and rank current cash matching candidates without allocating anything
+      description: Requires the authenticated tenant's payment. Returns every ACTIVE invoice with positive current outstanding, ordered by active manual payer/customer match first, exact outstanding-to-unallocated-cash match next, then due date and ID. Nonmatching customers, amounts and future due dates are not hidden. Payer names use the shared surrounding-whitespace-only rule without case, width, kana or Unicode normalization. UNREGISTERED and MULTIPLE_CUSTOMERS explicitly describe payer-correspondence ambiguity; even UNIQUE always requires human confirmation. A fully cash-allocated payment returns NO_UNALLOCATED_CASH with no items; this does not decide fee-only or cross-customer command policies. No state initialization, allocation, locks or audits are written. Each page uses one financial/alias snapshot; data changes between requests are not frozen. Before any future manual confirmation, refresh and revalidate all expected versions and policies.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: cursor
+        in: query
+        schema: {type: string, minLength: 91, maxLength: 91}
+        description: Exact server-issued rank/date/ID cursor bound to this payment; omit for the first page. Invalid format, ranks, date, UUID or another payment's cursor returns 400.
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        '200':
+          description: Cash candidates and payer correspondence state, always subject to human review
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaymentCandidatesPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404':
+          description: Payment missing or outside the authenticated tenant
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
   /api/payments:
     get:
       tags: [Payments]
@@ -1101,6 +1135,54 @@ components:
           maxItems: 100
           items: {$ref: '#/components/schemas/PayerAliasResponse'}
         nextCursor: {type: string, format: uuid, nullable: true}
+    PaymentCandidateResponse:
+      type: object
+      required: [invoiceId, customerId, customerCode, customerName, invoiceNumber, issueDate, dueDate, amount, outstandingAmount, expectedInvoiceVersion, manualPayerMatch, exactAmountMatch]
+      properties:
+        invoiceId: {type: string, format: uuid}
+        customerId: {type: string, format: uuid}
+        customerCode: {type: string, minLength: 1, maxLength: 50}
+        customerName: {type: string, minLength: 1, maxLength: 200}
+        invoiceNumber: {type: string, minLength: 1, maxLength: 100}
+        issueDate: {type: string, format: date}
+        dueDate: {type: string, format: date}
+        amount: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        outstandingAmount: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        expectedInvoiceVersion:
+          type: string
+          pattern: '^(0|[1-9][0-9]*)$'
+          maxLength: 19
+          description: Current database bigint version as a decimal string, preserving precision for JavaScript clients. Refresh before any future confirmation.
+        manualPayerMatch: {type: boolean, description: This customer's active manual payer correspondence exactly matches the payment name.}
+        exactAmountMatch: {type: boolean, description: Current invoice outstanding exactly equals this payment's current unallocated cash.}
+    PaymentCandidatesPage:
+      type: object
+      required: [paymentId, payerName, transferDate, unallocatedAmount, expectedPaymentVersion, payerMatchStatus, matchedCustomerCount, cashCandidateStatus, requiresHumanConfirmation, items, nextCursor]
+      properties:
+        paymentId: {type: string, format: uuid}
+        payerName: {type: string, minLength: 1, maxLength: 200}
+        transferDate: {type: string, format: date}
+        unallocatedAmount: {type: integer, format: int64, minimum: 0, maximum: 9007199254740991}
+        expectedPaymentVersion:
+          type: string
+          pattern: '^(0|[1-9][0-9]*)$'
+          maxLength: 19
+          description: Current V8 payment-state bigint version as an exact decimal string; missing state is zero and is never initialized by this GET.
+        payerMatchStatus:
+          type: string
+          enum: [UNREGISTERED, UNIQUE, MULTIPLE_CUSTOMERS]
+          description: Number of distinct customers in active manual correspondences, regardless of their eligible invoice count. UNIQUE does not permit automatic confirmation.
+        matchedCustomerCount: {type: integer, minimum: 0}
+        cashCandidateStatus:
+          type: string
+          enum: [AVAILABLE, NO_UNALLOCATED_CASH]
+          description: Whether unallocated cash is positive. NO_UNALLOCATED_CASH produces no cash candidates and does not decide future fee-only policies.
+        requiresHumanConfirmation: {type: boolean, enum: [true], description: Always true; reading candidates never confirms or reserves an allocation.}
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/PaymentCandidateResponse'}
+        nextCursor: {type: string, minLength: 91, maxLength: 91, nullable: true}
     PaymentResponse:
       type: object
       required: [id, transactionId, transferDate, payerName, amount, unallocatedAmount, sourceBatchId, createdByUserId, createdAt]

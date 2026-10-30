@@ -156,6 +156,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/payments/{id}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Explain and rank current cash matching candidates without allocating anything
+         * @description Requires the authenticated tenant's payment. Returns every ACTIVE invoice with positive current outstanding, ordered by active manual payer/customer match first, exact outstanding-to-unallocated-cash match next, then due date and ID. Nonmatching customers, amounts and future due dates are not hidden. Payer names use the shared surrounding-whitespace-only rule without case, width, kana or Unicode normalization. UNREGISTERED and MULTIPLE_CUSTOMERS explicitly describe payer-correspondence ambiguity; even UNIQUE always requires human confirmation. A fully cash-allocated payment returns NO_UNALLOCATED_CASH with no items; this does not decide fee-only or cross-customer command policies. No state initialization, allocation, locks or audits are written. Each page uses one financial/alias snapshot; data changes between requests are not frozen. Before any future manual confirmation, refresh and revalidate all expected versions and policies.
+         */
+        get: operations["listPaymentCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/payments": {
         parameters: {
             query?: never;
@@ -769,6 +789,58 @@ export interface components {
             /** Format: uuid */
             nextCursor: string | null;
         };
+        PaymentCandidateResponse: {
+            /** Format: uuid */
+            invoiceId: string;
+            /** Format: uuid */
+            customerId: string;
+            customerCode: string;
+            customerName: string;
+            invoiceNumber: string;
+            /** Format: date */
+            issueDate: string;
+            /** Format: date */
+            dueDate: string;
+            /** Format: int64 */
+            amount: number;
+            /** Format: int64 */
+            outstandingAmount: number;
+            /** @description Current database bigint version as a decimal string, preserving precision for JavaScript clients. Refresh before any future confirmation. */
+            expectedInvoiceVersion: string;
+            /** @description This customer's active manual payer correspondence exactly matches the payment name. */
+            manualPayerMatch: boolean;
+            /** @description Current invoice outstanding exactly equals this payment's current unallocated cash. */
+            exactAmountMatch: boolean;
+        };
+        PaymentCandidatesPage: {
+            /** Format: uuid */
+            paymentId: string;
+            payerName: string;
+            /** Format: date */
+            transferDate: string;
+            /** Format: int64 */
+            unallocatedAmount: number;
+            /** @description Current V8 payment-state bigint version as an exact decimal string; missing state is zero and is never initialized by this GET. */
+            expectedPaymentVersion: string;
+            /**
+             * @description Number of distinct customers in active manual correspondences, regardless of their eligible invoice count. UNIQUE does not permit automatic confirmation.
+             * @enum {string}
+             */
+            payerMatchStatus: "UNREGISTERED" | "UNIQUE" | "MULTIPLE_CUSTOMERS";
+            matchedCustomerCount: number;
+            /**
+             * @description Whether unallocated cash is positive. NO_UNALLOCATED_CASH produces no cash candidates and does not decide future fee-only policies.
+             * @enum {string}
+             */
+            cashCandidateStatus: "AVAILABLE" | "NO_UNALLOCATED_CASH";
+            /**
+             * @description Always true; reading candidates never confirms or reserves an allocation.
+             * @enum {boolean}
+             */
+            requiresHumanConfirmation: true;
+            items: components["schemas"]["PaymentCandidateResponse"][];
+            nextCursor: string | null;
+        };
         PaymentResponse: {
             /** Format: uuid */
             id: string;
@@ -1345,6 +1417,44 @@ export interface operations {
             };
             /** @description Stale version or already deactivated */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listPaymentCandidates: {
+        parameters: {
+            query?: {
+                /** @description Exact server-issued rank/date/ID cursor bound to this payment; omit for the first page. Invalid format, ranks, date, UUID or another payment's cursor returns 400. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cash candidates and payer correspondence state, always subject to human review */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentCandidatesPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Payment missing or outside the authenticated tenant */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

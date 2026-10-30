@@ -59,7 +59,7 @@ else: raise AssertionError('No mutations permitted: '+repr(args))
 ''')
         self.fake.chmod(0o755)
 
-    def run_guard(self, free, phase='up', error=None, worktree=None, block_size=4096):
+    def run_guard(self, free, phase='up', error=None, worktree=None, block_size=4096, service=None, extra_args=()):
         fixture = self.root / 'fixture.json'
         fixture.write_text(json.dumps(self.fixture))
         env = {'PATH': str(self.root) + os.pathsep + os.environ['PATH'], 'FIXTURE': str(fixture), 'TRACE': str(self.trace),
@@ -70,7 +70,8 @@ else: raise AssertionError('No mutations permitted: '+repr(args))
                 patch.object(CAPACITY.shutil, 'disk_usage', return_value=SimpleNamespace(free=free), side_effect=error), \
                 patch.object(CAPACITY.os, 'statvfs', return_value=SimpleNamespace(f_frsize=block_size)), \
                 patch.dict(os.environ, env), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = CAPACITY.main(['--cloud-local', *(['--worktree', str(worktree)] if worktree else []), phase])
+            code = CAPACITY.main(['--cloud-local', *(['--worktree', str(worktree)] if worktree else []),
+                                  *(['--service', service] if service is not None else []), *extra_args, phase])
         return code, json.loads(out.getvalue()) if out.getvalue() else None, err.getvalue()
 
     def current(self, healthy=False, hash_value='a' * 64, image='sha256:postgres'):
@@ -183,6 +184,56 @@ else: raise AssertionError('No mutations permitted: '+repr(args))
         self.assertGreater(self.run_guard(20 * CAPACITY.GIB, 'build')[1]['required_bytes'], before)
         (self.root / 'backend/Dockerfile').write_text('FROM missing\nCOPY payload /app\n')
         self.assertEqual(self.run_guard(20 * CAPACITY.GIB, 'build')[0], 2)
+
+    def test_selected_service_preserves_two_copies_reserve_and_block_rounded_allowance(self):
+        code, report, _ = self.run_guard(20 * CAPACITY.GIB, service='backend')
+        self.assertEqual(code, 0)
+        self.assertEqual([x['service'] for x in report['services']], ['backend'])
+        self.assertEqual(report['vfs_clone_bytes'], 700000000)
+        self.assertEqual(report['vfs_allocation_bytes'], 70000640)
+        self.assertEqual(report['postgres_start_bytes'], 0)
+        self.assertEqual(report['required_bytes'], CAPACITY.GIB + 700000000 + 70000640)
+        self.assertEqual(self.run_guard(report['required_bytes'] - 1, service='backend')[0], 1)
+
+    def test_selected_postgres_keeps_start_reserve_and_only_exact_current_identity_reuses(self):
+        _, report, _ = self.run_guard(20 * CAPACITY.GIB, service='postgres')
+        self.assertEqual(report['vfs_clone_bytes'], 912000000)
+        self.assertEqual(report['postgres_start_bytes'], 456000000)
+        self.fixture['containers'] = [self.current(healthy=True)]
+        _, report, _ = self.run_guard(CAPACITY.GIB, service='postgres')
+        self.assertEqual(report['required_bytes'], CAPACITY.GIB)
+        self.assertTrue(report['services'][0]['running'])
+        self.assertTrue(report['services'][0]['healthy'])
+        self.fixture['containers'] = [self.current(healthy=True, hash_value='b' * 64)]
+        _, report, _ = self.run_guard(20 * CAPACITY.GIB, service='postgres')
+        self.assertEqual(report['vfs_clone_bytes'], 912000000)
+        self.assertEqual(report['postgres_start_bytes'], 456000000)
+        self.assertFalse(report['services'][0]['running'])
+
+    def test_selected_build_uses_only_own_cold_layers_and_future_two_copies(self):
+        self.fixture['model']['services']['backend'] = {'build': {'context': str(self.root / 'backend')}}
+        self.fixture['model']['services']['frontend'] = {'build': {'context': '/not-a-build-input'}}
+        _, report, _ = self.run_guard(20 * CAPACITY.GIB, 'build', service='backend')
+        self.assertEqual([x['service'] for x in report['services']], ['backend'])
+        self.assertGreater(report['build_bytes'], 600000000)
+        self.assertEqual(report['vfs_clone_bytes'], 2 * report['services'][0]['projected_virtual_bytes'])
+        self.assertEqual(report['postgres_start_bytes'], 0)
+        self.assertEqual(self.run_guard(20 * CAPACITY.GIB, 'build')[0], 2)
+
+    def test_unknown_or_duplicate_service_refuses_before_build_or_create(self):
+        for service in ['', 'unknown', 'backend postgres']:
+            with self.subTest(service=service):
+                self.assertEqual(self.run_guard(20 * CAPACITY.GIB, service=service)[0], 2)
+        with self.assertRaises(SystemExit) as result:
+            self.run_guard(20 * CAPACITY.GIB, extra_args=['--service', 'backend', '--service', 'postgres'])
+        self.assertEqual(result.exception.code, 2)
+        self.assertNotIn('"up"', self.trace.read_text())
+        self.assertNotIn('"build"', self.trace.read_text())
+
+    def test_selected_missing_metadata_and_unmeasurable_space_fail_closed(self):
+        self.fixture['images']['backend']['Size'] = None
+        self.assertEqual(self.run_guard(20 * CAPACITY.GIB, service='backend')[0], 2)
+        self.assertEqual(self.run_guard(None, error=OSError('unavailable'), service='backend')[0], 2)
 
 class DockerEntrypointTest(unittest.TestCase):
     def entry(self, cloud=False, fail_phase='', host_build=False, capacity_exit=0):

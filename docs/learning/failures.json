@@ -922,6 +922,12 @@
           "summary": "root再開時にpolicy全文とAGENTSとFE AGENTSを同callへ束ね6097tokensがmax5000を超え実切断。actual chunk dad466、recovery8adf46、8695c6はこの失敗のchunkではない",
           "evidence": "docs/learning/json-envelope-metadata-validation.md",
           "recorded_at": "2026-10-30T15:45:29+00:00"
+        },
+        {
+          "event": "resource-diagnosis-batched-evidence-truncated-20261030",
+          "summary": "resource診断開始時に最新operator guardの適用前で旧AGENTSと複数大JSONを合算表示。外側出力がWarning: truncated output (original token count: 18189)。nested3読込を1実行と数え、欠落JSONをparse/読了扱いしていない。",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:55:38+00:00"
         }
       ],
       "resolutions": [
@@ -980,6 +986,14 @@
           "guard": "scripts/json-metadata.py",
           "event_count": 17,
           "resolved_at": "2026-10-30T15:45:29+00:00"
+        },
+        {
+          "cause": "最新operator guardを最初に読む運用を開始時に適用せず、nestedごとのtoken指定だけで大JSONを合算表示した。guardの存在だけでは適用漏れを防げなかった",
+          "prevention": "最新operator AGENTS/learningを最初に確認。tool戻り値全体は表示せずwork保存とscalar抽出。必要本文は1reader/call、表示前に実UTF8 byte数4096以下を検査し、超過はmetadataだけ返して次callを縮小。既存8KiB reader capは維持",
+          "verification": "元8bの15→16実証は旧証拠として保持。最新mainの17events/resolution prefixを厳密保持し、staged authorの別1eventのみunionして18events。guard code/testsは元8bと同一、original/reviewer83/25＋negative7、root actual12gates/17API/32real/native2/guide/recreate12722の証拠へ結合。最新wholeCIは別必須gate。",
+          "guard": "docs/learning/source-output-validation.md",
+          "event_count": 18,
+          "resolved_at": "2026-10-30T16:19:13+00:00"
         }
       ]
     },

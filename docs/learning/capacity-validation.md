@@ -80,3 +80,15 @@ Engine28.4.0/vfsでrootがdown後available4705030144Bからup後2918805504Bを�
 BuildKit/legacy builderの一時copyを一律2層とは断言しない。[image_builder.go](https://github.com/moby/moby/blob/249d679a6baf8a32bb6d72d6ac5cc7ab9c90b4ea/daemon/images/image_builder.go#L59-L68)にはinit無しのCreateRWLayer経路もある。既存filesystem-layer/context予算は維持し、将来container分を二層へ直す。rootで測ったのはcached buildで、cold/concurrent builderのpeak allocationは未検証であり厳密上限を実証したとはしない。実Docker writeとcold検証は独立review後にrootが管理する。
 
 検証ではroot値を使う旧境界fixtureが未修正でPASSしてしまうRED（期待拒否1に対し0）を1回保存し、修正後は拒否へ変わった。新しいhealthy全一致はcopy/allocation0を維持し、PGが既存healthyでも新app cloneのallocation余裕は消さず、実FS blockで丸める。対象13tests・全Python63tests、bash構文・diff検査は成功。read-onlyのroot既存project計画はup通過/build不足拒否を確認した。作者による新Docker build/up/start/create/stop/rm、tar export、FS bindはない。
+
+## 明示的なCloud staged mode
+
+`bash scripts/docker-verify.sh --cloud-local --staged` はnative build完了後、backend build→frontend build→PostgreSQL up→backend up→frontend upの順に実行する。各Docker操作の直前に同じserviceだけを `check-docker-capacity.py --cloud-local --service NAME build|up` で再測定する。service指定省略時の全Compose予算と既存default/Mac/remote経路は維持する。未知service・複数指定・取得不能は作成前に拒否する。
+
+buildのcold式・将来containerの2copy・block単位切上げ10%・対象PGの起動余裕・1GiB reserveは減らさない。upは `--no-build --no-deps -d NAME` とし、測定外の依存serviceを暗黙起動しない。PostgreSQL healthとbackend起動をimage/config一致込みで確認し、最後にfrontend起動・PG health・web/API応答を確認して既存browser受入へ進む。readinessは120秒の期限を持ち、metadata不足・容量不足・途中失敗時は後続を止める。backend/frontendはDocker HEALTHCHECKを持たないため、runningとHTTP readinessをhealthyと混同しない。
+
+実行前にCoordinatorが他のheavy workerを待機させ、native buildとDocker phaseを重複させない。各phaseの再測定は容量予約ではなく、hot cacheを仮定しない。途中で足りなくなった場合もsource/JAR/dist/DB/image/logを保持し、自動cleanup・prune・driver変更やCOMPOSE_FILEの置換で検査を迂回しない。
+
+`--cloud-local --staged --prepare-only` は同じnative build・guard・Docker起動・readinessまでを担当し、受入テストを起動せず「quality PASSではない」と明示して返す正規の準備入口である。default/通常verifyのbrowser受入とCIの検証義務は変えない。Coordinatorは準備後、mutation前snapshot→通常runn/proxy→同じJAR/DBの正常restart→全browser/画面受入を明示実行し、全phaseの証拠が揃うまで完了扱いしない。このoptionはstaged Cloud以外では作業前に拒否する。
+
+旧artifactのread-only計画値はbackend build約3.05GB、frontend build約1.67GB。Coordinatorは再取得可能依存資産を約1.05GB回収し、直後の空き約3.92GBと原本保持を記録した。一括buildの5.10GBには不足し、staged完走も未証明である。現行sourceのnative artifactで再測定し、独立レビュー・必須CI・root管理の実staged Docker受入が成功してからmergeする。作者のmock検証と実Docker受入を区別する。

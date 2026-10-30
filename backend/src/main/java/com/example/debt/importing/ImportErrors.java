@@ -18,7 +18,7 @@ public class ImportErrors {
     @ExceptionHandler(ImportRejected.class)
     ResponseEntity<ApiError> rejected(ImportRejected exception) {
         String message = switch (exception.code()) {
-            case "IMPORT_KIND_UNSUPPORTED" -> "請求CSVはプレビューのみ利用できます。まだ確定できません。";
+            case "IMPORT_KIND_UNSUPPORTED" -> "この取込形式はこの確定処理では利用できません。取込元の画面を確認してください。";
             case "IMPORT_EXPIRED" -> "プレビューの有効期限が切れました。CSVを再プレビューしてください。";
             case "IMPORT_INVALID" -> "エラーがあるため1件も取り込んでいません。CSVを修正してください。";
             case "VERSION_CONFLICT" -> "取込状態が変更されています。再読み込みしてください。";

@@ -107,6 +107,19 @@ public class ImportStore {
                 .query((result, number) -> json.readValue(result.getString("snapshot"), InvoiceCsv.Row.class)).list();
     }
 
+    public record InvoiceSnapshot(InvoiceCsv.Row row, UUID customerId, Long customerVersion) { }
+
+    public List<InvoiceSnapshot> invoiceSnapshots(UUID tenant, UUID id) {
+        return jdbc.sql("""
+                SELECT typed_snapshot::text AS snapshot, reference_snapshot->>'customerId' AS customer_id,
+                    reference_snapshot->>'customerVersion' AS customer_version FROM import_row
+                WHERE tenant_id=:tenant AND batch_id=:id ORDER BY record_number LIMIT 10001
+                """).param("tenant", tenant).param("id", id).query((result, number) -> new InvoiceSnapshot(
+                        json.readValue(result.getString("snapshot"), InvoiceCsv.Row.class),
+                        result.getString("customer_id") == null ? null : UUID.fromString(result.getString("customer_id")),
+                        result.getString("customer_version") == null ? null : Long.valueOf(result.getString("customer_version")))).list();
+    }
+
     public List<Error> errors(UUID tenant, UUID id, int cursor, int limit) {
         return jdbc.sql("""
                 SELECT * FROM import_error WHERE tenant_id=:tenant AND batch_id=:id AND error_number>:cursor

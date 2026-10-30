@@ -89,7 +89,7 @@ class InvoiceImportApiTest {
         assertThat(count("audit_event")).isEqualTo(audit);
         mvc.perform(post("/api/imports/" + id + "/confirm").session(alpha).with(csrf().asHeader())
                 .contentType("application/json").content("{\"version\":0}"))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IMPORT_KIND_UNSUPPORTED"));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IMPORT_REFERENCE_CONFLICT"));
         assertThat(count("invoice")).isZero();
     }
 

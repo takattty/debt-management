@@ -52,10 +52,10 @@ async function upload(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('Payment confirmation and server-paged immutable facts', () => {
-  it('shows exact largest safe yen amounts, source batch and read-only payment facts without allocation controls', async () => {
+  it('shows exact largest safe yen amounts, source batch and read-only payment facts with a separate human allocation action', async () => {
     mockServer(); await start('入金一覧'); const table = await screen.findByRole('table', { name: '入金一覧' });
     expect(within(table).getAllByText(/9,007,199,254,740,991/)).toHaveLength(2); expect(table).toHaveTextContent(payment.payerName); expect(table).toHaveTextContent('0001-01-01'); expect(table).toHaveTextContent(payment.sourceBatchId);
-    expect(screen.getByText(/消込機能はまだ利用できません/)).toBeVisible(); expect(screen.queryByRole('button', { name: /消込|編集|取消/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/手数料は入金原本の金額を変更しません/)).toBeVisible(); expect(screen.getByRole('button', { name: `入金 ${payment.transactionId} の消込` })).toBeVisible();
   });
   it('sends the exact server cursor with applied filters even if the next filter draft changes', async () => {
     const fetch = mockServer({ paged: true }); const user = await start('入金一覧'); await screen.findByRole('table', { name: '入金一覧' });

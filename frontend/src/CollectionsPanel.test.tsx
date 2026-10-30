@@ -36,4 +36,14 @@ describe('collections read views', () => {
     const user = userEvent.setup(); render(<CollectionsPanel {...callbacks} />); await user.click(screen.getByRole('button', { name: '候補を表示' }));
     expect(callbacks.onSessionExpired).toHaveBeenCalledWith(expect.objectContaining({ status: 401 }));
   });
+  it('prevents parent navigation and filter changes while a real action is pending', async () => {
+    vi.spyOn(api, 'listCollections').mockResolvedValue({ items: [item], nextCursor: null }); vi.spyOn(api, 'getCollection').mockResolvedValue(item); vi.spyOn(api, 'listCollectionHistory').mockResolvedValue({ items: [], nextCursor: null });
+    let finish!: (response: Awaited<ReturnType<typeof api.recordCollectionAction>>) => void;
+    vi.spyOn(api, 'recordCollectionAction').mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const callbacks = props(); const user = userEvent.setup(); render(<CollectionsPanel {...callbacks} />); await user.click(screen.getByRole('button', { name: '候補を表示' })); await user.click(await screen.findByRole('button', { name: '請求 INV-001 の対応・履歴' }));
+    await user.type(await screen.findByLabelText('対応メモ（共有）'), '保存中のメモ'); await user.click(screen.getByRole('button', { name: '対応メモを記録' }));
+    expect(screen.getByRole('button', { name: '候補を表示' })).toBeDisabled(); expect(screen.getByLabelText('対応の状態')).toBeDisabled(); expect(screen.getByRole('button', { name: '対応を閉じる' })).toBeDisabled(); expect(callbacks.onBusyChange).toHaveBeenLastCalledWith(true);
+    finish({ invoiceId: item.invoiceId, version: 1, held: false, holdReason: null, latestNote: '保存中のメモ', nextActionDate: null, event: { version: 1, kind: 'NOTE', note: '保存中のメモ', reason: null, actorUserId: 'user', actorLabel: session.email, occurredAt: '2026-01-31T15:00:00Z', held: false, holdReason: null, nextActionDate: null } });
+    expect(await screen.findByText('対応を記録しました。')).toBeVisible();
+  });
 });

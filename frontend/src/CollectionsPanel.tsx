@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, ApiError, type CollectionCase, type CollectionHistory, type CollectionsQuery, type Customer, type Session } from './api';
 import InvoicePanel from './InvoicePanel';
 import { formatJstTimestamp } from './timestamp-presentation';
+import CollectionActionsPanel from './CollectionActionsPanel';
 
 type SharedProps = { customers: Customer[]; session: Session; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void };
 const yen = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
@@ -103,6 +104,7 @@ export function CollectionDetail({ id, asOf, onClose, ...props }: SharedProps & 
     {busy && <p role="status">対応状況を取得しています…</p>}{error && <p role="alert" className="error">{error}</p>}
     {item && <><h3>{item.invoiceNumber} — {item.customerName}</h3><p>基準日：{item.asOf}（日本の業務日）／支払期日：{item.dueDate}／超過{item.daysOverdue}日</p><p>状態：{caseStatus(item)}／現在の未回収額：{yen.format(item.outstandingAmount)}</p><p>原請求額：{yen.format(item.amount)}／入金充当：{yen.format(item.cashAllocated)}／明示した手数料：{yen.format(item.explicitFees)}</p><p>次回対応日：{item.nextActionDate ?? '未設定'}／保留理由：{item.holdReason ?? 'なし'}</p><p style={{ whiteSpace: 'pre-wrap' }}>最新メモ：{item.latestNote ?? 'なし'}</p>{!item.eligible && <p>現在は候補の対象外です。過去の対応原本は引き続き確認できます。</p>}<button type="button" className="secondary-button" disabled={busy} onClick={() => setShowInvoice(!showInvoice)}>{showInvoice ? '原請求を閉じる' : '原請求・訂正履歴を確認'}</button>
       {showInvoice && <InvoicePanel id={id} {...props} onBusyChange={(value) => { setBusy(value); props.onBusyChange(value); }} onChanged={async () => { await refresh(); setShowInvoice(false); }} onClose={() => setShowInvoice(false)} />}
+      <CollectionActionsPanel item={item} session={props.session} busy={busy} onBusyChange={(value) => { setBusy(value); props.onBusyChange(value); }} onSessionExpired={props.onSessionExpired} onRefresh={refresh} />
       <h3>対応の原本履歴</h3><p>担当者は記録時点の表示です。過去のメモ・理由・次回対応日を保持しています。</p>{history.length === 0 && <p>対応履歴はありません。</p>}
       <ol>{history.map((event) => <li key={event.version}><strong>第{event.version}版：{kindName[event.kind]}</strong><p>{event.actorLabel} ／ {formatJstTimestamp(event.occurredAt)}</p><p style={{ whiteSpace: 'pre-wrap' }}>メモ：{event.note ?? 'なし'}／理由：{event.reason ?? 'なし'}</p><p>記録後：{event.held ? '保留中' : '保留なし'}／保留理由：{event.holdReason ?? 'なし'}／次回対応日：{event.nextActionDate ?? '未設定'}</p><details><summary>監査用の担当者ID</summary>{event.actorUserId}</details></li>)}</ol>
       {next !== null && <button type="button" disabled={busy} onClick={() => void moreHistory()}>次の50件の対応履歴</button>}

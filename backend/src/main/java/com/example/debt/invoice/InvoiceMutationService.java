@@ -41,6 +41,19 @@ public class InvoiceMutationService {
         return updated;
     }
 
+    @Transactional
+    public InvoiceState cancel(TenantUser user, UUID id, long version, String rawReason) {
+        String reason = reason(rawReason);
+        InvoiceState previous = mutable(user, id, version);
+        jdbc.sql("""
+                UPDATE invoice SET status='CANCELLED',version=version+1,cancelled_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+                WHERE tenant_id=:tenant AND id=:id AND version=:version
+                """).param("tenant", user.tenantId()).param("id", id).param("version", version).update();
+        InvoiceState cancelled = queries.get(user.tenantId(), id, false);
+        record(user, previous, cancelled, "CANCELLED", reason);
+        return cancelled;
+    }
+
     private InvoiceState mutable(TenantUser user, UUID id, long version) {
         if (jdbc.sql("SELECT id FROM app_user WHERE tenant_id=? AND id=? AND enabled FOR SHARE")
                 .params(user.tenantId(), user.userId()).query(UUID.class).optional().isEmpty()) {

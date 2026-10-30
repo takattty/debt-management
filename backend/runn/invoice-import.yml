@@ -310,6 +310,48 @@ steps:
       && current.res.body.items[0].snapshot.amount == 110000 && current.res.body.items[0].reason == '税込金額を訂正'
       && current.res.body.items[0].snapshot.issueDate == '0001-01-01' && current.res.body.items[0].snapshot.dueDate == '9999-12-31'
       && current.res.body.nextCursor == null
+  cancel:
+    api:
+      /api/invoices/{{ firstReceivable }}/cancel:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 1
+              reason: 重複請求を取消
+    test: current.res.status == 200 && current.res.body.status == 'CANCELLED' && current.res.body.version == 2
+      && current.res.body.outstandingAmount == 0 && current.res.body.amount == 110000 && current.res.body.cancelledAt != null
+  cancelledDetail:
+    api:
+      /api/invoices/{{ firstReceivable }}:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.body.status == 'CANCELLED' && current.res.body.amount == 110000
+  cancelledExcluded:
+    api:
+      /api/receivables?customerId={{ customerId }}:
+        get:
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id != firstReceivable
+  cancelledHistory:
+    api:
+      /api/invoices/{{ firstReceivable }}/history?cursor=1:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.body.items[0].operation == 'CANCELLED'
+      && current.res.body.items[0].reason == '重複請求を取消' && current.res.body.items[0].snapshot.amount == 110000
+  repeatCancel:
+    api:
+      /api/invoices/{{ firstReceivable }}/cancel:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 2
+              reason: 二重取消
+    test: current.res.status == 409 && current.res.body.code == 'INVOICE_NOT_ACTIVE'
   betaCsrf:
     beta:
       /api/csrf:
@@ -335,6 +377,17 @@ steps:
     bind:
       betaCookie: current.res.cookies.JSESSIONID.Value
     test: current.res.status == 204
+  betaSession:
+    beta:
+      /api/session:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    bind:
+      betaToken: current.res.body.csrfToken
+    test: current.res.status == 200
   noTenantLeak:
     beta:
       /api/receivables?customerId={{ customerId }}:
@@ -362,4 +415,17 @@ steps:
           headers:
             Cookie: JSESSIONID={{ betaCookie }}
           body: null
+    test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'
+  noCancelTenantLeak:
+    beta:
+      /api/invoices/{{ firstReceivable }}/cancel:
+        post:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-CSRF-TOKEN: '{{ betaToken }}'
+          body:
+            application/json:
+              version: 2
+              reason: 越境取消
     test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'

@@ -88,6 +88,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/payments/{paymentId}/allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a human-selected cash allocation with explicit fees
+         * @description ADMIN or ACCOUNTANT confirms this operation alone. Tenant comes from authentication. All invoice versions and the payment version are checked under shared locks. The whole operation, versions and audit commit atomically. Same requestId and canonical payload returns the original immutable result even after later changes; changing its payload returns IDEMPOTENCY_CONFLICT. Fees must be specified with positive total cash in the confirmation; change fees by reversing and confirming again. A payment can allocate across customers in the same tenant. Reversal requires exactly all original invoice IDs and their current versions, and reverses cash and fees together once.
+         */
+        post: operations["confirmAllocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/{paymentId}/allocations/{allocationId}/reversal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paymentId: string;
+                allocationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reverse every line of an original confirmation
+         * @description ADMIN or ACCOUNTANT confirms this operation alone. Tenant comes from authentication. All invoice versions and the payment version are checked under shared locks. The whole operation, versions and audit commit atomically. Same requestId and canonical payload returns the original immutable result even after later changes; changing its payload returns IDEMPOTENCY_CONFLICT. Fees must be specified with positive total cash in the confirmation; change fees by reversing and confirming again. A payment can allocate across customers in the same tenant. Reversal requires exactly all original invoice IDs and their current versions, and reverses cash and fees together once.
+         */
+        post: operations["reverseAllocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/payer-aliases": {
         parameters: {
             query?: never;
@@ -760,6 +805,60 @@ export interface components {
             items: components["schemas"]["ReceivableResponse"][];
             nextCursor: string | null;
         };
+        AllocationInvoiceVersion: {
+            /** Format: uuid */
+            invoiceId: string;
+            /** @description Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected. */
+            expectedInvoiceVersion: string;
+        };
+        AllocationConfirmLine: {
+            /** Format: uuid */
+            invoiceId: string;
+            /** @description Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected. */
+            expectedInvoiceVersion: string;
+            /** Format: int64 */
+            cashAmount: number;
+            /** Format: int64 */
+            feeAmount: number;
+        };
+        AllocationConfirmRequest: {
+            /** Format: uuid */
+            requestId: string;
+            /** @description Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected. */
+            expectedPaymentVersion: string;
+            /** @description Required explanation of 1 through 1000 code points after surrounding whitespace removal; controls and line separators are rejected. */
+            reason: string;
+            /** @description Each invoice occurs once. Each line has positive cash or explicit fee; total operation cash must be positive. */
+            lines: components["schemas"]["AllocationConfirmLine"][];
+        };
+        AllocationReverseRequest: {
+            /** Format: uuid */
+            requestId: string;
+            /** @description Exact nonnegative bigint decimal string; values above 9223372036854775807 are rejected. */
+            expectedPaymentVersion: string;
+            /** @description Required explanation of 1 through 1000 code points after surrounding whitespace removal; controls and line separators are rejected. */
+            reason: string;
+            invoices: components["schemas"]["AllocationInvoiceVersion"][];
+        };
+        AllocationOperationResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            paymentId: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @enum {string} */
+            kind: "CONFIRM" | "REVERSE";
+            /** Format: uuid */
+            reversesId: string | null;
+            /** @description Exact immutable bigint payment version as a decimal string. */
+            paymentVersion: string;
+            /** Format: uuid */
+            actorUserId: string;
+            reason: string;
+            /** Format: date-time */
+            occurredAt: string;
+        };
         PayerAliasCreateRequest: {
             /** @description Surrounding whitespace only is removed; 1 through 200 code points after stripping, using the payment CSV text rule. */
             payerName: string;
@@ -1280,6 +1379,101 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    confirmAllocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AllocationConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Immutable operation result; refresh payment/candidate and invoice reads for current balances and versions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllocationOperationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Payment, invoice or original confirmation not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Stale version, insufficient balance, inactive invoice, already reversed, version exhausted or request ID reused with different payload */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    reverseAllocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paymentId: string;
+                allocationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AllocationReverseRequest"];
+            };
+        };
+        responses: {
+            /** @description Immutable operation result; refresh payment/candidate and invoice reads for current balances and versions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllocationOperationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Payment, invoice or original confirmation not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Stale version, insufficient balance, inactive invoice, already reversed, version exhausted or request ID reused with different payload */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     listPayerAliases: {

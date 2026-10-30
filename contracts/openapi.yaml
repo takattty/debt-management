@@ -31,6 +31,8 @@ tags:
   description: Tenant-scoped invoice facts and bounded receivables views
 - name: Imports
   description: Immutable tenant-scoped CSV previews and explicit all-or-nothing confirmation
+- name: PaymentImports
+  description: Payment CSV preview contract; implementation is delivered by the dependent runtime slice
 paths:
   /api/invoices/{id}:
     parameters:
@@ -279,6 +281,57 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ApiError'}
+  /api/imports/payments/template:
+    get:
+      tags: [PaymentImports]
+      operationId: downloadPaymentImportTemplate
+      summary: Download the UTF-8 BOM payment CSV header
+      description: Header only. Columns are transaction_id,transfer_date,payer_name,amount. Transaction IDs and payer names strip surrounding whitespace only, without case, width or Unicode normalization. Transfer dates are strict YYYY-MM-DD with year 0001 through 9999; amount is a positive integer no greater than 9007199254740991 yen. Zero, outgoing payments and refunds are outside the initial scope.
+      responses:
+        '200':
+          description: Fixed-format CSV template
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+              description: Attachment filename payments-template.csv
+          content:
+            text/csv:
+              schema: {type: string, format: binary}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/imports/payments/preview:
+    post:
+      tags: [PaymentImports]
+      operationId: previewPaymentImport
+      summary: Store a payment CSV preview without creating any payment
+      description: Fictional bank receipts, with tenant-unique transaction IDs permanently reserved by confirmed payments, including after allocation reversal. Repeated IDs within the file or existing payments invalidate the entire batch. Stores an immutable snapshot for 24 hours without changing payment facts or audits. Preview does not reserve transaction IDs or semantic content. Confirmation is unavailable in this preparatory slice. Maximum 10MiB and 10000 data records.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201':
+          description: Immutable valid or invalid preview; business rows remain unchanged
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImportBatchResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '413':
+          description: Multipart upload exceeds its bounded size
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
   /api/imports/{id}:
     parameters:
     - {$ref: '#/components/parameters/ImportId'}
@@ -305,13 +358,39 @@ paths:
     get:
       tags: [Imports]
       operationId: listImportRows
-      summary: Read an immutable preview page in original record order
+      summary: Read an immutable customer or invoice preview page in original record order
+      description: Payment batches use payment-rows and return 409 IMPORT_KIND_UNSUPPORTED here. Other tenants return 404 before kind dispatch.
       responses:
         '200':
           description: At most limit rows; nextCursor is zero at the end
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ImportRowsPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/ImportNotFound'}
+        '409':
+          description: IMPORT_KIND_UNSUPPORTED; use payment-rows for payment batches.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+  /api/imports/{id}/payment-rows:
+    parameters:
+    - {$ref: '#/components/parameters/ImportId'}
+    - {$ref: '#/components/parameters/ImportCursor'}
+    - {$ref: '#/components/parameters/ImportLimit'}
+    get:
+      tags: [PaymentImports]
+      operationId: listPaymentImportRows
+      summary: Read immutable payment preview rows in original record order
+      description: Payment batches only. Other kinds and other tenants return 404. Original input is retained for invalid fields; valid amounts are canonical integer strings.
+      responses:
+        '200':
+          description: At most limit rows; nextCursor is zero at the end
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaymentImportRowsPage'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -323,7 +402,7 @@ paths:
       tags: [Imports]
       operationId: confirmImport
       summary: Confirm the immutable customer or invoice snapshot atomically
-      description: Accepts only the preview version, never replacement rows. Customer or invoice facts, initial invoice revisions, audits and batch confirmation share one transaction. Invoice customer versions are revalidated under row locks. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
+      description: Payment confirmation is unavailable in this preparatory slice and returns IMPORT_KIND_UNSUPPORTED for the authenticated tenant. Accepts only the preview version, never replacement rows. Customer or invoice facts, initial invoice revisions, audits and batch confirmation share one transaction. Invoice customer versions are revalidated under row locks. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
       security:
       - sessionAuth: []
         csrfToken: []
@@ -876,7 +955,7 @@ components:
       required: [id, kind, status, version, rowCount, errorCount, createdAt, expiresAt, confirmedAt, confirmedCount]
       properties:
         id: {type: string, format: uuid}
-        kind: {type: string, enum: [CUSTOMER, INVOICE]}
+        kind: {type: string, enum: [CUSTOMER, INVOICE, PAYMENT]}
         status: {type: string, enum: [PREVIEW_VALID, PREVIEW_INVALID, CONFIRMED]}
         version: {type: integer, format: int64, minimum: 0}
         rowCount: {type: integer, minimum: 0, maximum: 10000}
@@ -907,6 +986,29 @@ components:
           nullable: true
           description: Invoice preview value, canonical integer text when valid; original input when invalid. Not a mutable balance.
         valid: {type: boolean}
+    PaymentImportRowResponse:
+      type: object
+      required: [recordNumber, rowNumber, transactionId, transferDate, payerName, amount, valid]
+      properties:
+        recordNumber: {type: integer, minimum: 1, maximum: 10000}
+        rowNumber: {type: integer, minimum: 2}
+        transactionId: {type: string, maxLength: 2048}
+        transferDate: {type: string, maxLength: 2048}
+        payerName: {type: string, maxLength: 2048}
+        amount:
+          type: string
+          maxLength: 2048
+          description: Canonical positive integer JPY when valid; original input when invalid. Not a mutable balance.
+        valid: {type: boolean}
+    PaymentImportRowsPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/PaymentImportRowResponse'}
+        nextCursor: {type: integer, minimum: 0}
     ImportErrorResponse:
       type: object
       required: [errorNumber, rowNumber, field, inputValue, inputTruncated, reasonCode, reason, correction]

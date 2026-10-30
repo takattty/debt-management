@@ -168,6 +168,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/imports/payments/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the UTF-8 BOM payment CSV header
+         * @description Header only. Columns are transaction_id,transfer_date,payer_name,amount. Transaction IDs and payer names strip surrounding whitespace only, without case, width or Unicode normalization. Transfer dates are strict YYYY-MM-DD with year 0001 through 9999; amount is a positive integer no greater than 9007199254740991 yen. Zero, outgoing payments and refunds are outside the initial scope.
+         */
+        get: operations["downloadPaymentImportTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/payments/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Store a payment CSV preview without creating any payment
+         * @description Fictional bank receipts, with tenant-unique transaction IDs permanently reserved by confirmed payments, including after allocation reversal. Repeated IDs within the file or existing payments invalidate the entire batch. Stores an immutable snapshot for 24 hours without changing payment facts or audits. Preview does not reserve transaction IDs or semantic content. Confirmation is unavailable in this preparatory slice. Maximum 10MiB and 10000 data records.
+         */
+        post: operations["previewPaymentImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports/{id}": {
         parameters: {
             query?: never;
@@ -206,8 +246,39 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Read an immutable preview page in original record order */
+        /**
+         * Read an immutable customer or invoice preview page in original record order
+         * @description Payment batches use payment-rows and return 409 IMPORT_KIND_UNSUPPORTED here. Other tenants return 404 before kind dispatch.
+         */
         get: operations["listImportRows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{id}/payment-rows": {
+        parameters: {
+            query?: {
+                /** @description Last record or error number from the preceding page; zero starts the snapshot */
+                cursor?: components["parameters"]["ImportCursor"];
+                /** @description Maximum items per page */
+                limit?: components["parameters"]["ImportLimit"];
+            };
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read immutable payment preview rows in original record order
+         * @description Payment batches only. Other kinds and other tenants return 404. Original input is retained for invalid fields; valid amounts are canonical integer strings.
+         */
+        get: operations["listPaymentImportRows"];
         put?: never;
         post?: never;
         delete?: never;
@@ -230,7 +301,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm the immutable customer or invoice snapshot atomically
-         * @description Accepts only the preview version, never replacement rows. Customer or invoice facts, initial invoice revisions, audits and batch confirmation share one transaction. Invoice customer versions are revalidated under row locks. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
+         * @description Payment confirmation is unavailable in this preparatory slice and returns IMPORT_KIND_UNSUPPORTED for the authenticated tenant. Accepts only the preview version, never replacement rows. Customer or invoice facts, initial invoice revisions, audits and batch confirmation share one transaction. Invoice customer versions are revalidated under row locks. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
          */
         post: operations["confirmImport"];
         delete?: never;
@@ -589,7 +660,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            kind: "CUSTOMER" | "INVOICE";
+            kind: "CUSTOMER" | "INVOICE" | "PAYMENT";
             /** @enum {string} */
             status: "PREVIEW_VALID" | "PREVIEW_INVALID" | "CONFIRMED";
             /** Format: int64 */
@@ -620,6 +691,20 @@ export interface components {
             /** @description Invoice preview value, canonical integer text when valid; original input when invalid. Not a mutable balance. */
             amount?: string | null;
             valid: boolean;
+        };
+        PaymentImportRowResponse: {
+            recordNumber: number;
+            rowNumber: number;
+            transactionId: string;
+            transferDate: string;
+            payerName: string;
+            /** @description Canonical positive integer JPY when valid; original input when invalid. Not a mutable balance. */
+            amount: string;
+            valid: boolean;
+        };
+        PaymentImportRowsPage: {
+            items: components["schemas"]["PaymentImportRowResponse"][];
+            nextCursor: number;
         };
         ImportErrorResponse: {
             errorNumber: number;
@@ -1102,6 +1187,69 @@ export interface operations {
             };
         };
     };
+    downloadPaymentImportTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fixed-format CSV template */
+            200: {
+                headers: {
+                    /** @description Attachment filename payments-template.csv */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    previewPaymentImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Immutable valid or invalid preview; business rows remain unchanged */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Multipart upload exceeds its bounded size */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     getImportBatch: {
         parameters: {
             query?: never;
@@ -1153,6 +1301,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportRowsPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ImportNotFound"];
+            /** @description IMPORT_KIND_UNSUPPORTED; use payment-rows for payment batches. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listPaymentImportRows: {
+        parameters: {
+            query?: {
+                /** @description Last record or error number from the preceding page; zero starts the snapshot */
+                cursor?: components["parameters"]["ImportCursor"];
+                /** @description Maximum items per page */
+                limit?: components["parameters"]["ImportLimit"];
+            };
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description At most limit rows; nextCursor is zero at the end */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentImportRowsPage"];
                 };
             };
             400: components["responses"]["BadRequest"];

@@ -88,6 +88,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/payer-aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active manual payer correspondences in stable ID order
+         * @description ADMIN and ACCOUNTANT may read all active pairs in their authenticated tenant. Identical names may correspond to multiple customers; this endpoint does not choose a candidate or change any balance.
+         */
+        get: operations["listPayerAliases"];
+        put?: never;
+        /**
+         * Register a manual payer-name to customer correspondence
+         * @description ADMIN and ACCOUNTANT may register a pair for an existing customer in the authenticated tenant. Uses the payment CSV text rule, stripping surrounding whitespace only; case, width, kana and Unicode normalization are never applied. The stripped name is 1 through 200 code points; controls, line separators and malformed Unicode are rejected before stripping. An active identical pair returns 409 PAYER_ALIAS_EXISTS. A deactivated pair may be registered again with a new ID, retaining the original row and audit.
+         */
+        post: operations["createPayerAlias"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payer-aliases/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the original correspondence including its deactivation history
+         * @description Retains the original name, customer and registering actor/time after deactivation. Other tenants return 404.
+         */
+        get: operations["getPayerAlias"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payer-aliases/{id}/deactivation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deactivate an incorrect correspondence with its current version and reason
+         * @description ADMIN and ACCOUNTANT may deactivate once, atomically saving actor/time/reason and audit while retaining the original correspondence. A stale version or repeat returns 409 VERSION_CONFLICT. No physical deletion, reactivation or allocation is performed.
+         */
+        post: operations["deactivatePayerAlias"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/payments": {
         parameters: {
             query?: never;
@@ -672,6 +740,42 @@ export interface components {
             items: components["schemas"]["ReceivableResponse"][];
             nextCursor: string | null;
         };
+        PayerAliasCreateRequest: {
+            /** @description Surrounding whitespace only is removed; 1 through 200 code points after stripping, using the payment CSV text rule. */
+            payerName: string;
+            /** Format: uuid */
+            customerId: string;
+        };
+        PayerAliasDeactivateRequest: {
+            /** Format: int64 */
+            version: number;
+            /** @description Required explanation, 1 through 500 code points after stripping; controls and line separators are rejected before stripping. */
+            reason: string;
+        };
+        PayerAliasResponse: {
+            /** Format: uuid */
+            id: string;
+            payerName: string;
+            /** Format: uuid */
+            customerId: string;
+            active: boolean;
+            /** Format: int64 */
+            version: number;
+            /** Format: uuid */
+            createdByUserId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            deactivatedByUserId: string | null;
+            /** Format: date-time */
+            deactivatedAt: string | null;
+            deactivationReason: string | null;
+        };
+        PayerAliasesPage: {
+            items: components["schemas"]["PayerAliasResponse"][];
+            /** Format: uuid */
+            nextCursor: string | null;
+        };
         PaymentResponse: {
             /** Format: uuid */
             id: string;
@@ -1104,6 +1208,159 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listPayerAliases: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active correspondences only; nextCursor is null at the end */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayerAliasesPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createPayerAlias: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayerAliasCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Correspondence and registration audit saved atomically */
+            201: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayerAliasResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Customer does not exist in the authenticated tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Active payer/customer pair already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getPayerAlias: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active or deactivated correspondence */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayerAliasResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Correspondence not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deactivatePayerAlias: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayerAliasDeactivateRequest"];
+            };
+        };
+        responses: {
+            /** @description Deactivated correspondence */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayerAliasResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Correspondence not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Stale version or already deactivated */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     listPayments: {

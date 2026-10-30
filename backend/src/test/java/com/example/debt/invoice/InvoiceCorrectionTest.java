@@ -36,6 +36,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.json.JsonMapper;
@@ -184,8 +185,8 @@ class InvoiceCorrectionTest {
 
     @Test
     void eligibilityDenialFixtureVerifiesPortPathAndKeepsInvoiceAndHistoryUnchanged() throws Exception {
-        // No real Settlement ledger exists yet; this tests the rejection port, not a real allocated invoice.
-        doThrow(new InvoiceConflict("INVOICE_ALLOCATED")).when(eligibility).requireUnallocated(user.tenantId(), invoice);
+        // Port rejection fixture complements LedgerInvoiceMutationTest, which uses real allocations.
+        doThrow(new InvoiceConflict("INVOICE_ALLOCATED")).when((InvoiceMutationEligibility) AopTestUtils.getUltimateTargetObject(eligibility)).requireUnallocated(user.tenantId(), invoice);
         mvc.perform(put("/api/invoices/" + invoice).session(alpha).with(csrf().asHeader()).contentType("application/json")
                 .content(body(0, 110000L, "訂正"))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INVOICE_ALLOCATED"));
         assertThat(queries.get(user.tenantId(), invoice, false).version()).isZero();
@@ -263,7 +264,7 @@ class InvoiceCorrectionTest {
         var beta = AuthFixtures.login(mvc, "beta-admin@example.test");
         mvc.perform(post("/api/invoices/" + invoice + "/cancel").session(beta).with(csrf().asHeader()).contentType("application/json")
                 .content("{\"version\":0,\"reason\":\"越境\"}")).andExpect(status().isNotFound());
-        doThrow(new InvoiceConflict("INVOICE_ALLOCATED")).when(eligibility).requireUnallocated(user.tenantId(), invoice);
+        doThrow(new InvoiceConflict("INVOICE_ALLOCATED")).when((InvoiceMutationEligibility) AopTestUtils.getUltimateTargetObject(eligibility)).requireUnallocated(user.tenantId(), invoice);
         mvc.perform(post("/api/invoices/" + invoice + "/cancel").session(alpha).with(csrf().asHeader()).contentType("application/json")
                 .content("{\"version\":0,\"reason\":\"取消\"}")).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INVOICE_ALLOCATED"));
         assertThat(queries.get(user.tenantId(), invoice, false).status()).isEqualTo("ACTIVE");

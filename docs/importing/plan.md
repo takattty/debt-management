@@ -1,6 +1,6 @@
 # Receivables implementation plan — Issue #3
 
-Status: 段階導入中。CSV codecは #23、受動ImportBatch metadata/DB制約は #25で統合済み。顧客CSVのtemplate/preview/保存状態・行・error取得/downloadを最初のAPI sliceとし、業務confirmと画面を後続sliceへ分ける。Issue #1/#3、requirements R01〜05/R12/R18〜22、EX-I01〜11、ADR-0001/0002を根拠とする。
+Status: 段階導入中。CSV codecは #23、受動ImportBatch metadata/DB制約は #25で統合済み。顧客CSVのtemplate/preview/保存状態・行・error取得/downloadを最初のAPI slice、原子的confirmを次のsliceとし、画面は後続sliceへ分ける。Issue #1/#3、requirements R01〜05/R12/R18〜22、EX-I01〜11、ADR-0001/0002を根拠とする。
 前提: #2のemail session/role/tenant/auditが成立済み。全PRで既存BE/FE単体・統合・runn API・E2Eを含む必須CIと同SHA独立レビューを維持する。
 
 ## 合意済みの業務判断
@@ -70,13 +70,15 @@ DBはbigint、Javaはchecked integer。APIの各金額はJSで正確に扱える
 
 ## 原子的confirmと再試行
 
-`PREVIEW_VALID / PREVIEW_INVALID → CONFIRMED`。invalid/期限切れ/参照競合の場合は新previewを促し、正常行だけを取り込まない。
+`PREVIEW_VALID → CONFIRMED`。PREVIEW_INVALIDは確定不可。invalid/期限切れ/参照競合の場合は新previewを促し、正常行だけを取り込まない。
 confirmはbatch rowをlockし、同tenant/有効actor・version・期限・errorゼロを確認する。同tenantのadmin/accountantがconfirmでき、createdByとconfirmedByを分けて保存する。customer版とinvoice一意性を再検証する。
 顧客がpreview後に改名されていた場合も、利用者が見た内容と違うため409で新previewへ誘導する（EX-I06）。
 業務行、invoice initial revision、audit、batch CONFIRMEDを同一transactionで保存する。audit失敗を含む例外では全rollbackする。
 同batch confirm再送は元の結果を200で返す。同内容の別batchを並行confirmした場合はDB一意制約で一方のみ成功し、他方へ既存取込IDを返す。
 別内容のbatchでも同じinvoiceNumberを競合登録した場合は一方のみ成功し、他方は全rollbackして行errorへ戻す。
 rollback後の競合error保存は別の明示transactionで行う。失敗の記録保存エラーで元batchが確定したように見せない。
+顧客confirmの競合時は業務transactionのrollback完了後、別beanのREQUIRES_NEWで同じbatchをlockする。まだ同じversionのPREVIEW_VALIDの場合だけerrorを保存し、PREVIEW_INVALID/version+1へ遷移する。typed row snapshotは変更しない。失敗記録の保存も失敗すれば元のpreviewを残してエラーを返し、成功扱いにしない。duplicate re-uploadはoriginalBatchIdから元の確定結果を参照できる。
+顧客のINSERT順はCSV順と分離し、正規の顧客コード順へ固定する。逆順のCSVを同時確定してもunique indexの取得順をそろえ、lock cycleを防ぐ。元のpreview順・物理行・fingerprintは変更しない。BEFORE INSERT triggerで実INSERTの重なりを強制し、同一内容と異なる内容の逆順CSVの双方を実PostgreSQLで検証する。
 UIはネットワーク応答喪失時にbatch状態GETで結果を確認し、盲目的に新batchを作らない。二重click無効化は補助に留める。
 
 ## エラー一覧downloadと修正UX

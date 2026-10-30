@@ -41,6 +41,7 @@ class CustomerImportApiTest {
     private final JsonMapper json = JsonMapper.builder().build();
     private static final Instant NOW = Instant.parse("2026-10-29T12:00:00Z");
     private MockHttpSession alpha;
+    private final String confirmCode = "HTTP-" + UUID.randomUUID();
 
     @BeforeEach
     void loginWithDedicatedImportClock() throws Exception {
@@ -50,6 +51,9 @@ class CustomerImportApiTest {
 
     @AfterEach
     void removeOnlyTheseImportFixturesBeforeOtherSuitesDeleteTheirUsers() {
+        jdbc.sql("DELETE FROM audit_event WHERE tenant_id=? AND entity_id IN (SELECT id FROM customer WHERE tenant_id=? AND code=?)")
+                .params(AuthFixtures.ALPHA, AuthFixtures.ALPHA, confirmCode).update();
+        jdbc.sql("DELETE FROM customer WHERE tenant_id=? AND code=?").params(AuthFixtures.ALPHA, confirmCode).update();
         for (String table : List.of("import_error", "import_row", "import_batch")) {
             jdbc.sql("DELETE FROM " + table + " WHERE tenant_id IN (?,?)").params(AuthFixtures.ALPHA, AuthFixtures.BETA).update();
         }
@@ -156,6 +160,71 @@ class CustomerImportApiTest {
         } finally {
             jdbc.sql("DELETE FROM customer WHERE id IN (?,?)").params(alphaCustomer, betaCustomer).update();
         }
+    }
+
+    @Test
+    void confirmsPersistedRowsAndRecoversSameResultAfterLostResponseAndExpiry() throws Exception {
+        UUID id = preview(CustomerCsv.HEADER + confirmCode + ",架空HTTP取込\n");
+        var result = mvc.perform(post("/api/imports/" + id + "/confirm").session(alpha).with(csrf().asHeader())
+                        .contentType("application/json").content("{\"version\":0}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.confirmedCount").value(1)).andExpect(jsonPath("$.version").value(1)).andReturn();
+        when(clock.instant()).thenReturn(NOW.plusSeconds(86400));
+        var retry = mvc.perform(post("/api/imports/" + id + "/confirm").session(alpha).with(csrf().asHeader())
+                        .contentType("application/json").content("{\"version\":0}"))
+                .andExpect(status().isOk()).andReturn();
+        assertThat(retry.getResponse().getContentAsString()).isEqualTo(result.getResponse().getContentAsString());
+        mvc.perform(get("/api/imports/" + id).session(alpha)).andExpect(jsonPath("$.confirmedCount").value(1));
+        assertThat(jdbc.sql("SELECT count(*) FROM customer WHERE tenant_id=? AND code=?")
+                .params(AuthFixtures.ALPHA, confirmCode).query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void confirmationRejectsCsrfReplacementRowsStaleVersionAndOtherTenant() throws Exception {
+        UUID id = preview(CustomerCsv.HEADER + confirmCode + ",架空HTTP取込\n");
+        mvc.perform(post("/api/imports/" + id + "/confirm").session(alpha).contentType("application/json").content("{\"version\":0}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALID"));
+        for (String body : List.of("{\"version\":0,\"rows\":[]}", "{\"version\":\"0\"}", "{\"version\":-1}")) {
+            mvc.perform(post("/api/imports/" + id + "/confirm").session(alpha).with(csrf().asHeader())
+                    .contentType("application/json").content(body)).andExpect(status().isBadRequest());
+        }
+        mvc.perform(post("/api/imports/" + id + "/confirm").session(alpha).with(csrf().asHeader())
+                        .contentType("application/json").content("{\"version\":1}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("VERSION_CONFLICT"));
+        var beta = AuthFixtures.login(mvc, "beta-admin@example.test");
+        mvc.perform(post("/api/imports/" + id + "/confirm").session(beta).with(csrf().asHeader())
+                        .contentType("application/json").content("{\"version\":0}"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void duplicateReuploadShowsOriginalResultAndNeverCreatesAnotherCustomer() throws Exception {
+        String csv = CustomerCsv.HEADER + confirmCode + ",架空HTTP取込\n";
+        UUID original = preview(csv);
+        mvc.perform(post("/api/imports/" + original + "/confirm").session(alpha).with(csrf().asHeader())
+                .contentType("application/json").content("{\"version\":0}")).andExpect(status().isOk());
+        UUID duplicate = preview(csv);
+        mvc.perform(get("/api/imports/" + duplicate).session(alpha))
+                .andExpect(jsonPath("$.status").value("PREVIEW_INVALID"))
+                .andExpect(jsonPath("$.originalBatchId").value(original.toString()));
+        mvc.perform(post("/api/imports/" + duplicate + "/confirm").session(alpha).with(csrf().asHeader())
+                        .contentType("application/json").content("{\"version\":0}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("IMPORT_ALREADY_CONFIRMED"))
+                .andExpect(jsonPath("$.errors[0].field").value("batchId"))
+                .andExpect(jsonPath("$.errors[0].message").value(original.toString()));
+        assertThat(jdbc.sql("SELECT count(*) FROM customer WHERE tenant_id=? AND code=?")
+                .params(AuthFixtures.ALPHA, confirmCode).query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void storedPreviewTimestampPrecisionDoesNotChangeBetweenCreationAndGet() throws Exception {
+        when(clock.instant()).thenReturn(NOW.plusNanos(123456789));
+        var created = mvc.perform(multipart("/api/imports/customers/preview")
+                        .file(file(CustomerCsv.HEADER + "P-" + UUID.randomUUID() + ",架空precision\n"))
+                        .session(alpha).with(csrf().asHeader())).andExpect(status().isCreated()).andReturn();
+        var body = json.readTree(created.getResponse().getContentAsString());
+        var fetched = mvc.perform(get("/api/imports/" + body.get("id").asString()).session(alpha)).andExpect(status().isOk()).andReturn();
+        assertThat(json.readTree(fetched.getResponse().getContentAsString())).isEqualTo(body);
     }
 
     private UUID preview(String csv) throws Exception {

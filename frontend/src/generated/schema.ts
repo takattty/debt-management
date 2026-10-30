@@ -92,6 +92,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/imports/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the immutable customer snapshot atomically
+         * @description Accepts only the preview version, never replacement rows. Customers, audits and batch confirmation share one transaction. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
+         */
+        post: operations["confirmImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports/{id}/errors": {
         parameters: {
             query?: {
@@ -323,6 +346,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ImportConfirmRequest: {
+            /** Format: int64 */
+            version: number;
+        };
         ImportBatchResponse: {
             /** Format: uuid */
             id: string;
@@ -341,6 +368,11 @@ export interface components {
             /** Format: date-time */
             confirmedAt: string | null;
             confirmedCount: number;
+            /**
+             * Format: uuid
+             * @description An already-confirmed batch in this tenant with the same semantic content; absent or null when none exists. The current confirmed batch does not refer to itself.
+             */
+            originalBatchId?: string | null;
         };
         ImportRowResponse: {
             recordNumber: number;
@@ -650,6 +682,46 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["ImportNotFound"];
+        };
+    };
+    confirmImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Server-issued batch ID */
+                id: components["parameters"]["ImportId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Confirmed batch result, including idempotent retries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ImportNotFound"];
+            /** @description IMPORT_INVALID, IMPORT_EXPIRED, VERSION_CONFLICT, IMPORT_REFERENCE_CONFLICT or IMPORT_ALREADY_CONFIRMED. For confirmed content in a different batch, errors contains field batchId and message with the original UUID. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     listImportErrors: {

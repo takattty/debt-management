@@ -40,7 +40,7 @@ Logout の POST は runn の media type 要件に合わせて空の JSON object 
 [公式 cookie example](https://github.com/k1LoW/runn/blob/main/testdata/book/cookie_in_requests_automatically.yml) に従う。
 Binary と checksum は `scripts/runn.sh` で固定する。
 
-`customer-import.yml`は顧客CSVのmultipart upload、部分登録ゼロ、行のページ取得、全error/download、修正後の新previewと旧snapshot保持を実HTTPで検証する。現段階のpreviewは業務行を登録しない。後続のconfirm sliceで原子的確定・二重送信・再取込拒否を追加する。
+`customer-import.yml`は顧客CSVのmultipart upload、部分登録ゼロ、行のページ取得、全error/download、修正後の新previewと旧snapshot保持を実HTTPで検証する。previewは業務行を登録せず、別の明示confirmで全件登録する。原子的確定・応答喪失時の再送・順序/改行を変えた再取込拒否・元の取込結果の参照も検証する。
 `scripts/runn.sh run`は`prepare-runn-fixtures.py`で実行ごとにUUIDの架空コードを持つCSVをignoredな`work/runn-customer-*.csv`へ作る。追加のexec scopeや既存DBの初期化を必要としない。固定ファイルの再使用で過去の登録が新しい検証へ混入しないようにする。
 
 CIのqualityはbootstrapの部分検証fallbackを廃止し、scripts/verify.shを必須実行する。verifier消失や非実行権限を部分成功に置き換えない。

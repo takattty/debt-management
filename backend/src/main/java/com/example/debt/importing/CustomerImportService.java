@@ -30,7 +30,8 @@ public class CustomerImportService {
                 preview.fingerprint(), preview.errors().isEmpty() ? ImportBatch.Status.PREVIEW_VALID : ImportBatch.Status.PREVIEW_INVALID,
                 0, user.userId(), now, now.plus(Duration.ofHours(24)), null, null, preview.rows().size(), preview.errors().size());
         store.save(batch, preview);
-        return batch;
+        // Return the database's timestamp precision consistently with every later GET.
+        return store.get(user.tenantId(), batch.id(), false);
     }
 
     Set<String> existingCodes(UUID tenant, Set<String> codes) {

@@ -27,6 +27,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invoices/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an active unallocated invoice while retaining its facts and number
+         * @description Requires a reason and current version. Appends a cancellation revision and audit atomically. The original number remains permanently reserved and cancelled invoices are excluded from receivables. A repeat cancellation is rejected.
+         */
+        post: operations["cancelInvoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/invoices/{id}/history": {
         parameters: {
             query?: never;
@@ -448,6 +470,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        InvoiceCancelRequest: {
+            /** Format: int64 */
+            version: number;
+            reason: string;
+        };
         InvoiceCorrectionRequest: {
             /** Format: int64 */
             version: number;
@@ -832,6 +859,45 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["InvoiceNotFound"];
             /** @description VERSION_CONFLICT, INVOICE_NOT_ACTIVE or INVOICE_ALLOCATED; reload or reverse the active settlement first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    cancelInvoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoiceCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Cancelled invoice with zero outstanding amount and retained original amount */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["InvoiceNotFound"];
+            /** @description VERSION_CONFLICT, INVOICE_NOT_ACTIVE or INVOICE_ALLOCATED */
             409: {
                 headers: {
                     [name: string]: unknown;

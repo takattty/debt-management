@@ -80,6 +80,40 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ApiError'}
+  /api/invoices/{id}/cancel:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    post:
+      tags: [Invoices]
+      operationId: cancelInvoice
+      summary: Cancel an active unallocated invoice while retaining its facts and number
+      description: Requires a reason and current version. Appends a cancellation revision and audit atomically. The original number remains permanently reserved and cancelled invoices are excluded from receivables. A repeat cancellation is rejected.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InvoiceCancelRequest'}
+      responses:
+        '200':
+          description: Cancelled invoice with zero outstanding amount and retained original amount
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InvoiceResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
+        '409':
+          description: VERSION_CONFLICT, INVOICE_NOT_ACTIVE or INVOICE_ALLOCATED
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
   /api/invoices/{id}/history:
     parameters:
     - name: id
@@ -729,6 +763,13 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
   schemas:
+    InvoiceCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [version, reason]
+      properties:
+        version: {type: integer, format: int64, minimum: 0}
+        reason: {type: string, minLength: 1, maxLength: 1000}
     InvoiceCorrectionRequest:
       type: object
       additionalProperties: false

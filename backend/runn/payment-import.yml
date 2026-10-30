@@ -127,19 +127,40 @@ steps:
           body:
             application/json: {version: 0}
     test: current.res.status == 200 && compare(current.res.body, steps.confirm.res.body)
+  firstPaymentSearch:
+    bind:
+      firstPageSuffix: '""'
   payments:
+    loop:
+      count: 10000
+      interval: 0
+      until: 'current.res.status == 200 && (len(firstMatches) == 1 || current.res.body.nextCursor == null)'
     api:
-      /api/payments?limit=1:
+      /api/payments?dateFrom=0001-01-01&dateTo=0001-01-01&limit=1{{ firstPageSuffix }}:
         get: {body: null}
     bind:
-      nextPayment: current.res.body.nextCursor
-      firstId: current.res.body.items[0].id
-    test: current.res.status == 200 && len(current.res.body.items) == 1 && nextPayment != null && current.res.body.items[0].amount == current.res.body.items[0].unallocatedAmount && current.res.body.items[0].createdByUserId != null && current.res.body.items[0].transferDate == '0001-01-01' && current.res.body.items[0].sourceBatchId == good
+      firstMatches: 'filter(current.res.body.items, {#.sourceBatchId == good && #.transactionId == steps.rows.res.body.items[0].transactionId})'
+      firstPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+  ownFirstPayment:
+    bind:
+      firstId: firstMatches[0].id
+    test: len(firstMatches) == 1 && firstMatches[0].amount == 100000 && firstMatches[0].unallocatedAmount == 100000 && firstMatches[0].createdByUserId != null && firstMatches[0].payerName == '架空入金A' && firstMatches[0].transferDate == '0001-01-01' && firstMatches[0].sourceBatchId == good
+  nextPaymentSearch:
+    bind:
+      nextPageSuffix: '""'
   nextPayment:
+    loop:
+      count: 10000
+      interval: 0
+      until: 'current.res.status == 200 && (len(nextMatches) == 1 || current.res.body.nextCursor == null)'
     api:
-      /api/payments?limit=1&cursor={{ nextPayment }}:
+      /api/payments?dateFrom=9999-12-31&dateTo=9999-12-31&limit=1{{ nextPageSuffix }}:
         get: {body: null}
-    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id != firstId && current.res.body.items[0].transferDate == '9999-12-31' && current.res.body.items[0].sourceBatchId == good
+    bind:
+      nextMatches: 'filter(current.res.body.items, {#.sourceBatchId == good && #.transactionId == steps.next.res.body.items[0].transactionId})'
+      nextPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+  ownNextPayment:
+    test: len(nextMatches) == 1 && nextMatches[0].id != firstId && nextMatches[0].amount == 200000 && nextMatches[0].unallocatedAmount == 200000 && nextMatches[0].createdByUserId != null && nextMatches[0].payerName == '架空入金B' && nextMatches[0].transferDate == '9999-12-31' && nextMatches[0].sourceBatchId == good
   invalidConfirm:
     api:
       /api/imports/{{ bad }}/confirm:

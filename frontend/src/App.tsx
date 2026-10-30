@@ -102,7 +102,7 @@ function Workspace() {
 
   return <div className="app-shell">
     <aside className="sidebar">
-      <a className="brand" href="/" aria-label="債権管理 ホーム"><span className="brand-mark">債</span><span>債権管理<small>RECEIVABLES WORKSPACE</small></span></a>
+      <a className="brand" href={busy ? undefined : "/"} role={busy ? "link" : undefined} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} onClick={(event) => { if (busy) event.preventDefault(); }} aria-label="債権管理 ホーム"><span className="brand-mark">債</span><span>債権管理<small>RECEIVABLES WORKSPACE</small></span></a>
       <p className="nav-caption">WORKSPACE</p>
       <button className={page === 'customers' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => setPage('customers')}><span aria-hidden="true">▦</span> 顧客管理</button>
       {session && <button className={page === 'imports' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => { setError(''); setNotice(''); setPage('imports'); }}>顧客CSV取込</button>}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { formatJstTimestamp } from './timestamp-presentation';
-import { api, ApiError, type ImportBatch, type ImportError, type ImportRow, type Session } from './api';
+import { api, ApiError, type ImportBatch, type ImportError, type ImportRow, type PaymentImportRow, type Session } from './api';
 
 type Props = {
   kind?: ImportBatch['kind'];
@@ -22,10 +22,18 @@ function saveCsv(blob: Blob, filename: string) {
 
 export default function CsvImportPanel({ kind = 'CUSTOMER', confirmationEnabled = true, session, onSessionExpired, onBusyChange, onConfirmed, onShowRecords }: Props) {
   const invoice = kind === 'INVOICE';
-  const recordName = invoice ? '請求' : '顧客';
+  const payment = kind === 'PAYMENT';
+  const settings = {
+    CUSTOMER: { recordName: '顧客', header: 'customer_code,customer_name', description: '新規顧客を一括登録します。既存顧客は更新しません。', format: '顧客コードは50文字、顧客名は200文字まで。前後の空白は個別登録と同様に除きます。', filename: 'customers-template.csv', template: api.downloadCustomerImportTemplate, preview: api.previewCustomerImport },
+    INVOICE: { recordName: '請求', header: 'customer_code,invoice_number,issue_date,due_date,amount', description: '顧客を先に登録してください。請求書番号は変更できず、取消後も再利用できません。', format: '日付はYYYY-MM-DD、金額は税込の正の円整数、支払期日は請求日以降です。', filename: 'invoices-template.csv', template: api.downloadInvoiceImportTemplate, preview: api.previewInvoiceImport },
+    PAYMENT: { recordName: '入金', header: 'transaction_id,transfer_date,payer_name,amount', description: '受取入金の事実を確認します。取引IDは契約企業内で一意とし、一度使うと再利用できません。', format: '振込日はYYYY-MM-DD、金額は1〜9,007,199,254,740,991円の整数です。0円・出金・返金は対象外です。振込名義は前後空白のみ除きます。架空銀行明細用の固定形式で、銀行固有のCSV形式ではありません。', filename: 'payments-template.csv', template: api.downloadPaymentImportTemplate, preview: api.previewPaymentImport },
+  }[kind];
+  const { recordName } = settings;
   const [file, setFile] = useState<File | null>(null);
   const [batch, setBatch] = useState<ImportBatch | null>(null);
   const [rows, setRows] = useState<ImportRow[]>([]);
+  const [paymentRows, setPaymentRows] = useState<PaymentImportRow[]>([]);
+  const displayedRows = payment ? paymentRows : rows;
   const [errors, setErrors] = useState<ImportError[]>([]);
   const [nextRow, setNextRow] = useState(0);
   const [nextError, setNextError] = useState(0);
@@ -48,17 +56,24 @@ export default function CsvImportPanel({ kind = 'CUSTOMER', confirmationEnabled 
 
   async function showBatch(current: ImportBatch) {
     if (current.kind !== kind) throw new ApiError(400, '取込形式が一致しません。CSVをもう一度プレビューしてください。', 'INVALID_REQUEST');
-    setBatch(current); setRows([]); setErrors([]); setNextRow(0); setNextError(0); setViewed(false);
+    setBatch(current); setRows([]); setPaymentRows([]); setErrors([]); setNextRow(0); setNextError(0); setViewed(false);
     setOriginalBatchId(current.originalBatchId ?? '');
-    const [rowPage, errorPage] = await Promise.all([api.listImportRows(current.id), api.listImportErrors(current.id)]);
-    setRows(rowPage.items); setNextRow(rowPage.nextCursor);
+    const [, errorPage] = await Promise.all([loadRows(current.id), api.listImportErrors(current.id)]);
     setErrors(errorPage.items); setNextError(errorPage.nextCursor); setViewed(true);
+  }
+
+  async function loadRows(id: string, cursor = 0) {
+    if (payment) {
+      const page = await api.listPaymentImportRows(id, cursor); setPaymentRows(page.items); setNextRow(page.nextCursor);
+    } else {
+      const page = await api.listImportRows(id, cursor); setRows(page.items); setNextRow(page.nextCursor);
+    }
   }
 
   async function download(kind: 'template' | 'errors') {
     working(true); setError('');
     try {
-      if (kind === 'template') saveCsv(await (invoice ? api.downloadInvoiceImportTemplate() : api.downloadCustomerImportTemplate()), invoice ? 'invoices-template.csv' : 'customers-template.csv');
+      if (kind === 'template') saveCsv(await settings.template(), settings.filename);
       else if (batch) saveCsv(await api.downloadImportErrors(batch.id), 'import-errors.csv');
     } catch (failure) { report(failure); }
     finally { working(false); }
@@ -68,8 +83,8 @@ export default function CsvImportPanel({ kind = 'CUSTOMER', confirmationEnabled 
     event.preventDefault();
     if (!file) { setError('プレビューするCSVファイルを選択してください。'); return; }
     working(true); setError(''); setNotice(''); setRecovery(false); setOriginalBatchId('');
-    setBatch(null); setRows([]); setErrors([]); setViewed(false);
-    try { await showBatch(await (invoice ? api.previewInvoiceImport(session, file) : api.previewCustomerImport(session, file))); }
+    setBatch(null); setRows([]); setPaymentRows([]); setErrors([]); setViewed(false);
+    try { await showBatch(await settings.preview(session, file)); }
     catch (failure) { report(failure); }
     finally { working(false); }
   }
@@ -133,7 +148,7 @@ export default function CsvImportPanel({ kind = 'CUSTOMER', confirmationEnabled 
     working(true); setError('');
     try {
       if (kind === 'rows') {
-        const page = await api.listImportRows(batch.id, cursor); setRows(page.items); setNextRow(page.nextCursor);
+        await loadRows(batch.id, cursor);
       } else {
         const page = await api.listImportErrors(batch.id, cursor); setErrors(page.items); setNextError(page.nextCursor);
         errorHeading.current?.focus();
@@ -153,14 +168,14 @@ export default function CsvImportPanel({ kind = 'CUSTOMER', confirmationEnabled 
   const canConfirm = confirmationEnabled && batch?.status === 'PREVIEW_VALID' && batch.id !== blockedBatchId && viewed && !recovery && !expired;
 
   return <section className="panel import-panel" aria-labelledby="import-title">
-    <div className="panel-heading"><span className="step-number">CSV</span><div><h2 id="import-title">{invoice && !confirmationEnabled ? '請求CSVをプレビュー' : `${recordName}CSVを取り込む`}</h2><p>{invoice ? '顧客を先に登録してください。請求書番号は変更できず、取消後も再利用できません。' : '新規顧客を一括登録します。既存顧客は更新しません。'}エラーが1件でもあれば、正常な行も含めて登録されません。</p></div></div>
+    <div className="panel-heading"><span className="step-number">CSV</span><div><h2 id="import-title">{!confirmationEnabled ? `${recordName}CSVをプレビュー` : `${recordName}CSVを取り込む`}</h2><p>{settings.description}エラーが1件でもあれば、正常な行も含めて登録されません。</p></div></div>
     <ol className="import-steps"><li>テンプレートに入力</li><li>プレビューで確認・修正</li><li>全件を確定</li></ol>
-    <p className="import-guide">UTF-8（BOM可）、ヘッダーは <code>{invoice ? 'customer_code,invoice_number,issue_date,due_date,amount' : 'customer_code,customer_name'}</code> の順です。{invoice ? '日付はYYYY-MM-DD、金額は税込の正の円整数、支払期日は請求日以降です。' : '顧客コードは50文字、顧客名は200文字まで。前後の空白は個別登録と同様に除きます。'}10MiB・10,000行まで取り込めます。</p>
-    {!confirmationEnabled && <p className="import-guide">プレビューで内容を確認できます。請求の確定登録はまだ利用できません。</p>}
+    <p className="import-guide">UTF-8（BOM可）、ヘッダーは <code>{settings.header}</code> の順です。{settings.format}10MiB・10,000行まで取り込めます。</p>
+    {!confirmationEnabled && <p className="import-guide">プレビューで内容を確認できます。{recordName}の確定登録はまだ利用できません。</p>}
     <button type="button" className="secondary-button" disabled={busy} onClick={() => download('template')}>テンプレートをダウンロード</button>
     <form className="import-upload" onSubmit={preview}>
       <label htmlFor={`${kind}-csv`}>{recordName}CSVファイル<input id={`${kind}-csv`} type="file" accept=".csv,text/csv" disabled={busy || recovery} onChange={(event) => {
-        setFile(event.target.files?.[0] ?? null); setBatch(null); setRows([]); setErrors([]);
+        setFile(event.target.files?.[0] ?? null); setBatch(null); setRows([]); setPaymentRows([]); setErrors([]);
         setError(''); setNotice(''); setViewed(false); setRecovery(false); setOriginalBatchId('');
       }} /></label>
       <button className="primary-button" disabled={busy || recovery || !file}>{busy ? '処理中…' : 'CSVをプレビュー'}</button>
@@ -181,16 +196,20 @@ export default function CsvImportPanel({ kind = 'CUSTOMER', confirmationEnabled 
         <div className="table-scroll"><table aria-label="CSVエラー一覧"><thead><tr><th scope="col">行番号</th><th scope="col">項目</th><th scope="col">入力値</th><th scope="col">理由</th><th scope="col">修正方法</th></tr></thead><tbody>{errors.map((item) => <tr key={item.errorNumber}><td>{item.rowNumber}</td><td>{item.field}</td><td className="csv-input">{item.inputValue || '（空欄）'}{item.inputTruncated && <small>（先頭200文字を表示）</small>}</td><td>{item.reason}</td><td>{item.correction}</td></tr>)}</tbody></table></div>
         <div className="import-pagination"><span>全{batch.errorCount}件中 {errors[0]?.errorNumber ?? 0}〜{errors.at(-1)?.errorNumber ?? 0}件を表示</span><button type="button" className="text-button" disabled={busy || (errors[0]?.errorNumber ?? 0) <= 1} onClick={() => nextPage('errors', 0)}>最初のエラーへ</button><button type="button" className="secondary-button" disabled={busy || nextError === 0} onClick={() => nextPage('errors', nextError)}>次のエラー50件</button></div>
       </section>}
-      {rows.length > 0 && <section aria-labelledby="import-rows-title">
+      {displayedRows.length > 0 && <section aria-labelledby="import-rows-title">
         <h4 id="import-rows-title">登録する{recordName}の確認</h4>
-        <div className="table-scroll"><table aria-label={`${recordName}CSVプレビュー`}><thead><tr><th scope="col">行番号</th>{invoice && <th scope="col">請求書番号</th>}<th scope="col">顧客コード</th><th scope="col">顧客名</th>{invoice && <><th scope="col">請求日</th><th scope="col">支払期日</th><th scope="col">金額（円）</th></>}<th scope="col">確認</th></tr></thead><tbody>{rows.map((row) => <tr key={row.recordNumber}><td>{row.rowNumber}</td>{invoice && <td>{row.invoiceNumber ?? '—'}</td>}<td>{row.customerCode}</td><td>{row.customerName}</td>{invoice && <><td>{row.issueDate ?? '—'}</td><td>{row.dueDate ?? '—'}</td><td>{row.amount ?? '—'}</td></>}<td>{row.valid ? '正常' : '要修正'}</td></tr>)}</tbody></table></div>
-        <div className="import-pagination"><span>全{batch.rowCount}行中 {rows[0]?.recordNumber}〜{rows.at(-1)?.recordNumber}行を表示</span><button type="button" className="text-button" disabled={busy || rows[0].recordNumber <= 1} onClick={() => nextPage('rows', 0)}>最初の行へ</button><button type="button" className="secondary-button" disabled={busy || nextRow === 0} onClick={() => nextPage('rows', nextRow)}>次の50行</button></div>
+        <div className="table-scroll">{payment ? <PaymentRowsTable rows={paymentRows} /> : <table aria-label={`${recordName}CSVプレビュー`}><thead><tr><th scope="col">行番号</th>{invoice && <th scope="col">請求書番号</th>}<th scope="col">顧客コード</th><th scope="col">顧客名</th>{invoice && <><th scope="col">請求日</th><th scope="col">支払期日</th><th scope="col">金額（円）</th></>}<th scope="col">確認</th></tr></thead><tbody>{rows.map((row) => <tr key={row.recordNumber}><td>{row.rowNumber}</td>{invoice && <td>{row.invoiceNumber ?? '—'}</td>}<td>{row.customerCode}</td><td>{row.customerName}</td>{invoice && <><td>{row.issueDate ?? '—'}</td><td>{row.dueDate ?? '—'}</td><td>{row.amount ?? '—'}</td></>}<td>{row.valid ? '正常' : '要修正'}</td></tr>)}</tbody></table>}</div>
+        <div className="import-pagination"><span>全{batch.rowCount}行中 {displayedRows[0]?.recordNumber}〜{displayedRows.at(-1)?.recordNumber}行を表示</span><button type="button" className="text-button" disabled={busy || displayedRows[0].recordNumber <= 1} onClick={() => nextPage('rows', 0)}>最初の行へ</button><button type="button" className="secondary-button" disabled={busy || nextRow === 0} onClick={() => nextPage('rows', nextRow)}>次の50行</button></div>
       </section>}
       <div className="button-row">
-        {batch.status === 'CONFIRMED' ? onShowRecords && <button type="button" className="primary-button" disabled={busy} onClick={showRecords}>{invoice ? '債権一覧へ' : '顧客一覧へ'}</button> : confirmationEnabled && <button type="button" className="primary-button" disabled={busy || !canConfirm} onClick={confirm}>全{batch.rowCount}件を確定して登録</button>}
+        {batch.status === 'CONFIRMED' ? onShowRecords && <button type="button" className="primary-button" disabled={busy} onClick={showRecords}>{payment ? '入金一覧へ' : invoice ? '債権一覧へ' : '顧客一覧へ'}</button> : confirmationEnabled && <button type="button" className="primary-button" disabled={busy || !canConfirm} onClick={confirm}>全{batch.rowCount}件を確定して登録</button>}
         {(!viewed || recovery) && <button type="button" className="secondary-button" disabled={busy} onClick={() => recover()}>{recovery ? '確定結果を確認' : 'プレビューを再取得'}</button>}
       </div>
       {recovery && <p className="import-guide">確定結果が不明です。再送する前に「確定結果を確認」でサーバーの状態を確認してください。</p>}
     </div>}
   </section>;
+}
+
+function PaymentRowsTable({ rows }: { rows: PaymentImportRow[] }) {
+  return <table aria-label="入金CSVプレビュー"><thead><tr><th scope="col">行番号</th><th scope="col">取引ID</th><th scope="col">振込日</th><th scope="col">振込名義</th><th scope="col">金額（円）</th><th scope="col">確認</th></tr></thead><tbody>{rows.map((row) => <tr key={row.recordNumber}><td>{row.rowNumber}</td><td>{row.transactionId}</td><td>{row.transferDate}</td><td>{row.payerName}</td><td>{row.amount}</td><td>{row.valid ? '正常' : '要修正'}</td></tr>)}</tbody></table>;
 }

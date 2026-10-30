@@ -7,6 +7,7 @@ export type InvitationInspection = components['schemas']['InvitationInspectionRe
 export type InvitationIssued = components['schemas']['InvitationIssuedResponse'];
 export type ImportBatch = components['schemas']['ImportBatchResponse'];
 export type ImportRow = components['schemas']['ImportRowResponse'];
+export type PaymentImportRow = components['schemas']['PaymentImportRowResponse'];
 export type ImportError = components['schemas']['ImportErrorResponse'];
 export type Receivable = components['schemas']['ReceivableResponse'];
 export type Invoice = components['schemas']['InvoiceResponse'];
@@ -69,6 +70,13 @@ export const api = {
   ),
   downloadCustomerImportTemplate: () => download({ path: '/api/imports/customers/template', method: 'GET' }),
   downloadInvoiceImportTemplate: () => download({ path: '/api/imports/invoices/template', method: 'GET' }),
+  downloadPaymentImportTemplate: () => download({ path: '/api/imports/payments/template', method: 'GET' }),
+  previewPaymentImport: async (csrf: Csrf, file: File): Promise<ImportBatch> => {
+    const body = new FormData();
+    const field: keyof operations['previewPaymentImport']['requestBody']['content']['multipart/form-data'] = 'file';
+    body.append(field, file);
+    return readJson<ImportBatch>(await send({ path: '/api/imports/payments/preview', method: 'POST' }, csrf, body));
+  },
   previewInvoiceImport: async (csrf: Csrf, file: File): Promise<ImportBatch> => {
     const body = new FormData();
     const field: keyof operations['previewInvoiceImport']['requestBody']['content']['multipart/form-data'] = 'file';
@@ -83,6 +91,7 @@ export const api = {
   },
   getImportBatch: (id: string) => request({ path: '/api/imports/{id}', method: 'GET', url: importUrl(id) }, undefined),
   listImportRows: (id: string, cursor = 0) => request({ path: '/api/imports/{id}/rows', method: 'GET', url: `${importUrl(id)}/rows?cursor=${cursor}&limit=50` }, undefined),
+  listPaymentImportRows: (id: string, cursor = 0) => request({ path: '/api/imports/{id}/payment-rows', method: 'GET', url: `${importUrl(id)}/payment-rows?cursor=${cursor}&limit=50` }, undefined),
   listImportErrors: (id: string, cursor = 0) => request({ path: '/api/imports/{id}/errors', method: 'GET', url: `${importUrl(id)}/errors?cursor=${cursor}&limit=50` }, undefined),
   downloadImportErrors: (id: string) => download({ path: '/api/imports/{id}/errors.csv', method: 'GET', url: `${importUrl(id)}/errors.csv` }),
   confirmImport: (csrf: Csrf, id: string, body: operations['confirmImport']['requestBody']['content']['application/json']) => request(

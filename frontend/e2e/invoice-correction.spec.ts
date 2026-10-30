@@ -12,7 +12,7 @@ test('real invoice correction retains a conflicting draft, compares current fact
     const rejected = page.waitForResponse((response) => response.request().method() === 'PUT' && response.url().endsWith(`/api/invoices/${invoice.id}`));
     await page.getByRole('button', { name: '訂正を保存' }).click(); expect((await rejected).status()).toBe(409);
     await expect(page.getByRole('alert')).toContainText('他の担当者'); await expect(page.getByRole('button', { name: '訂正を保存' })).toBeDisabled();
-    await page.getByRole('button', { name: '最新内容・処理結果を取得' }).click();
+    await page.getByRole('button', { name: '最新内容・処理結果を取得', exact: true }).click();
     await expect(page.getByRole('checkbox', { name: /最新の登録内容と履歴/ })).toBeVisible();
     await expect(page.getByLabel('訂正後の請求額（円）')).toHaveValue('110000'); await expect(page.getByLabel('訂正理由', { exact: true })).toHaveValue('架空の契約金額を訂正');
     await expect(page.getByRole('table', { name: '請求履歴' })).toContainText('別の担当者が先に訂正');
@@ -35,7 +35,7 @@ test('lost real correction response blocks a second write and recovers the commi
   });
   await page.getByLabel('訂正後の請求額（円）').fill('130000'); await page.getByLabel('訂正理由', { exact: true }).fill('架空の通信障害の検証');
   await page.getByRole('button', { name: '訂正を保存' }).click(); await expect(page.getByRole('alert')).toBeVisible(); await expect(page.getByRole('button', { name: '訂正を保存' })).toBeDisabled();
-  await page.getByRole('button', { name: '最新内容・処理結果を取得' }).click();
+  await page.getByRole('button', { name: '最新内容・処理結果を取得', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: /最新の登録内容と履歴/ })).toBeVisible(); await expect(page.getByRole('table', { name: '請求履歴' })).toContainText('架空の通信障害の検証');
   await expect(page.getByRole('button', { name: '訂正を保存' })).toBeDisabled(); expect(writes).toBe(1);
   const persisted = await (await page.request.get(`/api/invoices/${invoice.id}`)).json(); expect(persisted.amount).toBe(130000); expect(persisted.version).toBe(invoice.version + 1);

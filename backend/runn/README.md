@@ -1,9 +1,8 @@
 # Real HTTP API acceptance with runn
 
-Cookie session 認証と顧客管理の全7操作を、実 HTTP / 実 PostgreSQL で検証する。
+Cookie session認証、顧客管理、招待、CSV取込を、実HTTP / 実PostgreSQLで検証する。
 `runn` が API 受入を担当し、Java の domain / DB / 同時更新テストと画面 E2E も維持する。
-明示 `local` profile の架空データ専用。既存の顧客39ケースを維持し、匿名 CSRF と login、
-session fixation / logout / role / 旧 Basic 拒否を加えた4 runbooks・66 HTTP assertions。
+明示 `local` profileの架空データ専用。匿名CSRF・login・session fixation・logout・role・旧Basic拒否も検証する。
 
 Repository root で local Backend と実 PostgreSQL を起動し、起動時と同じ
 `LOCAL_SEED_PASSWORD` を shell 環境へ設定して実行する。Password に既定値はない。
@@ -29,7 +28,7 @@ Password / token / cookie を `secrets` に指定し、通常実行で debug dum
 だけ `skipValidateRequest: true` とし、サーバーの拒否を検査する。response validation や
 step assertion を外さない。監査の原子性・秘密を記録しないことは Java の実 DB 統合検証でも確認する。
 
-`read:parent` は `../../contracts/openapi.yaml` を読むためだけに使用する。
+`read:parent`はbook外の契約と架空CSVを読むために使用する。
 匿名 CSRF 開始 GET は `useCookie: false` で新しい session を発行させる。
 Login の更新 cookie は runn の cookie jar が引き継ぎ、GET session の新しい CSRF を後続処理に使う。
 複数 Tenant を扱う runbook では同じ host の jar を共有する runn の性質に合わせ、
@@ -44,3 +43,16 @@ Binary と checksum は `scripts/runn.sh` で固定する。
 `scripts/runn.sh run`は`prepare-runn-fixtures.py`で実行ごとにUUIDの架空コードを持つCSVをignoredな`work/runn-customer-*.csv`へ作る。追加のexec scopeや既存DBの初期化を必要としない。固定ファイルの再使用で過去の登録が新しい検証へ混入しないようにする。
 
 CIのqualityはbootstrapの部分検証fallbackを廃止し、scripts/verify.shを必須実行する。verifier消失や非実行権限を部分成功に置き換えない。
+
+## Production proxy capacity
+
+`bash scripts/verify-proxy.sh`は起動中の今回のBackend（8080）へ、本番と同じNginx設定・固定imageを通して`proxy/uploads.yml`を実行する。標準LinuxのDocker socketが必要で、CIでも必須実行する。
+
+| 入力 | 期待結果 |
+| --- | --- |
+| 1万行、1MiBを超える正常CSV | 201、全1万行のpreview、顧客の業務更新なし |
+| ファイルが正確に10MiB（CSV内容は不正） | 容量では拒否せず、201の修正用previewエラー |
+| ファイルが10MiB＋1byte | Backendの413 JSON ApiError |
+| ファイルが11MiB＋1byte | Nginxの413 JSON ApiError |
+
+アプリのファイル上限は10MiB、Nginxのrequest上限はmultipartの余白を含め11MiB。fixtureは`prepare-proxy-fixtures.py`で毎回生成し、containerは成功・失敗のどちらでも限定IDを指定して削除する。root entryの通常bookとは別に、本番proxyを通るAPI検証として扱う。

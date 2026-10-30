@@ -1,0 +1,109 @@
+desc: Production Nginx accepts a large 10000-row preview and returns structured size errors
+concurrency: debt-api-acceptance
+labels: [api, imports, proxy]
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8096}
+    openapi3: ../../../contracts/openapi.yaml
+    useCookie: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+secrets:
+- vars.password
+- anonymousToken
+- anonymousCookie
+- cookie
+- token
+steps:
+  csrf:
+    api:
+      /api/csrf:
+        get:
+          body: null
+    bind:
+      anonymousToken: current.res.body.csrfToken
+      anonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  login:
+    api:
+      /api/auth/login:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ anonymousToken }}'
+          body:
+            application/json:
+              email: alpha-admin@example.test
+              password: '{{ vars.password }}'
+    bind:
+      cookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  session:
+    api:
+      /api/session:
+        get:
+          body: null
+    bind:
+      token: current.res.body.csrfToken
+    test: current.res.status == 200
+  customersBefore:
+    api:
+      /api/customers:
+        get:
+          body: null
+    bind:
+      countBefore: len(current.res.body)
+    test: current.res.status == 200
+  validLargePreview:
+    api:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            multipart/form-data:
+              file: ../../../work/proxy-valid.csv
+    bind:
+      batch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID' && current.res.body.rowCount == 10000 && current.res.body.errorCount == 0
+  previewRows:
+    api:
+      /api/imports/{{ batch }}/rows?limit=1:
+        get:
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].valid
+  exactFileLimit:
+    api:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            multipart/form-data:
+              file: ../../../work/proxy-file-exact.csv
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_INVALID' && current.res.body.errorCount > 0
+  backendFileLimit:
+    api:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            multipart/form-data:
+              file: ../../../work/proxy-file-limit.csv
+    test: current.res.status == 413 && current.res.body.code == 'IMPORT_SIZE_LIMIT'
+  nginxRequestLimit:
+    api:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            multipart/form-data:
+              file: ../../../work/proxy-request-limit.csv
+    test: current.res.status == 413 && current.res.body.code == 'IMPORT_SIZE_LIMIT'
+  customersAfter:
+    api:
+      /api/customers:
+        get:
+          body: null
+    test: current.res.status == 200 && len(current.res.body) == countBefore

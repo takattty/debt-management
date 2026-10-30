@@ -896,6 +896,18 @@
           "summary": "先行ガイドtask過去実行の遅延記録: exec_command combined AllocationCommands matches and AllocationHistory source; result explicitly reported Warning: truncated output (original token count: 2315), with max_output_tokens 2200.",
           "evidence": "docs/learning/source-output-validation.md",
           "recorded_at": "2026-10-30T12:26:02+00:00"
+        },
+        {
+          "event": "publisher-github-job-log-nested-structure-truncation-20261030",
+          "summary": "保存済みtool結果のtop text17文字だけで小さいと判断し、別callでnested logを含む全結果を表示してouter54965tokensの実切断1件。fetch/store metadata callは非切断で別加算しない",
+          "evidence": "docs/learning/json-envelope-metadata-validation.md",
+          "recorded_at": "2026-10-30T15:26:17+00:00"
+        },
+        {
+          "event": "root-resume-policy-agents-output-truncated-20261030-dad466",
+          "summary": "root再開時にpolicy全文とAGENTSとFE AGENTSを同callへ束ね6097tokensがmax5000を超え実切断。actual chunk dad466、recovery8adf46、8695c6はこの失敗のchunkではない",
+          "evidence": "docs/learning/json-envelope-metadata-validation.md",
+          "recorded_at": "2026-10-30T15:45:29+00:00"
         }
       ],
       "resolutions": [
@@ -938,6 +950,22 @@
           "guard": "scripts/read-source.py",
           "event_count": 15,
           "resolved_at": "2026-10-30T12:26:02+00:00"
+        },
+        {
+          "cause": "tool結果top content text17文字だけを測り、nested structuredContent.contentを含む全envelopeのUTF8総量をemit前に確認しなかった。保存後の次callでraw結果を出した1実行の切断でありfetch/store callは非切断",
+          "prevention": "全tool envelopeを常にJSON化してUTF8総量をemit前に確認し保存。raw結果表示を禁止しjson-metadata.pyで文字列本文ゼロ、field名件数とdepth/node制限、最終JSON4096bytes以内を機械強制する。input16MiBとinvalid JSON/Unicode/limitsはfailclosed、出力超過はnode予算縮小で完全JSONを再構築する",
+          "verification": "新対象12unit成功。実envelope219859bytes/hash一致を入力しnested string213468bytesを検出、stdout658bytesで本文ゼロ、原envelope/log不変。実fixture invalid limitはexit2 stdout0。functions.exec全JSON保存recipeは架空nested130077bytesを正しく測り59bytes metadataのみ表示。新event1件だけでopen16/check1を先保存しfetch/store非切断や否定probeは加算していない。HTTP/npm/build/runtime実行なし",
+          "guard": "scripts/json-metadata.py",
+          "event_count": 16,
+          "resolved_at": "2026-10-30T15:27:22+00:00"
+        },
+        {
+          "cause": "解決後のroot再開で最初のbounded guard確認より先にnetwork-policy全文とAGENTSとFE AGENTSを合算表示した別の実1件。actual dad466とrecovery8adf46を保持し、nested-envelope事象や別chunkを重複計上しない",
+          "prevention": "開始時は指定operatorのAGENTS/learningをbounded小範囲の単独callで先に確認。その後policyはversion/vpn/type/host_count whitelistとemit前4KiB検査、環境toolは既存3scalarだけを別call表示。raw合算は禁止しJSON envelopeは本文ゼロ4KiB helperへ渡す",
+          "verification": "f272固定版とhelper/source test byte同一で12unit成功はreuse、再実行なし。実fixture219859bytes→658bytesと否定exit2/stdout0の証拠を保持。policy recipeは既知/過大文字列の2fakeで本文漏れなし、実policyも4scalar63bytesだけ。root実1件追加でopen17/check1を確認し元mainとf272全prefix保持。HTTP/build/Docker/npmなし",
+          "guard": "scripts/json-metadata.py",
+          "event_count": 17,
+          "resolved_at": "2026-10-30T15:45:29+00:00"
         }
       ]
     },
@@ -1300,6 +1328,62 @@
           "guard": "frontend/e2e/payment-allocation.spec.ts",
           "event_count": 3,
           "resolved_at": "2026-10-30T08:41:28+00:00"
+        }
+      ]
+    },
+    {
+      "key": "helper-input-scope-assumption",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "root-doc-helper-input-scope-assumption-20261030",
+          "summary": "文書読込試行でREADME.mdをsource helperへ渡しsuffix除外exit1(d731df)、同じ文書をwork専用evidence helperへ渡してexit2(e08dd4)。reader入力scopeを確認していなかった",
+          "evidence": "docs/learning/json-envelope-metadata-validation.md",
+          "recorded_at": "2026-10-30T15:51:11+00:00"
+        },
+        {
+          "event": "root-package-helper-input-scope-assumption-20261030",
+          "summary": "別のpackage読込試行でfrontend/package.jsonをsource helperへ渡しsuffix除外exit1(43fa14)。後で実SUFFIXESを読みmd/json対象外を確認した",
+          "evidence": "docs/learning/json-envelope-metadata-validation.md",
+          "recorded_at": "2026-10-30T15:51:11+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "reader名だけで適用scopeを推測し、source suffix外の文書/packageとwork外docを専用helperへ渡した。source filename不在やtool切断とは別の入力分類の原因として2試行を保存した",
+          "prevention": "source helperは実SUFFIXES限定でmd/json対象外、evidence helperはowner指定の相対workだけ。既観測の非source doc/configは行範囲とUTF8 capをemit前検査する専用recipeを単独callで使う。allowlistを広げず入力分類を先に確認する",
+          "verification": "実SUFFIXESからmd/json除外を静的確認しevidenceの相対work制約を実source行で確認。新コード機能なし。専用recipeはsmall/largeと実doc/configの4ケースを検証し、大行はexit1 stdout0、通常は4096bytes以内。rootの失敗helper呼出は再実行せずopen2/check1を先保存。既存main全prefixを保持する",
+          "guard": "docs/learning/json-envelope-metadata-validation.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T15:52:03+00:00"
+        }
+      ]
+    },
+    {
+      "key": "operator-json-collection-shape",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "publisher-state-checkpoints-list-shape-20261030",
+          "summary": "treated checkpoints list as dictionary before write: TypeError: list indices must be integers or slices, not str",
+          "evidence": "work/private-state-shape-observations.json#669764",
+          "recorded_at": "2026-10-30T16:01:56+00:00"
+        },
+        {
+          "event": "publisher-state-next-dictionary-shape-20261030",
+          "summary": "private state next field was changed from dictionary to list, conflicting with finalizer consumer: AttributeError: 'list' object has no attribute 'values'",
+          "evidence": "work/private-state-shape-observations.json#f92966",
+          "recorded_at": "2026-10-30T16:01:56+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "private JSON collectionのproducer/consumer型を照合せず更新し、array/objectを混同した",
+          "prevention": "consumerの型契約を明記し、network操作前と保存前にdict/listおよび必要entry型を検査する。成功済mergeはGET確認後stateだけ復旧する",
+          "verification": "2実事象をopen/check1で先保存。private finalizerへ同型guardを導入、実state1＋否定5fixtureはnetwork0で全6PASS。PR86はGETでmerged確認後、already-merged経路だけで記録復旧。work/private-state-shape-guard-proof.json",
+          "guard": "docs/learning/json-envelope-metadata-validation.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T16:02:42+00:00"
         }
       ]
     }

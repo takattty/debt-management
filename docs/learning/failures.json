@@ -988,6 +988,42 @@
           "resolved_at": "2026-10-30T10:13:06+00:00"
         }
       ]
+    },
+    {
+      "key": "runn-shared-cookie-jar",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "payer-alias-admin-login-cookie-20261030",
+          "summary": "複数runnerのcookie jar共有によりADMIN loginで別sessionのCSRFが使われ403となった",
+          "evidence": "backend/runn/payer-alias.yml",
+          "recorded_at": "2026-10-30T02:04:41+00:00"
+        },
+        {
+          "event": "payer-alias-repeat-deactivation-cookie-20261030",
+          "summary": "別runnerだけuseCookie falseへ変更してもACCOUNTANT側が共有jarに依存し後続mutationが403となった",
+          "evidence": "backend/runn/payer-alias.yml",
+          "recorded_at": "2026-10-30T02:04:41+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "runnの複数runnerはcookie jarを共有し別roleのログインが他runnerの暗黙sessionを置き換えた。別runnerだけ無効化しても元runnerが暗黙jarへ依存した",
+          "prevention": "payer-aliasの全requestでuseCookie falseを必須化しrole別cookieを明示する。匿名csrf以外の認証requestはrole別session Cookieを渡す",
+          "verification": "PyYAMLで実bookを解析し全28requestsがuseCookie false、認証requestに明示Cookieがあることをassertして成功。API機能シナリオの再実行はこれから行い成功扱いにしない",
+          "guard": "backend/runn/payer-alias.yml",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T02:04:41+00:00"
+        },
+        {
+          "cause": "複数runn runnerの共有cookie jarへ暗黙依存し、role切替後のsessionとCSRFが不一致になった",
+          "prevention": "payer-alias全28requestsでuseCookie falseを必須とし、認証requestは匿名/ACCOUNTANT/ADMIN/他tenantごとの明示Cookieを渡す",
+          "verification": "全28requestsの明示session方針を機械assert後、専用8096実APIでalias1scenarioと既存を含む全11scenariosが0skip/0failure。APIセキュリティと応答OpenAPI検証を維持した",
+          "guard": "backend/runn/payer-alias.yml",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T02:07:21+00:00"
+        }
+      ]
     }
   ]
 }

@@ -58,3 +58,5 @@ CIのqualityはbootstrapの部分検証fallbackを廃止し、scripts/verify.sh�
 | ファイルが11MiB＋1byte | Nginxの413 JSON ApiError |
 
 アプリのファイル上限は10MiB、Nginxのrequest上限はmultipartの余白を含め11MiB。fixtureは`prepare-proxy-fixtures.py`で毎回生成し、containerは成功・失敗のどちらでも限定IDを指定して削除する。root entryの通常bookとは別に、本番proxyを通るAPI検証として扱う。
+
+`payment-import.yml`は入金専用template/preview/payment-rows、修正前errorの固定、download、CSRF、tenant越境を実HTTPで検証する。段階1は業務入金を作らず、入金の共通rows/confirmを409で拒否する。入金確定と消込は後続段階。

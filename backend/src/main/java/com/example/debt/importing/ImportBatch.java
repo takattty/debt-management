@@ -9,7 +9,7 @@ import java.util.UUID;
 public record ImportBatch(UUID id, UUID tenantId, Kind kind, int formatVersion, String semanticFingerprint,
                           Status status, long version, UUID createdByUserId, Instant createdAt, Instant expiresAt,
                           UUID confirmedByUserId, Instant confirmedAt, int rowCount, int errorCount) {
-    public enum Kind { CUSTOMER, INVOICE }
+    public enum Kind { CUSTOMER, INVOICE, PAYMENT }
     public enum Status { PREVIEW_VALID, PREVIEW_INVALID, CONFIRMED }
 
     public ImportBatch {

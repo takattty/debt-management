@@ -816,6 +816,72 @@
           "resolved_at": "2026-10-30T05:40:00+00:00"
         }
       ]
+    },
+    {
+      "key": "customer-import-duplicate-race-classification",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "payment-preview-main-duplicate-classification-race-20261030",
+          "summary": "最新mainと同一の顧客CSV同内容別batch並行確定で、期待IMPORT_ALREADY_CONFIRMEDに対してIMPORT_REFERENCE_CONFLICTが返り全150中1件失敗した。別statement間のwinner commitに伴う分類raceとして証拠を保持した",
+          "evidence": "docs/learning/payment-preview-validation.md",
+          "recorded_at": "2026-10-30T05:02:12+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "READ COMMITTEDでconfirmedDuplicateとexistingCodesが別statementとなり、その間の同内容winner commitが後続をREFERENCE競合へ分類した。wrapperはunique-key例外だけ確定元を再確認していた。",
+          "prevention": "REFERENCE競合のrollback完了後にも既存のtenant/kind/format/fingerprint条件で確定元を再確認し、存在時だけALREADYへ分類する。実DB照会後のlatchで正確なstatement境界を固定し、異内容の混在新規行と別tenantを否定例にする。",
+          "verification": "未修正本体で同期回帰1件がALREADY期待/REFERENCE実際を再現。修正後対象13件と全BE146件が実PostgreSQLで成功、0failure/0error/0skip。元snapshot不変、winner再呼出同一、顧客監査2/import監査1、loser全件拒否、別tenant原IDnull、既存監査失敗rollbackを確認。意図した再現は既存eventの証拠であり新eventではない。 最新main d267ba8へstage1を移植した本readytreeでも全BE153件が0failure/0error/0skip、同期回帰を含む顧客確定13件成功。通常runn11冊とFE80件も成功し、旧150中1失敗を修正適用後の実結果で解消した。",
+          "guard": "backend/src/test/java/com/example/debt/importing/CustomerImportConfirmationTest.java",
+          "event_count": 1,
+          "resolved_at": "2026-10-30T05:45:29+00:00"
+        }
+      ]
+    },
+    {
+      "key": "http-preview-audit-baseline-boundary",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "payment-preview-login-audit-false-write-20261030",
+          "summary": "正規HTTP bookのlogin前auditを全不変と仮定した補助harnessが、正規SESSION_STARTED2件をpreview writeと誤認して停止した。payment book自体は成功、実DBはsession監査のみだった",
+          "evidence": "docs/learning/payment-preview-validation.md",
+          "recorded_at": "2026-10-30T05:04:47+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "正規loginも含むbook全体のauditをlogin前から全不変と仮定しSESSION_STARTEDをpreviewのwriteと誤認した",
+          "prevention": "preview専用JUnitはlogin後を基準にauditゼロを検証し、book全体の補助比較では原businessと原audit全行保持に加え追加auditが正規2login分だけであることを別assertする",
+          "verification": "修正harness exit0。payment単独1冊と通常10冊が全成功、原businessと原audit保持、単独追加auditはSESSION_STARTED2件だけ、全冊後payment0、同jar保持と8096解放を確認した",
+          "guard": "docs/learning/payment-preview-validation.md",
+          "event_count": 1,
+          "resolved_at": "2026-10-30T05:05:33+00:00"
+        }
+      ]
+    },
+    {
+      "key": "test-database-bootstrap-order",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "payment-preview-gradle-before-database-20261030",
+          "summary": "専用DB作成より先にGradleを起動し、初期Spring contextのdatabase不存在がcacheされ150件中21件失敗した。129件成功でも全suite成功とは扱わず初回ログを保持した",
+          "evidence": "docs/learning/payment-preview-validation.md",
+          "recorded_at": "2026-10-30T04:59:30+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "専用DBを準備予定のままGradleと並行して作成し、最初のSpring contextがdatabase不存在で失敗した",
+          "prevention": "capacity gate、専用DB作成と実SELECT接続確認、新Gradle JVMの順を固定し、予定やDB名設定を準備完了扱いしない",
+          "verification": "専用DB2個へのcurrent_databaseとSELECT1を先行確認し新Gradleで全150件を実行。database不存在はゼロ、149成功と別原因の既存分類race1件を分離して証拠保持した",
+          "guard": "docs/learning/payment-preview-validation.md",
+          "event_count": 1,
+          "resolved_at": "2026-10-30T05:05:33+00:00"
+        }
+      ]
     }
   ]
 }

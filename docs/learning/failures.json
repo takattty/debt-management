@@ -24,6 +24,34 @@
       ]
     },
     {
+      "key": "customer-import-lock-order",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "independent-http-reversed-order-confirm",
+          "summary": "独立レビューの逆順CSV同時確定でunique index deadlockにより一方が500になった",
+          "evidence": "backend/src/test/java/com/example/debt/importing/CustomerImportConfirmationTest.java",
+          "recorded_at": "2026-10-29T23:49:59+00:00"
+        },
+        {
+          "event": "regression-red-forced-overlap-before-fix",
+          "summary": "回帰テストを改修前のwrite順で実行し、強制overlap下の実PostgreSQL deadlockを再現した",
+          "evidence": "backend/src/test/java/com/example/debt/importing/CustomerImportConfirmationTest.java",
+          "recorded_at": "2026-10-29T23:49:59+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "batch row lockは別batchのcustomer unique index取得順をそろえず、CSV順の逆転がlock cycleを作った",
+          "prevention": "永続snapshot順とは別に新規customer INSERT順を正規codeでsortする。実INSERTのoverlapをtriggerで強制する逆順回帰2件をCIで実行する",
+          "verification": "改修前は逆順同内容でPessimisticLockingFailureExceptionを再現。改修後は同内容/異内容の逆順強制overlap2件を含む確認10件が成功し、元のsnapshot順・監査・loserの409分類を維持した",
+          "guard": "backend/src/test/java/com/example/debt/importing/CustomerImportConfirmationTest.java",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T23:49:59+00:00"
+        }
+      ]
+    },
+    {
       "key": "github-integration-permissions",
       "status": "resolved",
       "events": [
@@ -322,6 +350,28 @@
       ]
     },
     {
+      "key": "spring-test-pool-capacity",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "customer-confirm-context-pool-exhaustion",
+          "summary": "複数Spring test contextの既定10接続poolが共有Cloud PostgreSQLの100接続上限へ到達した",
+          "evidence": "backend/build.gradle.kts",
+          "recorded_at": "2026-10-29T23:40:42+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "各cached contextが独立した既定10接続poolを保持し、他の独立検証processと合わせ接続上限に達した",
+          "prevention": "test JVMだけpool最大4とcontext cache最大8へ固定。runtime/DB全体を変更せず二接続raceの余裕を維持する",
+          "verification": "上限を適用し全BE98件0failure0skip、同batch/別batchの実PG並行検証と8runn scenariosも全成功",
+          "guard": "backend/build.gradle.kts",
+          "event_count": 1,
+          "resolved_at": "2026-10-29T23:40:42+00:00"
+        }
+      ]
+    },
+    {
       "key": "stale-main-tracking-ref",
       "status": "resolved",
       "events": [
@@ -388,6 +438,12 @@
           "summary": "FEのpackageコマンドをrepository rootから実行しpackage.json不在で失敗した",
           "evidence": "docs/learning/README.md",
           "recorded_at": "2026-10-29T23:21:14+00:00"
+        },
+        {
+          "event": "customer-confirm-absolute-artifact-argument",
+          "summary": "証拠readerのartifact引数へ絶対pathを渡しguardに拒否された。読込前に停止した",
+          "evidence": "scripts/read-evidence.py",
+          "recorded_at": "2026-10-29T23:40:41+00:00"
         }
       ],
       "resolutions": [
@@ -430,6 +486,22 @@
           "guard": "frontend/AGENTS.md",
           "event_count": 6,
           "resolved_at": "2026-10-29T23:21:27+00:00"
+        },
+        {
+          "cause": "helper自身の絶対pathとartifact引数の相対pathを混同した",
+          "prevention": "helperの実行pathだけ絶対指定し、artifactはwork/name.logに固定する。所有treeが複数なら--worktreeで明示する",
+          "verification": "絶対artifactはguardが読込前に拒否。所有treeからwork/customer-confirm-tests.logを指定して8実PG検証の成功を読み直し、reader回帰3件も成功",
+          "guard": "scripts/read-evidence.py",
+          "event_count": 6,
+          "resolved_at": "2026-10-29T23:40:41+00:00"
+        },
+        {
+          "cause": "並行branchの改善を統合するとFE package root指定漏れとreaderへの絶対証拠引数という別のpath形式誤認が残っていた",
+          "prevention": "helper本体はactivecheckoutの絶対path、証拠引数はwork相対pathとworktree指定、FEはnpm --prefixの絶対packagepathで所有先を固定する",
+          "verification": "reader回帰3件と実在する別treeの最新checkログ読取成功。repository rootからnpm --prefix frontendの設定照会が正しいFEcacheを返した。全7observedeventsと各過去resolutionを保持",
+          "guard": "docs/learning/README.md",
+          "event_count": 7,
+          "resolved_at": "2026-10-30T00:01:54+00:00"
         }
       ]
     }

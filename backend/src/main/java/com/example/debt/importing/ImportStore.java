@@ -4,6 +4,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -42,6 +44,10 @@ public class ImportStore {
                 });
         List<Error> errors = java.util.stream.IntStream.range(0, preview.errors().size())
                 .mapToObj(index -> new Error(index + 1, preview.errors().get(index))).toList();
+        saveErrors(batch, errors);
+    }
+
+    public void saveErrors(ImportBatch batch, List<Error> errors) {
         batches.batchUpdate("""
                 INSERT INTO import_error(tenant_id,batch_id,error_number,row_number,field,input_value,input_truncated,
                     reason_code,reason,correction) VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -53,6 +59,20 @@ public class ImportStore {
                     statement.setBoolean(7, error.inputTruncated()); statement.setString(8, error.reasonCode());
                     statement.setString(9, error.reason()); statement.setString(10, error.correction());
                 });
+    }
+
+    public UUID confirmedDuplicate(ImportBatch batch) {
+        return jdbc.sql("""
+                SELECT id FROM import_batch WHERE tenant_id=:tenant AND kind='CUSTOMER' AND format_version=:format
+                AND semantic_fingerprint=decode(:hash,'hex') AND status='CONFIRMED' AND id<>:id
+                """).param("tenant", batch.tenantId()).param("format", batch.formatVersion())
+                .param("hash", batch.semanticFingerprint()).param("id", batch.id()).query(UUID.class).optional().orElse(null);
+    }
+
+    public Set<Integer> invalidLines(UUID tenant, UUID id, List<Integer> lines) {
+        return lines.isEmpty() ? Set.of() : new HashSet<>(jdbc.sql("""
+                SELECT DISTINCT row_number FROM import_error WHERE tenant_id=:tenant AND batch_id=:id AND row_number IN (:lines)
+                """).param("tenant", tenant).param("id", id).param("lines", lines).query(Integer.class).list());
     }
 
     public ImportBatch get(UUID tenant, UUID id, boolean lock) {

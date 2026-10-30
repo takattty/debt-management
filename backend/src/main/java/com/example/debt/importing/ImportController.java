@@ -7,6 +7,7 @@ import com.example.debt.generated.model.ImportErrorResponse;
 import com.example.debt.generated.model.ImportErrorsPage;
 import com.example.debt.generated.model.ImportRowResponse;
 import com.example.debt.generated.model.ImportRowsPage;
+import com.example.debt.generated.model.ImportConfirmRequest;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -32,9 +33,10 @@ public class ImportController implements ImportsApi {
     private final CustomerImportService service;
     private final ImportStore store;
     private final CurrentUser current;
+    private final ConfirmCustomerImport confirmation;
 
-    public ImportController(CustomerImportService service, ImportStore store, CurrentUser current) {
-        this.service = service; this.store = store; this.current = current;
+    public ImportController(CustomerImportService service, ImportStore store, CurrentUser current, ConfirmCustomerImport confirmation) {
+        this.service = service; this.store = store; this.current = current; this.confirmation = confirmation;
     }
 
     @Override
@@ -73,12 +75,19 @@ public class ImportController implements ImportsApi {
     }
 
     @Override
+    public ResponseEntity<ImportBatchResponse> confirmImport(UUID id, ImportConfirmRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(response(confirmation.confirm(current.require(), id, request.getVersion())));
+    }
+
+    @Override
     public ResponseEntity<ImportRowsPage> listImportRows(UUID id, Integer cursor, Integer limit) {
         var user = current.require();
         store.get(user.tenantId(), id, false);
         var rows = store.rows(user.tenantId(), id, cursor, limit + 1);
+        var invalid = store.invalidLines(user.tenantId(), id, rows.stream().map(CustomerCsv.Row::rowNumber).toList());
         var items = rows.stream().limit(limit).map(row -> new ImportRowResponse(row.recordNumber(), row.rowNumber(),
-                row.customerCode(), row.customerName(), row.valid())).toList();
+                row.customerCode(), row.customerName(), row.valid() && !invalid.contains(row.rowNumber()))).toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(new ImportRowsPage(items, rows.size() > limit ? items.getLast().getRecordNumber() : 0));
     }
@@ -114,6 +123,6 @@ public class ImportController implements ImportsApi {
                 ImportBatchResponse.StatusEnum.fromValue(batch.status().name()), batch.version(), batch.rowCount(), batch.errorCount(),
                 batch.createdAt().atOffset(ZoneOffset.UTC), batch.expiresAt().atOffset(ZoneOffset.UTC),
                 batch.confirmedAt() == null ? null : batch.confirmedAt().atOffset(ZoneOffset.UTC),
-                batch.status() == ImportBatch.Status.CONFIRMED ? batch.rowCount() : 0);
+                batch.status() == ImportBatch.Status.CONFIRMED ? batch.rowCount() : 0).originalBatchId(store.confirmedDuplicate(batch));
     }
 }

@@ -41,6 +41,8 @@ work証拠を相対pathで直接読む操作も再発したため、`python3 scr
 
 helperが未導入の古い証拠checkoutから相対pathでhelperを呼ぶ失敗も観測した。Coordinatorはactive code checkout内のhelper絶対pathを使用する。helperの所有先と証拠の所有先は別に解決し、Docker等の操作は証拠readerと別commandで実行する。
 
+`read-evidence.py`自身は絶対pathで呼ぶが、証拠引数は `work/name.log` の相対pathにする。所有treeは `--worktree /absolute/owner` で指定する。helperのpathと証拠引数の形式を混同しない。
+
 FE packageコマンドをrepository rootから実行してpackage.json不在となる再発も観測した。複数worktreeのCoordinatorは `npm --prefix /absolute/checkout/frontend ...` でpackage所有先を固定し、source編集とpackage実行を別commandへ分ける。cwdとpackage rootが一致するという仮定を持ち越さない。
 
 複数fileのpatchでは、各fileの前に正しい `Update File` を一つ置く。同一pathへのDeleteとAddを一つのpatchへ重ねず、既存fileの置換はUpdateを使う。適用前に全file headerと実際のcontextを確認し、toolの拒否後は変更有無を確認してからpatchを作り直す。

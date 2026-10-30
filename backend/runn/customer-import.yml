@@ -187,3 +187,76 @@ steps:
         get:
           body: null
     test: current.res.status == 200 && current.res.body.status == 'PREVIEW_INVALID' && current.res.body.errorCount == 1
+  rejectInvalidConfirmation:
+    api:
+      /api/imports/{{ invalidBatch }}/confirm:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 0
+    test: current.res.status == 409 && current.res.body.code == 'IMPORT_INVALID'
+  rejectReplacementRows:
+    invalid:
+      /api/imports/{{ validBatch }}/confirm:
+        post:
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 0
+              rows: []
+    test: current.res.status == 400
+  confirm:
+    api:
+      /api/imports/{{ validBatch }}/confirm:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: '{{ validVersion }}'
+    test: current.res.status == 200 && current.res.body.status == 'CONFIRMED'
+      && current.res.body.confirmedCount == 2 && current.res.body.version == validVersion + 1
+  resend:
+    api:
+      /api/imports/{{ validBatch }}/confirm:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: '{{ validVersion }}'
+    test: current.res.status == 200 && compare(current.res.body, steps.confirm.res.body)
+  persisted:
+    api:
+      /api/customers:
+        get:
+          body: null
+    test: 'current.res.status == 200 && len(filter(current.res.body, {#.code == firstCode || #.code == secondCode})) == 2'
+  reorderedReupload:
+    api:
+      /api/imports/customers/preview:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            multipart/form-data:
+              file: ../../work/runn-customer-reordered.csv
+    bind:
+      duplicateBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_INVALID'
+      && current.res.body.originalBatchId == validBatch && current.res.body.errorCount == 2
+  rejectDuplicate:
+    api:
+      /api/imports/{{ duplicateBatch }}/confirm:
+        post:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 0
+    test: current.res.status == 409 && current.res.body.code == 'IMPORT_ALREADY_CONFIRMED'
+      && current.res.body.errors[0].field == 'batchId' && current.res.body.errors[0].message == validBatch

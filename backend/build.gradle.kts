@@ -53,6 +53,9 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    // Each cached Spring test context owns a pool; leave capacity for independent Cloud verification.
+    systemProperty("spring.datasource.hikari.maximum-pool-size", "4")
+    systemProperty("spring.test.context.cache.maxSize", "8")
     testLogging {
         events("passed", "skipped", "failed")
     }

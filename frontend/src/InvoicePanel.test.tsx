@@ -7,7 +7,7 @@ import type { Customer, Invoice, InvoiceHistory, Session } from './api';
 const customer: Customer = { id: 'customer-a', code: 'C001', name: '架空商事', version: 0 };
 const session: Session = { userId: 'actor-a', tenantId: 'tenant-a', email: 'accountant@example.test', role: 'ACCOUNTANT', csrfToken: 'csrf', csrfHeaderName: 'X-CSRF-TOKEN' };
 const invoice: Invoice = { id: 'invoice-a', customerId: customer.id, customerCode: customer.code, customerName: customer.name, invoiceNumber: 'INV-001', issueDate: '2026-10-30', dueDate: '2026-11-30', amount: 100000, outstandingAmount: 100000, version: 0, status: 'ACTIVE', createdAt: '2026-10-30T00:00:00Z', updatedAt: '2026-10-30T00:00:00Z', cancelledAt: null };
-const original: InvoiceHistory = { revision: 0, operation: 'CREATED', reason: null, actorUserId: session.userId, occurredAt: invoice.createdAt, snapshot: { ...invoice, sourceBatchId: 'original-batch' } };
+const original: InvoiceHistory = { revision: 0, operation: 'CREATED', reason: null, actorUserId: session.userId, occurredAt: invoice.createdAt, snapshot: { ...invoice, sourceBatchId: 'original-batch' }, actorEmail: session.email };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
 function setup(options: { conflict?: boolean; lost?: boolean; paged?: boolean; status?: Invoice['status']; allocated?: boolean; denied?: boolean } = {}) {

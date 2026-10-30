@@ -76,8 +76,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List active receivables in stable due-date and ID order
-         * @description Bounded keyset page. Cancelled invoices are excluded. Settlement is not enabled in this slice, so outstandingAmount equals the registered invoice amount. Balances are never editable inputs.
+         * Browse invoices by status in stable due-date and ID order
+         * @description Bounded tenant-scoped keyset page. ACTIVE is the compatible default; CANCELLED shows cancelled originals and ALL includes both states. Keep the selected status/customer/due filters when following nextCursor. Settlement is not enabled in this slice, so active outstandingAmount equals amount; cancelled outstandingAmount is zero while amount retains the original invoice value. Balances are never editable inputs.
          */
         get: operations["listReceivables"];
         put?: never;
@@ -545,6 +545,11 @@ export interface components {
             /** Format: date-time */
             occurredAt: string;
             snapshot: components["schemas"]["InvoiceHistorySnapshot"];
+            /**
+             * Format: email
+             * @description Current email label of the actor in the same tenant, including disabled users. actorUserId remains authoritative; this display label is not a historical snapshot and may change without rewriting the revision or audit.
+             */
+            actorEmail: string;
         };
         InvoiceHistoryPage: {
             items: components["schemas"]["InvoiceHistoryEntry"][];
@@ -569,6 +574,8 @@ export interface components {
             outstandingAmount: number;
             /** Format: int64 */
             version: number;
+            /** @enum {string} */
+            status: "ACTIVE" | "CANCELLED";
         };
         ReceivablesPage: {
             items: components["schemas"]["ReceivableResponse"][];
@@ -946,6 +953,8 @@ export interface operations {
                 /** @description Exact nextCursor from the preceding page; omit for the first page. */
                 cursor?: string;
                 limit?: number;
+                /** @description Invoice state to browse; omitting this parameter preserves the active-only list. */
+                status?: "ACTIVE" | "CANCELLED" | "ALL";
             };
             header?: never;
             path?: never;
@@ -953,7 +962,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Active invoices and their outstanding amounts */
+            /** @description Matching invoices with their status, original amount and outstanding amount */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -12,7 +12,8 @@ import tools.jackson.databind.json.JsonMapper;
 public class InvoiceQueries {
     private final JdbcClient jdbc;
     private final JsonMapper json = JsonMapper.builder().build();
-    public record Revision(long revision, String operation, String reason, UUID actorUserId, Instant occurredAt, InvoiceState.Facts snapshot) { }
+    public record Revision(long revision, String operation, String reason, UUID actorUserId, Instant occurredAt,
+                           InvoiceState.Facts snapshot, String actorEmail) { }
     public record History(List<Revision> items, Long nextCursor) { }
 
     public InvoiceQueries(JdbcClient jdbc) { this.jdbc = jdbc; }
@@ -35,12 +36,14 @@ public class InvoiceQueries {
         get(tenant, id, false);
         if (cursor < -1 || limit < 1 || limit > 100) { throw new IllegalArgumentException("Invalid invoice history page"); }
         var rows = jdbc.sql("""
-                SELECT * FROM invoice_revision WHERE tenant_id=:tenant AND invoice_id=:id AND revision>:cursor
-                ORDER BY revision LIMIT :limit
+                SELECT r.*,u.email_canonical AS actor_email FROM invoice_revision r
+                JOIN app_user u ON u.tenant_id=r.tenant_id AND u.id=r.actor_user_id
+                WHERE r.tenant_id=:tenant AND r.invoice_id=:id AND r.revision>:cursor
+                ORDER BY r.revision LIMIT :limit
                 """).param("tenant", tenant).param("id", id).param("cursor", cursor).param("limit", limit + 1)
                 .query((result, row) -> new Revision(result.getLong("revision"), result.getString("operation"), result.getString("reason"),
                         result.getObject("actor_user_id", UUID.class), result.getTimestamp("occurred_at").toInstant(),
-                        json.readValue(result.getString("snapshot"), InvoiceState.Facts.class))).list();
+                        json.readValue(result.getString("snapshot"), InvoiceState.Facts.class), result.getString("actor_email"))).list();
         var page = rows.stream().limit(limit).toList();
         return new History(page, rows.size() > limit ? page.getLast().revision() : null);
     }

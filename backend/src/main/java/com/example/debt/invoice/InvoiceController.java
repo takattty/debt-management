@@ -53,7 +53,7 @@ public class InvoiceController implements InvoicesApi {
             var snapshot = new InvoiceHistorySnapshot(facts.customerId(), facts.customerCode(), facts.customerName(), facts.invoiceNumber(),
                     facts.issueDate(), facts.dueDate(), facts.amount(), InvoiceHistorySnapshot.StatusEnum.fromValue(facts.status()), facts.sourceBatchId(), facts.version());
             return new InvoiceHistoryEntry(row.revision(), InvoiceHistoryEntry.OperationEnum.fromValue(row.operation()), row.reason(), row.actorUserId(),
-                    row.occurredAt().atOffset(ZoneOffset.UTC), snapshot);
+                    row.occurredAt().atOffset(ZoneOffset.UTC), snapshot, row.actorEmail());
         }).toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new InvoiceHistoryPage(items, page.nextCursor()));
     }
@@ -66,10 +66,11 @@ public class InvoiceController implements InvoicesApi {
     }
 
     @Override
-    public ResponseEntity<ReceivablesPage> listReceivables(UUID customerId, LocalDate dueFrom, LocalDate dueTo, String cursor, Integer limit) {
-        var page = service.list(current.require().tenantId(), customerId, dueFrom, dueTo, cursor, limit);
+    public ResponseEntity<ReceivablesPage> listReceivables(UUID customerId, LocalDate dueFrom, LocalDate dueTo, String cursor, Integer limit, String status) {
+        var page = service.list(current.require().tenantId(), customerId, dueFrom, dueTo, cursor, limit, status);
         var items = page.items().stream().map(row -> new ReceivableResponse(row.id(), row.customerId(), row.customerCode(), row.customerName(),
-                row.invoiceNumber(), row.issueDate(), row.dueDate(), row.amount(), row.amount(), row.version())).toList();
+                row.invoiceNumber(), row.issueDate(), row.dueDate(), row.amount(), row.status().equals("ACTIVE") ? row.amount() : 0,
+                row.version(), ReceivableResponse.StatusEnum.fromValue(row.status()))).toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new ReceivablesPage(items, page.nextCursor()));
     }
 }

@@ -12,21 +12,28 @@ import org.springframework.stereotype.Service;
 public class ReceivablesService {
     private final JdbcClient jdbc;
     public record Row(UUID id, UUID customerId, String customerCode, String customerName, String invoiceNumber,
-                      LocalDate issueDate, LocalDate dueDate, long amount, long version) { }
+                      LocalDate issueDate, LocalDate dueDate, long amount, long version, String status) { }
     public record Page(List<Row> items, String nextCursor) { }
 
     public ReceivablesService(JdbcClient jdbc) { this.jdbc = jdbc; }
 
     public Page list(UUID tenant, UUID customer, LocalDate from, LocalDate to, String cursor, int limit) {
-        if (limit < 1 || limit > 100 || from != null && to != null && from.isAfter(to)) {
+        return list(tenant, customer, from, to, cursor, limit, "ACTIVE");
+    }
+
+    public Page list(UUID tenant, UUID customer, LocalDate from, LocalDate to, String cursor, int limit, String status) {
+        String selected = status == null ? "ACTIVE" : status;
+        if (!List.of("ACTIVE", "CANCELLED", "ALL").contains(selected)
+                || limit < 1 || limit > 100 || from != null && to != null && from.isAfter(to)) {
             throw new IllegalArgumentException("Invalid receivable page bounds");
         }
         Map<String, Object> parameters = new HashMap<>(Map.of("tenant", tenant, "limit", limit + 1));
         StringBuilder sql = new StringBuilder("""
-                SELECT i.id,i.customer_id,c.code,c.name,i.invoice_number,i.issue_date,i.due_date,i.amount_jpy,i.version
+                SELECT i.id,i.customer_id,c.code,c.name,i.invoice_number,i.issue_date,i.due_date,i.amount_jpy,i.version,i.status
                 FROM invoice i JOIN customer c ON c.tenant_id=i.tenant_id AND c.id=i.customer_id
-                WHERE i.tenant_id=:tenant AND i.status='ACTIVE'
+                WHERE i.tenant_id=:tenant
                 """);
+        if (!selected.equals("ALL")) { sql.append(" AND i.status=:status"); parameters.put("status", selected); }
         if (customer != null) { sql.append(" AND i.customer_id=:customer"); parameters.put("customer", customer); }
         if (from != null) { sql.append(" AND i.due_date>=:from"); parameters.put("from", from); }
         if (to != null) { sql.append(" AND i.due_date<=:to"); parameters.put("to", to); }
@@ -40,7 +47,8 @@ public class ReceivablesService {
         sql.append(" ORDER BY i.due_date,i.id LIMIT :limit");
         var rows = jdbc.sql(sql.toString()).params(parameters).query((result, number) -> new Row(result.getObject("id", UUID.class),
                 result.getObject("customer_id", UUID.class), result.getString("code"), result.getString("name"), result.getString("invoice_number"),
-                result.getObject("issue_date", LocalDate.class), result.getObject("due_date", LocalDate.class), result.getLong("amount_jpy"), result.getLong("version"))).list();
+                result.getObject("issue_date", LocalDate.class), result.getObject("due_date", LocalDate.class), result.getLong("amount_jpy"),
+                result.getLong("version"), result.getString("status"))).list();
         List<Row> page = rows.stream().limit(limit).toList();
         String next = rows.size() > limit ? page.getLast().dueDate() + ":" + page.getLast().id() : null;
         return new Page(page, next);

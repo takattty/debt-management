@@ -24,6 +24,34 @@
       ]
     },
     {
+      "key": "cloud-node-child-process-permission",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "allocation-api-drift-worker-eperm-20261030",
+          "summary": "Node test workerから生成drift検証のchild Nodeを起動するとsandboxのspawnSync EPERMとなった",
+          "evidence": "work/settlement-fe-66d3314-static-20261030T0830.log",
+          "recorded_at": "2026-10-30T08:31:58+00:00"
+        },
+        {
+          "event": "allocation-api-drift-direct-eperm-20261030",
+          "summary": "workerを使わない診断でも同じchild Node spawnSyncがEPERMとなりsandbox権限原因を特定した",
+          "evidence": "work/settlement-fe-api-drift-diagnostic-20261030T0831.log",
+          "recorded_at": "2026-10-30T08:31:58+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "network追加権限のないmanaged sandboxでNode自身のchild executable起動が拒否された",
+          "prevention": "認可済みNode child-process検証ではnetwork.enabled付き実行にし、先に同一process.execPathのchild Node --version probeの終了0を確認する",
+          "verification": "network.enabled=true実行の最小spawnSync(process.execPath,--version)がstatus0かつv24.19.0を返した。正式drift検証の同権限再実行は次に行い、拒否済み2logsを保持する",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T08:31:58+00:00"
+        }
+      ]
+    },
+    {
       "key": "customer-import-lock-order",
       "status": "resolved",
       "events": [

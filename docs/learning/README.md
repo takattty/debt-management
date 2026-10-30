@@ -44,3 +44,5 @@ helperが未導入の古い証拠checkoutから相対pathでhelperを呼ぶ失�
 source classのfilenameも推測しない。最初に`rg --files`で対象packageの実在pathを列挙し、出力を確認した次のcommandで列挙済みpathだけを読む。discoveryと未確認の`cat`を同じbatchに組み込まず、名前の近いclassや責務からfilenameを作らない。
 
 古いprepで設定/YAML/runnの名前を探す場合もsource catalogを先行する。`rg --files backend/src backend/runn`の実出力を確認した次callで、列挙済みpathだけを読む。test profile名から設定filenameを生成せず、API名からbook名を生成しない。新しいactive helperが旧prepにもあると仮定しない。runn bind/testの式中に`#`がある場合はquoted/block scalarにしてYAML comment解釈を防ぐ。検証例は[ledger prep source/scalar](ledger-prep-source-validation.md)を参照する。
+
+managed Cloud の Node child-process 検証では、sandbox の `spawnSync(process.execPath)` が EPERM を返す場合がある。Node test worker 経由と直接実行で同じ拒否を観測したら、同じ sandbox 設定で繰り返さない。認可済みの検証を `with_additional_permissions` の `network.enabled=true` で実行し、先に child Node の `--version` probe で終了0を確認する。これは検証のスキップや生成drift guardの変更ではない。実行権限metadataと拒否/成功ログを保存する。

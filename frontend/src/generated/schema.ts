@@ -88,6 +88,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List immutable incoming payments in stable transfer-date and ID order
+         * @description Bounded keyset page of confirmed receipts. No allocation ledger exists in this slice, so unallocatedAmount equals amount only until the real ledger is introduced. Balances are never editable inputs. Date filters are inclusive; invalid dates, reversed bounds and malformed cursors return 400.
+         */
+        get: operations["listPayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports/customers/template": {
         parameters: {
             query?: never;
@@ -199,7 +219,7 @@ export interface paths {
         put?: never;
         /**
          * Store a payment CSV preview without creating any payment
-         * @description Fictional bank receipts, with tenant-unique transaction IDs permanently reserved by confirmed payments, including after allocation reversal. Repeated IDs within the file or existing payments invalidate the entire batch. Stores an immutable snapshot for 24 hours without changing payment facts or audits. Preview does not reserve transaction IDs or semantic content. Confirmation is unavailable in this preparatory slice. Maximum 10MiB and 10000 data records.
+         * @description Fictional bank receipts, with tenant-unique transaction IDs permanently reserved by confirmed payments, including after allocation reversal. Repeated IDs within the file or existing payments invalidate the entire batch. Stores an immutable snapshot for 24 hours without changing payment facts or audits. Preview does not reserve transaction IDs or semantic content. Explicit confirmation atomically registers all receipts and audits after revalidating IDs, version, expiry and duplicates. Maximum 10MiB and 10000 data records.
          */
         post: operations["previewPaymentImport"];
         delete?: never;
@@ -300,8 +320,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Confirm the immutable customer or invoice snapshot atomically
-         * @description Payment confirmation is unavailable in this preparatory slice and returns IMPORT_KIND_UNSUPPORTED for the authenticated tenant. Accepts only the preview version, never replacement rows. Customer or invoice facts, initial invoice revisions, audits and batch confirmation share one transaction. Invoice customer versions are revalidated under row locks. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
+         * Confirm the immutable customer, invoice or payment snapshot atomically
+         * @description Accepts only the preview version, never replacement rows. Customer, invoice or immutable payment facts, initial invoice revisions, audits and batch confirmation share one transaction. Payment transaction IDs remain reserved after allocation reversal. Invoice customer versions are revalidated under row locks. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
          */
         post: operations["confirmImport"];
         delete?: never;
@@ -643,6 +663,31 @@ export interface components {
         };
         ReceivablesPage: {
             items: components["schemas"]["ReceivableResponse"][];
+            nextCursor: string | null;
+        };
+        PaymentResponse: {
+            /** Format: uuid */
+            id: string;
+            transactionId: string;
+            /** Format: date */
+            transferDate: string;
+            payerName: string;
+            /** Format: int64 */
+            amount: number;
+            /**
+             * Format: int64
+             * @description Equals amount only while allocation ledger is absent; must be derived from active cash allocations when reconciliation is implemented.
+             */
+            unallocatedAmount: number;
+            /** Format: uuid */
+            sourceBatchId: string;
+            /** Format: uuid */
+            createdByUserId: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PaymentsPage: {
+            items: components["schemas"]["PaymentResponse"][];
             nextCursor: string | null;
         };
         ImportConfirmRequest: {
@@ -1045,6 +1090,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReceivablesPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listPayments: {
+        parameters: {
+            query?: {
+                dateFrom?: string;
+                dateTo?: string;
+                /** @description Exact nextCursor from the preceding page; omit for the first page. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Incoming payment facts and their unallocated amounts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentsPage"];
                 };
             };
             400: components["responses"]["BadRequest"];

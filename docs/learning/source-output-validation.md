@@ -1,5 +1,29 @@
 # Bounded source output
 
+## 再開の最初のcallでguardを適用する
+
+2026-10-30のpublisher再開時、指定operatorのbounded確認より先にenvironment全envelopeとpolicy/AGENTSの合算を表示し、同じcallの出力が切断された実1件を追加した。既存guardの存在確認が初回tool実行より後だったため予防が効かなかった。複数のtruncation表示は同callの1eventとして数え、過去eventと重複させない。
+
+AGENTS冒頭へ実行可能な環境3scalar recipe、delivery-loop入口へbootstrap完了後だけ本taskへ進む二段階委譲を固定した。raw environment objectへfallbackしない。実policyのversion/vpn/type/host_countは4scalar 80bytes、全出力cap4KiBで確認した。巨大な未表示fieldを持つfake envelopeでも3scalarだけを出し、本文が漏れないことを確認した。実行境界と判定証拠はpublisher保存の`work/bootstrap-output-route-proof.json`。新runtime/build/DB操作は行っていない。
+
+## Resource診断での再発と表示側のbyte検査
+
+`resource-diagnosis-batched-evidence-truncated-20261030` は新たな実切断1件である。最新operator guardを読む前に旧treeのAGENTSと複数の大JSONを合算表示し、外側応答に `Warning: truncated output (original token count: 18189)` を観測した。nested3読込を3件と数えず、欠落JSONをparse/読了扱いしていない。正本は `/workspace/debt-ar-final-acceptance/work/resource-diagnosis-20261030-output-incident-fragment.json`。既存15eventsと全resolutionを保持して16件へ追記する。
+
+guardファイルを置くだけでは開始時の適用漏れを防げなかった。以後、指定operatorのAGENTS/learningを最初に確認し、tool戻り値全体を表示しない。metadata読込はworkへ保存し、ローカルparseしたfield/count/bytesだけを返す。source/docが必要な場合も1bounded readerずつ、実UTF-8総量が4096byte以下の場合だけpayloadを返す。上限超過時はmetadataだけにし、次callで範囲を狭める。token数指定だけで安全と判断しない。
+
+実際に適用したfunctions.exec側の表示recipe（command自体にも保存・scalar化を適用する）:
+
+```js
+const r = await tools.exec_command({cmd: "<bounded command>", max_output_tokens: 8192});
+store("last_read", r);
+const bytes = unescape(encodeURIComponent(r.output)).length;
+if (r.exit_code === 0 && bytes <= 4096) text(r.output);
+else text({exit_code: r.exit_code, session_id: r.session_id, outputBytes: bytes});
+```
+
+resource診断ではBuildx duの20,245byteをworkに保存し、70件のcount/サイズのみを表示した。実装中の5,160byte skill表示と5,485byte文書表示はこの表示側条件でpayloadを返さず、次callの小範囲で読んだ。これは切断を再誘発した例ではない。原source/JSON・旧失敗証拠は保持し、今回の改善は既存readerの8KiB capを解除しない。
+
 旧準備版 `8b4135462793198faf696de2f566ae346df2dfad` の記録を保持し、main `f1d91ac57ba06b195e3c8fd8aae17b02c7e3f133` へguardを移植した。固定版 `141fb384bdca57ae379d017a94c37858dbacd573` はarchive branchへ保持する。以下の旧版・固定版の実検証と、末尾の最終追補・再利用した結果を区別する。
 
 旧版の2026-10-30の起点baseは `2d02e8bab0ecf9f76ff7796f004cbc4b2d1ba860`、最終baseは `d367c448d98345ad724caa990eeab937b09e1214`。当時の20keys/61eventsは旧版の件数である。artifact readerの16KiB制限だけでは、複数sourceを直接まとめてtoolへ出す操作を制限できなかった。

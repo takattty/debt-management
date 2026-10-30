@@ -7,6 +7,12 @@ description: Issue・対象commit・検証・別コンテキストレビュー�
 
 この Skill は repository に同梱される。Cloud に個人のローカル Skill が配置済みであるとは仮定しない。ユーザーの指示、root / FE / BE の AGENTS.md を優先する。
 
+## Bootstrapを先に完了する
+
+再開・新しい委譲では本作業より先に、指定operatorのAGENTS/learningを単独bounded callで読み、failure-loop checkと安全な出力経路を確認する。環境toolはAGENTS冒頭の実行可能3scalar recipeだけを使い、raw objectやpolicy/文書の合算を表示しない。helperの対象はsuffixだけで推測せず、hidden-partを含む実catalog条件で確認する。
+
+委譲を使う場合は二段階にする。最初のtaskはこのbootstrapだけに絞り、operator/learning/check/safe-outputの確認返信を受け取った後、followupで本taskを渡す。既存guardが存在しても初回discovery前に適用されなかった実再発を受けた手順であり、未使用の委譲機能の実証とは扱わない。
+
 ## 進行の復元
 
 1. Issue #1、対象 Issue、依存 Issue、最新コメントを読む。未決の業務判断と実行権限を区別する。

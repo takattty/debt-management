@@ -102,7 +102,7 @@ def build_budget(build, driver):
             'final_virtual_bytes': base + copied}
 
 
-def measure(phase):
+def measure(phase, selected_service=None):
     if not MARKER.is_file():
         raise MeasurementError('This mode is only for the managed Cloud local daemon')
     info = docker('info', '--format', '{{json .}}')
@@ -121,6 +121,10 @@ def measure(phase):
         raise MeasurementError('Filesystem available bytes are unknown')
     model = docker('compose', 'config', '--format', 'json')
     services = model['services']
+    if selected_service is not None:
+        if selected_service not in services:
+            raise MeasurementError('Unknown Compose service; no build/create was attempted')
+        services = {selected_service: services[selected_service]}
     hashes = {}
     for line in docker('compose', 'config', '--hash', '*', json_output=False).splitlines():
         name, digest = line.split()
@@ -160,7 +164,7 @@ def measure(phase):
         if postgres and not healthy:
             pg += max(PG_MINIMUM, measured['Size'])
         planned.append({'service': name, 'virtual_bytes': measured['Size'], 'current_container': current,
-                        'healthy': healthy})
+                        'healthy': healthy, 'running': bool(current and own[0]['State'].get('Running'))})
     # A build leaves room for subsequent new application containers, not just its transient layers.
     allocation = 0
     if driver == 'vfs':
@@ -182,11 +186,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cloud-local', required=True, action='store_true')
     parser.add_argument('--worktree', type=Path, default=ROOT, help='explicit Compose owner; helper stays in its own checkout')
+    parser.add_argument('--service', action='append', help='single exact Compose service; omitted means all services')
     parser.add_argument('phase', choices=('build', 'up'))
     args = parser.parse_args(argv)
+    if args.service and len(args.service) != 1:
+        parser.error('--service may be supplied only once')
     try:
         ROOT = args.worktree.resolve()
-        result = measure(args.phase)
+        result = measure(args.phase, args.service[0] if args.service else None)
         print(json.dumps(result, sort_keys=True))
         if not result['sufficient']:
             print('Docker capacity insufficient. Stop other heavy workers; preserve source, logs, images and volumes.', file=sys.stderr)

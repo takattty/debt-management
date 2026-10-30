@@ -1,5 +1,22 @@
 # Repository work rules
 
+## 再開時の最初の操作
+
+指定operatorのこの文書・learningを小範囲ずつ読み、failure-loopと出力経路を確認してからdiscoveryへ進む。環境toolの全objectは表示しない。取得と表示を同じcallで次のscalarに限定する（field不足でもrawへfallbackしない）。
+
+```js
+const result = await tools.mcp__codex_apps__cloud_environment_environment_status({});
+const s = result.structuredContent;
+const flags = { observations_current: s?.observations_current ?? null,
+  phase: s?.observed_phase ?? null, networkState: s?.network_policy?.state ?? null };
+const bytes = [...JSON.stringify(flags)].reduce((n, c) => n +
+  (c.codePointAt(0) > 65535 ? 4 : c.codePointAt(0) > 2047 ? 3 : c.codePointAt(0) > 127 ? 2 : 1), 0);
+if (bytes > 4096) throw Error("metadata cap");
+text(flags);
+```
+
+ソース用helperの可否はsuffixだけで決めず、実際の`read-source.catalog`集合で判定する。`.md`/`.json`、hidden-part（`.github`/`.agents`を含む）、work/build、secret名、symlinkは対象外。今回の残作業は先callで観測済みのGit管理pathのblobをUTF-8 cap付きで読み、workは明示ownerのwork限定readerを使う。実行可能な判定と境界検証は[入力経路](docs/learning/json-envelope-metadata-validation.md#hidden-partもsource-helperの対象外)を参照。
+
 ## 目的と実行境界
 
 - 業務要件の入口は [Issue #1](https://github.com/takattty/debt-management/issues/1)。仕様の一覧は `docs/requirements.md`、業務例は `docs/business-examples.md`。

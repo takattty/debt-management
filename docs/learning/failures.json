@@ -334,6 +334,12 @@
           "summary": "gate文書でも部分行contextを渡し同じpatch不一致が起きた",
           "evidence": "docs/learning/README.md",
           "recorded_at": "2026-10-29T16:56:54+00:00"
+        },
+        {
+          "event": "publisher-resume-document-title-anchor-mismatch-20261030",
+          "summary": "文書名から見出しを推測しmulti-file patch全体がcontext不一致で拒否された実1件",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-30T17:53:30+00:00"
         }
       ],
       "resolutions": [
@@ -344,6 +350,14 @@
           "guard": "docs/learning/README.md",
           "event_count": 2,
           "resolved_at": "2026-10-29T16:56:54+00:00"
+        },
+        {
+          "cause": "全fileの実anchorを読む手順があったが文書名からheadingを推測して別fileも含むpatchを作った",
+          "prevention": "各fileのanchorは直前のbounded読取で実観測する。拒否後は変更有無を確認してから再読し最小patchへ直す",
+          "verification": "最初のcontext拒否後gitstatus cleanを確認。source doc実見出し観測後の最小patch成功。transport終了でも再試行前cleanを確認。実context失敗だけ1event",
+          "guard": "docs/learning/README.md",
+          "event_count": 3,
+          "resolved_at": "2026-10-30T17:53:59+00:00"
         }
       ]
     },
@@ -922,6 +936,18 @@
           "summary": "root再開時にpolicy全文とAGENTSとFE AGENTSを同callへ束ね6097tokensがmax5000を超え実切断。actual chunk dad466、recovery8adf46、8695c6はこの失敗のchunkではない",
           "evidence": "docs/learning/json-envelope-metadata-validation.md",
           "recorded_at": "2026-10-30T15:45:29+00:00"
+        },
+        {
+          "event": "resource-diagnosis-batched-evidence-truncated-20261030",
+          "summary": "resource診断開始時に最新operator guardの適用前で旧AGENTSと複数大JSONを合算表示。外側出力がWarning: truncated output (original token count: 18189)。nested3読込を1実行と数え、欠落JSONをparse/読了扱いしていない。",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T12:55:38+00:00"
+        },
+        {
+          "event": "publisher-resume-policy-agents-aggregate-20261030",
+          "summary": "再開bootstrap前に環境全objectとpolicy/AGENTS合算を表示し同callが切断された実1件",
+          "evidence": "docs/learning/source-output-validation.md",
+          "recorded_at": "2026-10-30T17:53:30+00:00"
         }
       ],
       "resolutions": [
@@ -980,6 +1006,22 @@
           "guard": "scripts/json-metadata.py",
           "event_count": 17,
           "resolved_at": "2026-10-30T15:45:29+00:00"
+        },
+        {
+          "cause": "最新operator guardを最初に読む運用を開始時に適用せず、nestedごとのtoken指定だけで大JSONを合算表示した。guardの存在だけでは適用漏れを防げなかった",
+          "prevention": "最新operator AGENTS/learningを最初に確認。tool戻り値全体は表示せずwork保存とscalar抽出。必要本文は1reader/call、表示前に実UTF8 byte数4096以下を検査し、超過はmetadataだけ返して次callを縮小。既存8KiB reader capは維持",
+          "verification": "元8bの15→16実証は旧証拠として保持。最新mainの17events/resolution prefixを厳密保持し、staged authorの別1eventのみunionして18events。guard code/testsは元8bと同一、original/reviewer83/25＋negative7、root actual12gates/17API/32real/native2/guide/recreate12722の証拠へ結合。最新wholeCIは別必須gate。",
+          "guard": "docs/learning/source-output-validation.md",
+          "event_count": 18,
+          "resolved_at": "2026-10-30T16:19:13+00:00"
+        },
+        {
+          "cause": "既存guardを読む前にdiscoveryへ進んだため入口で適用されず、environment fullとpolicy/AGENTS合算が1callで切断された",
+          "prevention": "AGENTS先頭に実行可能な3scalar/4KiB recipe、delivery-loop先頭にbootstrapだけの初taskと確認後followupを固定。rawfallback禁止",
+          "verification": "actual環境3scalar成功。巨大未表示field無漏洩・missingnull・過大flag拒否の3checks、policy4scalar80bytes。既存18eventから実1件だけ追補",
+          "guard": "AGENTS.md",
+          "event_count": 19,
+          "resolved_at": "2026-10-30T17:53:59+00:00"
         }
       ]
     },
@@ -1366,6 +1408,12 @@
           "summary": "Catalogued Markdown was passed to source-only read-source, exit1 with candidates; no document read. Changed to bounded explicit-owner UTF8 text reader without same-helper retry.",
           "evidence": "work/publisher-doc-helper-scope-observation.json",
           "recorded_at": "2026-10-30T17:23:59+00:00"
+        },
+        {
+          "event": "publisher-resume-hidden-github-source-rejected-20261030",
+          "summary": "catalog済github scriptをsource helperへ渡しhidden-part除外で拒否された別の実1件",
+          "evidence": "docs/learning/json-envelope-metadata-validation.md",
+          "recorded_at": "2026-10-30T17:53:30+00:00"
         }
       ],
       "resolutions": [
@@ -1384,6 +1432,14 @@
           "guard": "docs/learning/json-envelope-metadata-validation.md",
           "event_count": 3,
           "resolved_at": "2026-10-30T17:26:50+00:00"
+        },
+        {
+          "cause": "前回guardがmd/json suffixを強調し、hidden-partを含むread-source実allowed集合と入口判定が一致しなかった",
+          "prevention": "実read-source.catalogで判定し、hidden/github/agents/work/build/secret/symlink除外を明記。残作業は観測済Git blob bounded読取に統一",
+          "verification": "実catalog8境界を検査。github script正常927bytesと過大doc exit2/stdout0。旧3eventsとresolutionsを保持し今回実1件だけ追補",
+          "guard": "docs/learning/json-envelope-metadata-validation.md",
+          "event_count": 4,
+          "resolved_at": "2026-10-30T17:53:59+00:00"
         }
       ]
     },

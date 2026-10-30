@@ -656,6 +656,12 @@
           "summary": "実phase検証のproxy harnessが新generatorを未導入の古いalias checkoutへ指定し、runn11成功後にhelper起動前の不在で停止した",
           "evidence": "docs/learning/auth-phase-validation.md",
           "recorded_at": "2026-10-30T02:44:59+00:00"
+        },
+        {
+          "event": "collection-read-red-log-from-actions-cwd-20261030",
+          "summary": "作者がREAD所有の相対worklogをACTIONS cwdから読みFileNotFound。source/log変更なし、正しいREAD絶対owner helperとworktree指定で再取得しhash照合した実1件",
+          "evidence": "docs/learning/split-slice-integration-validation.md",
+          "recorded_at": "2026-10-30T17:04:51+00:00"
         }
       ],
       "resolutions": [
@@ -730,6 +736,14 @@
           "guard": "scripts/verify-proxy.sh",
           "event_count": 9,
           "resolved_at": "2026-10-30T02:48:33+00:00"
+        },
+        {
+          "cause": "作者がREAD所有red logを相対work pathのままACTIONS cwdへ混在させ、既存owner分離guardを適用しなかった実1件の再発",
+          "prevention": "所有READのabsolute helperとworktree指定でartifactを解決し、別tree操作と相対work読取を同commandへ混在させない。rawを再表示せずowner/path/bytes/hashを照合する",
+          "verification": "正しいREAD absolute read-evidenceで1byte bounded chunkをcaptureし、owner絶対pathとtotalとwholeSHAを直接READ実loghashへ照合して一致。rawpayloadは表示せず、原REDlogとsourceは保持。PR85原loghashも提供proofと一致しraw再表示なし。誤読1eventのみ追加、他keyや既存events/resolutionsは保持する",
+          "guard": "docs/learning/split-slice-integration-validation.md",
+          "event_count": 10,
+          "resolved_at": "2026-10-30T17:06:30+00:00"
         }
       ]
     },
@@ -1412,6 +1426,56 @@
           "guard": "docs/learning/runn-expression-identifiers.md",
           "event_count": 2,
           "resolved_at": "2026-10-30T12:07:26+00:00"
+        }
+      ]
+    },
+    {
+      "key": "split-slice-later-feature-dependency",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "financial-candidates-confirmation-e2e-left-in-later-slice-20261030",
+          "summary": "PR85 S1で既存payment confirmation E2Eの旧unavailable期待更新をS2へ置き忘れ、f00 CI23PASS1FAIL。753で元の重要assertionsを保ち修正しnewCI成功。既存async描画3eventsとは別事象",
+          "evidence": "docs/learning/split-slice-integration-validation.md",
+          "recorded_at": "2026-10-30T17:04:51+00:00"
+        },
+        {
+          "event": "collection-read-parent-refresh-left-in-actions-slice-20261030",
+          "summary": "READ0916の実InvoicePanel訂正と取消後に親残高再GETが無く、独立2cases RED。後続ACTIONSでは2GREEN。同missinghandlerの1incidentとして記録しcasesを別eventにしない",
+          "evidence": "docs/learning/split-slice-integration-validation.md",
+          "recorded_at": "2026-10-30T17:04:51+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "full完成版と後続patchの成功から各前段slice単独の成立を推測し、PR85既存E2E更新をS2へ、READの親再GET handlerをACTIONSへ置き忘れた同因2incidents",
+          "prevention": "各scopeでparent/child変更後再GETと既存E2Eを含む単独成立matrixを確認し、後続patch依存を見落とさない。READへ共通refreshを前倒ししACTIONSは新READへ明示ontoで載せ共通処理を重複させない",
+          "verification": "PR85原job metadataとrawlog hashを照合し旧f00 CI23PASS1FAILを確認、753の互換修正とnewCI成功の提供証拠を保存。READ実InvoicePanel訂正/取消は独立2REDが後続ACTIONSで2GREENの同1incident。作者永久4caseは旧READ4REDから新4＋既存4の8GREEN、type/lint0。realE2E2caseはsource準備のみで未実行、root runtime検証へhandoff",
+          "guard": "docs/learning/split-slice-integration-validation.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T17:06:30+00:00"
+        }
+      ]
+    },
+    {
+      "key": "nested-invoice-busy-propagation",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "collection-read-actions-nested-invoice-parent-busy-gap-20261030",
+          "summary": "実nested InvoicePanel処理保留中に親closeがREAD/ACTIONSでenabled。独立2control casesを同じbusy伝播欠落の1incidentとして記録。split依存2eventsとは別原因",
+          "evidence": "docs/learning/split-slice-integration-validation.md",
+          "recorded_at": "2026-10-30T17:04:51+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "実nested InvoicePanelのbusyがCollectionDetailへ反映されず、親closeと選択navigationがpending mutation中も可能だった。READ/ACTIONSの独立2casesは同じ伝播欠落1incident",
+          "prevention": "nested child busyをDetailと親一覧とrootへ同期し、親close/toggle/選択navigationを止める。親再GET成功を待って子を閉じ、応答不明や再GET失敗では既存結果確認を保持。成功後closeを通常へ戻す",
+          "verification": "作者unitは旧READでrefresh2/busy2の4RED、新READで新4＋既存4の8GREEN。pending correctionでは通信結果不明からGET回復、cancelでは成功後closeまで検証。type/lint0。real実PUT/取消POSTをroutefetchで実backendへ送って応答だけ保留する2E2Eは未実行sourceとしてrootへ固定blobhandoff。最終prodはCollectionsPanelだけの最小guardでroot既定ff2b920に合わせる",
+          "guard": "frontend/src/CollectionsPanel.tsx",
+          "event_count": 1,
+          "resolved_at": "2026-10-30T17:06:30+00:00"
         }
       ]
     }

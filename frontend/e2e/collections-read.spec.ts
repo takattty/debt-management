@@ -39,3 +39,74 @@ test('bounded candidate pages honor explicit day/held scope and original histori
   const otherContext = await browser.newContext(); try { const other = await otherContext.newPage(); await loginInvoiceUser(other, 'beta-admin@example.test', new URL('/', page.url()).toString()); expect((await other.request.get(`/api/collections/${invoice.id}?asOf=2026-10-30`)).status()).toBe(404); expect((await other.request.get(`/api/collections/${invoice.id}/history`)).status()).toBe(404); } finally { await otherContext.close(); }
   await page.context().clearCookies(); await page.getByRole('button', { name: '候補を表示', exact: true }).click(); await expect(page.getByLabel('パスワード', { exact: true })).toHaveValue(''); await expect(candidates).toHaveCount(0);
 });
+
+for (const cancel of [false, true]) {
+  test(`nested invoice ${cancel ? 'cancellation' : 'correction'} keeps parent close/navigation blocked until the real response and refreshed balance`, async ({ page }) => {
+    test.setTimeout(90000);
+    const fixture = await collectionFixtures(page);
+    const invoice = fixture.invoices[0];
+    const detail = await openCollectionFromInvoice(page, fixture.customer, invoice);
+    await detail.getByRole('button', { name: '原請求・訂正履歴を確認', exact: true }).click();
+    const editor = detail.getByRole('region', { name: `請求の訂正・履歴：${invoice.invoiceNumber}`, exact: true });
+    await expect(editor).toBeVisible();
+
+    const mutationPath = `/api/invoices/${invoice.id}${cancel ? '/cancel' : ''}`;
+    const matchesMutation = (url: URL) => url.pathname === mutationPath;
+    let release!: () => void;
+    let captured!: () => void;
+    let completed!: () => void;
+    const responseGate = new Promise<void>((resolve) => { release = resolve; });
+    const responseCaptured = new Promise<void>((resolve) => { captured = resolve; });
+    const routeCompleted = new Promise<void>((resolve) => { completed = resolve; });
+    let routeStarted = false;
+    let routeFailed = false;
+    let realStatus: number | null = null;
+    await page.route(matchesMutation, async (route) => {
+      routeStarted = true;
+      try {
+        // Commit through the real API; hold only its real response to the browser.
+        const response = await route.fetch();
+        realStatus = response.status();
+        captured();
+        await responseGate;
+        await route.fulfill({ response });
+      } catch {
+        routeFailed = true;
+        captured();
+        await route.abort().catch(() => {});
+      } finally { completed(); }
+    });
+    try {
+      if (cancel) {
+        await editor.getByLabel('取消理由', { exact: true }).fill(`実応答保留の取消 ${fixture.prefix}`);
+        await editor.getByRole('checkbox', { name: 'この請求の最新内容と取消の影響を確認し、取り消す', exact: true }).check();
+      } else {
+        await editor.getByLabel('訂正後の請求額（円）', { exact: true }).fill('120000');
+        await editor.getByLabel('訂正理由', { exact: true }).fill(`実応答保留の訂正 ${fixture.prefix}`);
+      }
+      const submit = editor.getByRole('button', { name: cancel ? '請求の取消を確定' : '訂正を保存', exact: true });
+      await submit.click();
+      await responseCaptured;
+      expect(routeFailed).toBe(false); expect(realStatus).toBe(200);
+      await expect(submit).toBeDisabled();
+      await expect(detail.getByRole('button', { name: '対応を閉じる', exact: true })).toBeDisabled();
+      await expect(detail.getByRole('button', { name: '原請求を閉じる', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '顧客管理', exact: true })).toBeDisabled();
+
+      const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/collections/${invoice.id}` && response.request().method() === 'GET');
+      release(); await routeCompleted;
+      expect(routeFailed).toBe(false); expect((await refreshed).status()).toBe(200);
+      await expect(editor).toHaveCount(0);
+      await expect(detail).toContainText(cancel ? '現在の未回収額：￥0' : '現在の未回収額：￥120,000');
+      if (cancel) await expect(detail).toContainText('取消済み・対象外');
+      await expect(detail.getByRole('button', { name: '対応を閉じる', exact: true })).toBeEnabled();
+      await expect(page.getByRole('button', { name: '顧客管理', exact: true })).toBeEnabled();
+      await detail.getByRole('button', { name: '対応を閉じる', exact: true }).click();
+      await expect(detail).toHaveCount(0);
+    } finally {
+      release();
+      if (routeStarted) await routeCompleted;
+      await page.unroute(matchesMutation);
+    }
+  });
+}

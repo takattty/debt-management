@@ -1,11 +1,15 @@
 import { expect, type Page } from '@playwright/test';
-import type { Customer, Invoice, Session } from '../src/api';
+import type { Customer, Receivable, Session } from '../src/api';
 
 export async function loginInvoiceUser(page: Page, email = 'alpha-accountant@example.test', url = '/') {
   await page.goto(url); await page.getByLabel('メールアドレス').fill(email);
   await page.getByLabel('パスワード').fill(process.env.LOCAL_SEED_PASSWORD ?? 'debt_local_demo_2026');
   await page.getByRole('button', { name: 'ログイン', exact: true }).click();
   await expect(page.getByRole('heading', { name: '顧客を登録' })).toBeVisible();
+}
+export async function filterInvoicesForCustomer(page: Page, customerId: string) {
+  await page.getByRole('combobox', { name: '顧客で絞り込む', exact: true }).selectOption(customerId);
+  await page.getByRole('button', { name: '条件で表示', exact: true }).click();
 }
 export async function createInvoice(page: Page) {
   const code = `MUT-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -19,9 +23,11 @@ export async function createInvoice(page: Page) {
   await page.getByRole('button', { name: 'CSVをプレビュー', exact: true }).click();
   await page.getByRole('button', { name: '全1件を確定して登録' }).click(); await expect(page.getByRole('status')).toContainText('1件の請求を登録しました');
   await page.getByRole('button', { name: '債権一覧へ' }).click();
-  await page.getByRole('combobox', { name: '顧客で絞り込む' }).selectOption(customer.id); await page.getByRole('button', { name: '条件で表示' }).click();
+  await filterInvoicesForCustomer(page, customer.id);
   await expect(page.getByRole('table', { name: '債権一覧' })).toContainText(invoiceNumber);
-  const invoice: Invoice = (await (await page.request.get(`/api/receivables?customerId=${customer.id}`)).json()).items[0];
+  const invoices: Receivable[] = (await (await page.request.get(`/api/receivables?customerId=${customer.id}`)).json()).items;
+  const invoice = invoices.find((item) => item.invoiceNumber === invoiceNumber)!;
+  expect(invoice).toMatchObject({ customerId: customer.id, invoiceNumber });
   await page.getByRole('button', { name: `請求 ${invoiceNumber} の訂正・履歴`, exact: true }).click();
   await expect(page.getByRole('heading', { name: `請求の訂正・履歴：${invoiceNumber}` })).toBeVisible();
   return { invoice, customer, invoiceNumber };

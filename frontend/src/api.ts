@@ -11,6 +11,7 @@ export type ImportRow = components['schemas']['ImportRowResponse'];
 export type PaymentImportRow = components['schemas']['PaymentImportRowResponse'];
 export type Payment = components['schemas']['PaymentResponse'];
 export type PaymentsQuery = NonNullable<operations['listPayments']['parameters']['query']>;
+export type PayerAlias = components['schemas']['PayerAliasResponse'];
 export type ImportError = components['schemas']['ImportErrorResponse'];
 export type Receivable = components['schemas']['ReceivableResponse'];
 export type Invoice = components['schemas']['InvoiceResponse'];
@@ -42,6 +43,14 @@ export const api = {
   login: (body: LoginInput, csrf: Csrf) => request({ path: '/api/auth/login', method: 'POST' }, csrf, body),
   getSession: () => request({ path: '/api/session', method: 'GET' }, undefined),
   listCustomers: () => request({ path: '/api/customers', method: 'GET' }, undefined),
+  listPayerAliases: (cursor?: string) => request({ path: '/api/payer-aliases', method: 'GET', url: `/api/payer-aliases?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` }, undefined),
+  getPayerAlias: (id: string) => request({ path: '/api/payer-aliases/{id}', method: 'GET', url: payerAliasUrl(id) }, undefined),
+  createPayerAlias: (csrf: Csrf, body: operations['createPayerAlias']['requestBody']['content']['application/json']) => request(
+    { path: '/api/payer-aliases', method: 'POST' }, csrf, body,
+  ),
+  deactivatePayerAlias: (csrf: Csrf, id: string, body: operations['deactivatePayerAlias']['requestBody']['content']['application/json']) => request(
+    { path: '/api/payer-aliases/{id}/deactivation', method: 'POST', url: `${payerAliasUrl(id)}/deactivation` }, csrf, body,
+  ),
   listPayments: (query: PaymentsQuery = {}) => {
     const parameters = new URLSearchParams();
     Object.entries(query).forEach(([key, value]) => { if (value !== undefined) parameters.set(key, String(value)); });
@@ -114,6 +123,7 @@ export class ApiError extends Error {
 type RequestEndpoint<E extends Endpoint = Endpoint> = E & { url?: string };
 const importUrl = (id: string) => `/api/imports/${encodeURIComponent(id)}`;
 const invoiceUrl = (id: string) => `/api/invoices/${encodeURIComponent(id)}`;
+const payerAliasUrl = (id: string) => `/api/payer-aliases/${encodeURIComponent(id)}`;
 
 async function request<E extends Endpoint>(endpoint: RequestEndpoint<E>, csrf: Csrf | undefined, ...body: RequestBody<E>): Promise<SuccessOf<OperationOf<E>>> {
   const response = await send(endpoint, csrf, body.length ? JSON.stringify(body[0]) : undefined);
@@ -156,6 +166,7 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
     const invitation = endpoint.path.startsWith('/api/invitations');
     const importing = endpoint.path.startsWith('/api/imports');
     const invoicing = endpoint.path.startsWith('/api/invoices');
+    const aliasing = endpoint.path.startsWith('/api/payer-aliases');
     const messages: Record<number, string> = {
       400: endpoint.path === '/api/auth/login' ? 'メールアドレスとパスワードの入力内容を確認してください。'
         : endpoint.path === '/api/invitations' ? '招待先のメールアドレスと権限を確認してください。'
@@ -191,7 +202,11 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
     const invoiceMessage = invoicing ? (code && Object.hasOwn(invoiceMessages, code) ? invoiceMessages[code] : undefined) ?? (response.status === 400 ? '顧客・日付・正の円整数の金額・理由を確認してください。' : response.status === 404 ? invoiceMessages.NOT_FOUND : undefined) : undefined;
     const importMessage = importing && code && Object.hasOwn(importMessages, code) ? importMessages[code] : undefined;
     const statusMessage = Object.hasOwn(messages, response.status) ? messages[response.status] : undefined;
-    throw new ApiError(response.status, invoiceMessage ?? importMessage ?? statusMessage ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
+    const aliasMessage = aliasing ? code === 'PAYER_ALIAS_EXISTS' ? '同じ名義と顧客の有効な対応は登録済みです。一覧で対応IDを確認してください。'
+      : response.status === 409 ? '他の担当者が変更したか、すでに無効化されています。最新の詳細を取得して確認してください。'
+        : response.status === 404 ? '対応または顧客が見つかりません。対応IDと顧客を確認してください。'
+          : response.status === 400 ? '名義は200文字以内、無効化理由は500文字以内で入力してください。空白だけの入力や制御文字は使えません。' : undefined : undefined;
+    throw new ApiError(response.status, aliasMessage ?? invoiceMessage ?? importMessage ?? statusMessage ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
   }
   return response;
 }

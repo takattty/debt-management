@@ -3,6 +3,9 @@ package com.example.debt.reconciliation;
 import com.example.debt.access.CurrentUser;
 import com.example.debt.generated.api.AllocationsApi;
 import com.example.debt.generated.model.AllocationConfirmRequest;
+import com.example.debt.generated.model.AllocationHistoryEntry;
+import com.example.debt.generated.model.AllocationHistoryLine;
+import com.example.debt.generated.model.AllocationHistoryPage;
 import com.example.debt.generated.model.AllocationOperationResponse;
 import com.example.debt.generated.model.AllocationReverseRequest;
 import java.time.ZoneOffset;
@@ -16,7 +19,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class AllocationController implements AllocationsApi {
     private final AllocationCommands commands;
     private final CurrentUser current;
-    public AllocationController(AllocationCommands commands, CurrentUser current) { this.commands = commands; this.current = current; }
+    private final AllocationHistory history;
+    public AllocationController(AllocationCommands commands, CurrentUser current, AllocationHistory history) {
+        this.commands = commands; this.current = current; this.history = history;
+    }
+
+    @Override
+    public ResponseEntity<AllocationHistoryPage> listAllocationHistory(UUID paymentId, String cursor, Integer limit) {
+        var page = history.list(current.require().tenantId(), paymentId, cursor, limit);
+        var entries = page.items().stream().map(entry -> new AllocationHistoryEntry(entry.id(), entry.requestId(),
+                AllocationHistoryEntry.KindEnum.fromValue(entry.kind()), entry.reversesId(), entry.reversedByOperationId(),
+                Long.toString(entry.paymentVersion()), entry.actorUserId(), entry.actorEmail(), entry.reason(), entry.occurredAt().atOffset(ZoneOffset.UTC),
+                entry.lines().stream().map(line -> new AllocationHistoryLine(line.invoiceId(), line.invoiceNumber(), line.customerId(), line.customerName(),
+                        Long.toString(line.observedInvoiceVersion()), Long.toString(line.currentInvoiceVersion()), line.cash(), line.fee())).toList())).toList();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new AllocationHistoryPage(page.paymentId(), Long.toString(page.paymentVersion()), entries, page.nextCursor()));
+    }
 
     @Override
     public ResponseEntity<AllocationOperationResponse> confirmAllocation(UUID paymentId, AllocationConfirmRequest request) {

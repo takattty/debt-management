@@ -291,6 +291,15 @@ steps:
     bind:
       original: current.res.body.id
     test: current.res.status == 200 && current.res.body.kind == 'CONFIRM' && current.res.body.paymentVersion == '1'
+  confirmedHistory:
+    api:
+      /api/payments/{{ paymentId }}/allocations?limit=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.expectedPaymentVersion == '1' && len(current.res.body.items) == 1 && current.res.body.items[0].id == original && current.res.body.items[0].requestId == confirmRequest && current.res.body.items[0].actorEmail == 'alpha-accountant@example.test' && len(current.res.body.items[0].lines) == 2 && current.res.body.items[0].reversedByOperationId == null
   replay:
     api:
       /api/payments/{{ paymentId }}/allocations:
@@ -431,6 +440,24 @@ steps:
     bind:
       reversal: current.res.body.id
     test: current.res.status == 200 && current.res.body.kind == 'REVERSE' && current.res.body.reversesId == original && current.res.body.paymentVersion == '2'
+  reversedHistory:
+    api:
+      /api/payments/{{ paymentId }}/allocations?limit=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.expectedPaymentVersion == '2' && current.res.body.items[0].id == original && current.res.body.items[0].reversedByOperationId == reversal && current.res.body.nextCursor == '1'
+  reversalHistoryPage:
+    api:
+      /api/payments/{{ paymentId }}/allocations?limit=1&cursor=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.items[0].id == reversal && current.res.body.items[0].reversesId == original && len(current.res.body.items[0].lines) == 2 && current.res.body.nextCursor == null
   reverseReplay:
     api:
       /api/payments/{{ paymentId }}/allocations/{{ original }}/reversal:

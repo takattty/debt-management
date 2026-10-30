@@ -1232,6 +1232,34 @@
           "resolved_at": "2026-10-30T12:27:55.903696+00:00"
         }
       ]
+    },
+    {
+      "key": "github-upstream-transient",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "publisher-history-runtime-pr-create-502-20261030",
+          "summary": "PR83作成のGraphQL HTTP502後、exact head branch/stateall GET空配列を確認してからREST POSTで作成した実観測",
+          "evidence": "docs/learning/github-upstream-transient-validation.md",
+          "recorded_at": "2026-10-30T14:31:44+00:00"
+        },
+        {
+          "event": "publisher-history-runtime-quality-get-500-20261030",
+          "summary": "別のreadonly quality check-runs GETがHTTP500 exit1となりwatch停止。chunk c197a9、quality結果は不明のまま保持",
+          "evidence": "docs/learning/github-upstream-transient-validation.md",
+          "recorded_at": "2026-10-30T14:31:44+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "GitHub上流の一時的なGraphQL502と別read-only GET500を観測。PR作成は結果不明の更新であり、GET失敗を空結果やCI成功として扱えない。権限拒否とは別の原因として分類した",
+          "prevention": "GETのHTTP500/502/503/504だけ初回含む最大3回、待機2/4秒に制限。403/settings/billing拒否やPOST/mergeを自動retryしない。結果不明の更新はexacthead/body/stateの成功GETで確認後だけ必要操作を再開し、metadata不明ならmerge停止。回数待機の制限と通信wallclock保証を区別する",
+          "verification": "実2件をcanonicalへ保存しopen2/check exit1を確認後、private helperのSHAを提供proofへ照合。publisher8fakecasesと作者13fakecasesがPASS、明示GETのみ実network/sleep0。3callerのGET接続とmutation別callを静的確認し実行なし。元main30keys92eventsを完全保持して新key2件のみ追加。provider実障害やtimeout回復時間は未検証",
+          "guard": "docs/learning/github-upstream-transient-validation.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T14:35:17+00:00"
+        }
+      ]
     }
   ]
 }

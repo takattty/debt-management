@@ -301,6 +301,8 @@ steps:
           body: null
     test: current.res.status == 200 && current.res.body.items[0].operation == 'CREATED'
       && current.res.body.items[0].snapshot.amount == firstAmount && current.res.body.nextCursor == 0
+      && current.res.body.items[0].actorEmail == 'alpha-accountant@example.test'
+      && current.res.body.items[0].actorUserId != null
   correctedHistory:
     api:
       /api/invoices/{{ firstReceivable }}/history?cursor=0&limit=1:
@@ -310,6 +312,7 @@ steps:
       && current.res.body.items[0].snapshot.amount == 110000 && current.res.body.items[0].reason == '税込金額を訂正'
       && current.res.body.items[0].snapshot.issueDate == '0001-01-01' && current.res.body.items[0].snapshot.dueDate == '9999-12-31'
       && current.res.body.nextCursor == null
+      && current.res.body.items[0].actorEmail == 'alpha-accountant@example.test'
   cancel:
     api:
       /api/invoices/{{ firstReceivable }}/cancel:
@@ -334,6 +337,41 @@ steps:
         get:
           body: null
     test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id != firstReceivable
+      && current.res.body.items[0].status == 'ACTIVE'
+  cancelledByStatus:
+    api:
+      /api/receivables?status=CANCELLED&customerId={{ customerId }}&dueFrom=9999-12-31&dueTo=9999-12-31&limit=1:
+        get:
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id == firstReceivable
+      && current.res.body.items[0].status == 'CANCELLED' && current.res.body.items[0].outstandingAmount == 0
+      && current.res.body.items[0].amount == 110000 && current.res.body.nextCursor == null
+  allStatesFirstPage:
+    api:
+      /api/receivables?status=ALL&customerId={{ customerId }}&limit=1:
+        get:
+          body: null
+    bind:
+      allCursor: current.res.body.nextCursor
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id != firstReceivable
+      && current.res.body.items[0].status == 'ACTIVE' && allCursor != null
+  allStatesNextPage:
+    api:
+      /api/receivables?status=ALL&customerId={{ customerId }}&limit=1&cursor={{ allCursor }}:
+        get:
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id == firstReceivable
+      && current.res.body.items[0].status == 'CANCELLED' && current.res.body.items[0].amount == 110000
+      && current.res.body.items[0].outstandingAmount == 0 && current.res.body.nextCursor == null
+  unsupportedStatus:
+    invalid:
+      /api/receivables?status=unknown:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+          body: null
+    test: current.res.status == 400
   cancelledHistory:
     api:
       /api/invoices/{{ firstReceivable }}/history?cursor=1:
@@ -341,6 +379,7 @@ steps:
           body: null
     test: current.res.status == 200 && current.res.body.items[0].operation == 'CANCELLED'
       && current.res.body.items[0].reason == '重複請求を取消' && current.res.body.items[0].snapshot.amount == 110000
+      && current.res.body.items[0].actorEmail == 'alpha-accountant@example.test'
   repeatCancel:
     api:
       /api/invoices/{{ firstReceivable }}/cancel:
@@ -391,6 +430,16 @@ steps:
   noTenantLeak:
     beta:
       /api/receivables?customerId={{ customerId }}:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-Tenant-Id: 11111111-1111-1111-1111-111111111111
+          body: null
+    test: current.res.status == 200 && len(current.res.body.items) == 0
+  noAllStateTenantLeak:
+    beta:
+      /api/receivables?status=ALL&customerId={{ customerId }}:
         get:
           useCookie: false
           headers:

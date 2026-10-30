@@ -365,8 +365,8 @@ paths:
     get:
       tags: [Invoices]
       operationId: listReceivables
-      summary: List active receivables in stable due-date and ID order
-      description: Bounded keyset page. Cancelled invoices are excluded. Settlement is not enabled in this slice, so outstandingAmount equals the registered invoice amount. Balances are never editable inputs.
+      summary: Browse invoices by status in stable due-date and ID order
+      description: Bounded tenant-scoped keyset page. ACTIVE is the compatible default; CANCELLED shows cancelled originals and ALL includes both states. Keep the selected status/customer/due filters when following nextCursor. Settlement is not enabled in this slice, so active outstandingAmount equals amount; cancelled outstandingAmount is zero while amount retains the original invoice value. Balances are never editable inputs.
       parameters:
       - name: customerId
         in: query
@@ -384,9 +384,13 @@ paths:
       - name: limit
         in: query
         schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      - name: status
+        in: query
+        description: Invoice state to browse; omitting this parameter preserves the active-only list.
+        schema: {type: string, enum: [ACTIVE, CANCELLED, ALL], default: ACTIVE}
       responses:
         '200':
-          description: Active invoices and their outstanding amounts
+          description: Matching invoices with their status, original amount and outstanding amount
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ReceivablesPage'}
@@ -1329,7 +1333,7 @@ components:
         version: {type: integer, format: int64, minimum: 0}
     InvoiceHistoryEntry:
       type: object
-      required: [revision, operation, reason, actorUserId, occurredAt, snapshot]
+      required: [revision, operation, reason, actorUserId, occurredAt, snapshot, actorEmail]
       properties:
         revision: {type: integer, format: int64, minimum: 0}
         operation: {type: string, enum: [CREATED, CORRECTED, CANCELLED]}
@@ -1337,6 +1341,11 @@ components:
         actorUserId: {type: string, format: uuid}
         occurredAt: {type: string, format: date-time}
         snapshot: {$ref: '#/components/schemas/InvoiceHistorySnapshot'}
+        actorEmail:
+          type: string
+          format: email
+          maxLength: 254
+          description: Current email label of the actor in the same tenant, including disabled users. actorUserId remains authoritative; this display label is not a historical snapshot and may change without rewriting the revision or audit.
     InvoiceHistoryPage:
       type: object
       required: [items, nextCursor]
@@ -1348,7 +1357,7 @@ components:
         nextCursor: {type: integer, format: int64, minimum: 0, nullable: true}
     ReceivableResponse:
       type: object
-      required: [id, customerId, customerCode, customerName, invoiceNumber, issueDate, dueDate, amount, outstandingAmount, version]
+      required: [id, customerId, customerCode, customerName, invoiceNumber, issueDate, dueDate, amount, outstandingAmount, version, status]
       properties:
         id: {type: string, format: uuid}
         customerId: {type: string, format: uuid}
@@ -1360,6 +1369,7 @@ components:
         amount: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
         outstandingAmount: {type: integer, format: int64, minimum: 0, maximum: 9007199254740991}
         version: {type: integer, format: int64, minimum: 0}
+        status: {type: string, enum: [ACTIVE, CANCELLED]}
     ReceivablesPage:
       type: object
       required: [items, nextCursor]

@@ -6,7 +6,7 @@ import type { Customer, ImportBatch, Receivable, Session } from './api';
 
 const customer: Customer = { id: '11111111-1111-1111-1111-111111111180', code: 'C001', name: '架空商事', version: 0 };
 const session: Session = { userId: '11111111-1111-1111-1111-111111111112', tenantId: '11111111-1111-1111-1111-111111111111', email: 'alpha-accountant@example.test', role: 'ACCOUNTANT', csrfToken: 'csrf', csrfHeaderName: 'X-CSRF-TOKEN' };
-const invoice: Receivable = { id: '11111111-1111-1111-1111-111111111181', customerId: customer.id, customerCode: customer.code, customerName: customer.name, invoiceNumber: 'INV-001', issueDate: '2026-10-30', dueDate: '2026-11-30', amount: 9007199254740991, outstandingAmount: 9007199254740991, version: 0 };
+const invoice: Receivable = { id: '11111111-1111-1111-1111-111111111181', customerId: customer.id, customerCode: customer.code, customerName: customer.name, invoiceNumber: 'INV-001', issueDate: '2026-10-30', dueDate: '2026-11-30', amount: 9007199254740991, outstandingAmount: 9007199254740991, version: 0, status: 'ACTIVE' };
 const cursor = `2026-11-30:${invoice.id}`;
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 

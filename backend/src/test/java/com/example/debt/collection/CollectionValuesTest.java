@@ -8,6 +8,14 @@ import org.junit.jupiter.api.Test;
 
 class CollectionValuesTest {
     @Test
+    void sharedNotesPreserveMultilineTextAndCountSupplementaryCharactersAsCodePoints() {
+        assertThat(CollectionValues.note(" 依頼内容\n次の担当への確認\t事項 ")).isEqualTo("依頼内容\n次の担当への確認\t事項");
+        assertThat(CollectionValues.note("𠮷".repeat(5000))).hasSize(10000);
+        assertThatThrownBy(() -> CollectionValues.note("𠮷".repeat(5001))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> CollectionValues.note(" \n\t ")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> CollectionValues.note("invalid\u0000text")).isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test
     void explicitBusinessDateCountsCalendarDaysWithoutTimeZoneOrBucketRounding() {
         LocalDate due = LocalDate.of(2026, 11, 30);
         assertThat(CollectionValues.daysOverdue(due, due.minusDays(1))).isZero();

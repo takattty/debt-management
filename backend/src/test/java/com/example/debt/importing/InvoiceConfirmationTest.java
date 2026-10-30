@@ -82,6 +82,30 @@ class InvoiceConfirmationTest {
     }
 
     @Test
+    void preservesIsoDatesAcrossTheSupportedRangeAndGregorianTransition() {
+        var dates = List.of("0001-01-01", "1500-03-01", "1582-10-04", "1582-10-05", "1582-10-10", "1582-10-15", "9999-12-31");
+        String rows = dates.stream().map(date -> code + "," + prefix + "-" + date + "," + date + "," + date + ",100\n")
+                .collect(java.util.stream.Collectors.joining());
+        var batch = preview(rows);
+        assertThat(batch.status()).isEqualTo(ImportBatch.Status.PREVIEW_VALID);
+        confirmation.confirm(user, batch.id(), 0);
+        var page = receivables.list(user.tenantId(), customer, null, null, null, 100);
+        assertThat(page.items()).extracting(row -> row.issueDate().toString()).containsExactlyElementsOf(dates);
+        assertThat(page.items()).extracting(row -> row.dueDate().toString()).containsExactlyElementsOf(dates);
+        for (String date : dates) {
+            assertThat(jdbc.sql("SELECT issue_date::text || '/' || due_date::text FROM invoice WHERE tenant_id=? AND invoice_number=?")
+                    .params(user.tenantId(), prefix + "-" + date).query(String.class).single()).isEqualTo(date + "/" + date);
+            assertThat(jdbc.sql("SELECT (snapshot->>'issueDate') || '/' || (snapshot->>'dueDate') FROM invoice_revision WHERE tenant_id=? AND invoice_id=?")
+                    .params(user.tenantId(), page.items().stream().filter(row -> row.issueDate().toString().equals(date)).findFirst().orElseThrow().id())
+                    .query(String.class).single()).isEqualTo(date + "/" + date);
+        }
+        var firstPage = receivables.list(user.tenantId(), customer, LocalDate.of(1, 1, 1), LocalDate.of(9999, 12, 31), null, 1);
+        assertThat(firstPage.items().getFirst().dueDate()).isEqualTo(LocalDate.of(1, 1, 1));
+        assertThat(receivables.list(user.tenantId(), customer, null, null, firstPage.nextCursor(), 100).items())
+                .extracting(row -> row.dueDate().toString()).containsExactlyElementsOf(dates.subList(1, dates.size()));
+    }
+
+    @Test
     void createsEveryInvoiceInitialRevisionAndAuditOnceAndRecoversLostResponseAfterExpiry() {
         var batch = preview(twoRows("100", "200"));
         assertThatThrownBy(() -> customerConfirmation.confirm(user, batch.id(), 0))

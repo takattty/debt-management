@@ -40,7 +40,7 @@ public class ReceivablesService {
         sql.append(" ORDER BY i.due_date,i.id LIMIT :limit");
         var rows = jdbc.sql(sql.toString()).params(parameters).query((result, number) -> new Row(result.getObject("id", UUID.class),
                 result.getObject("customer_id", UUID.class), result.getString("code"), result.getString("name"), result.getString("invoice_number"),
-                result.getDate("issue_date").toLocalDate(), result.getDate("due_date").toLocalDate(), result.getLong("amount_jpy"), result.getLong("version"))).list();
+                result.getObject("issue_date", LocalDate.class), result.getObject("due_date", LocalDate.class), result.getLong("amount_jpy"), result.getLong("version"))).list();
         List<Row> page = rows.stream().limit(limit).toList();
         String next = rows.size() > limit ? page.getLast().dueDate() + ":" + page.getLast().id() : null;
         return new Page(page, next);

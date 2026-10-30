@@ -1,6 +1,7 @@
 # Backend
 
 - Java 25 / Spring Boot / PostgreSQL を使用する。識別子とログは英語。
+- Java source名を責務から推測しない。rootの `scripts/read-source.py QUERY --list` で同checkoutの実catalogを別callで観測し、次callでその実pathを読込む。別checkoutは `--worktree` を明示する。
 - Tenant は認証済みの server-side membership から解決する。入力の tenant header/body を権限根拠にしない。
 - SQL には tenant_id 条件を必ず含める。更新は version を比較し、監査記録と同じ transaction で確定する。
 - 不変条件は domain と DB constraint の双方に置く。金額は integer JPY または明示した scale の BigDecimal。float は使わない。

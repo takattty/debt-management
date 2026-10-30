@@ -33,6 +33,8 @@ patch適用前に対象の行全体を読み、部分行を完全なcontext行�
 
 GitHub metadata取得は応答ごとの契約を確認する。PRのhead/baseはREST pulls/{number}のhead.sha/base.shaを用いる。combined statusはcreatorを省略するため、発行者確認はcommits/{sha}/statusesを用いる。gh pr viewのJSON選択肢はGraphQL全fieldと同じではなく、未対応field名を推測して反復しない。metadata不足ではmergeを止め、guard条件を緩めず正しいendpointへ直す。
 
+2026-10-30のPR38再開で同じCLI field誤用が再発したため、head/baseは `python3 /absolute/active-checkout/scripts/gh-pr-metadata.py takattty/debt-management 38` で取得する。repositoryとPR番号は必須で、REST `repos/{repository}/pulls/{number}` を明示hostに対してGETする。出力は `number,url,state,merged,headRefOid,headRefName,baseRefOid,baseRefName` のJSON。head/base SHA・ref、PR番号・URL・状態の契約が欠けた場合は出力せず失敗し、API失敗の終了値も保つ。`gh-repo.sh` は `pr view` の `--json baseRefOid` / `--json=baseRefOid` をGitHub呼出し前に拒否してhelperへ案内する。レビュー・チェック等は引き続き対応fieldまたは対応endpointで取得する。実検証は [PR metadata validation](github-metadata-validation.md) に保存する。
+
 worktreeと検証物の所有先を明示する。新worktreeを作るcommandは既存cwdから実行し、作成成功とHEADを確認してからそのpathをcwdに使う。別treeのwork配下の証拠は所有treeの絶対pathで読み、相対pathが現在のtreeを指すことを仮定しない。
 
 GitHub CLIもcwdによるrepository推測に依存しない。`scripts/gh-repo.sh takattty/debt-management run view RUN_ID --json status,conclusion` のようにrepositoryを必須引数にする。省略時はCLIを起動せず拒否する。checkout外cwdと誤った継承GH_REPOでも選択先が固定される回帰テストをCIで実行する。
@@ -50,3 +52,5 @@ source classのfilenameも推測しない。最初に`rg --files`で対象packag
 FE packageコマンドをrepository rootから実行してpackage.json不在となる再発も観測した。複数worktreeのCoordinatorは `npm --prefix /absolute/checkout/frontend ...` でpackage所有先を固定し、source編集とpackage実行を別commandへ分ける。cwdとpackage rootが一致するという仮定を持ち越さない。
 
 複数fileのpatchでは、各fileの前に正しい `Update File` を一つ置く。同一pathへのDeleteとAddを一つのpatchへ重ねず、既存fileの置換はUpdateを使う。適用前に全file headerと実際のcontextを確認し、toolの拒否後は変更有無を確認してからpatchを作り直す。
+
+source名の推測読込も再発したため、同checkoutの `read-source.py QUERY --list` を別callで先に観測し、次callに実出力の相対pathを渡す。helperはGit管理下の実在するJava/TS/JS/Python/shell/SQL/CSS/HTML等のsourceだけを対象にし、dotfile・work/build・既知のsecret名・symlink・未追跡fileを除外する。設定・鍵fileの汎用readerとして使わない。部分名または `--regex` で探し、一意なら `--start/--end` の範囲を表示する。複数候補・不一致は内容を読まず実catalog候補を返す。絶対path・親directory参照をqueryに渡さない。helper所有先と対象checkoutが違う場合はhelper絶対pathと `--worktree /absolute/target` を明示する。

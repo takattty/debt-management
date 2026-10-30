@@ -40,3 +40,25 @@ class GithubRepositoryTest(unittest.TestCase):
         result = self.run_cli(["run", "view", "123"])
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
+
+    def test_unsupported_pr_field_is_rejected_before_github(self):
+        for arguments in (
+            ["--json", "number,url,headRefOid,baseRefOid,statusCheckRollup,reviews"],
+            ["--json=baseRefOid,headRefOid"],
+        ):
+            with self.subTest(arguments=arguments):
+                result = self.run_cli(["takattty/debt-management", "pr", "view", "38", *arguments])
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("gh-pr-metadata.py", result.stderr)
+
+    def test_supported_fields_and_other_commands_pass_through(self):
+        for arguments in (
+            ["pr", "view", "38", "--json", "number,headRefOid,reviews"],
+            ["issue", "view", "38", "--json", "body"],
+            ["pr", "create", "--body", "baseRefOid"],
+        ):
+            with self.subTest(arguments=arguments):
+                result = self.run_cli(["takattty/debt-management", *arguments])
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(json.loads(result.stdout)["args"], arguments)

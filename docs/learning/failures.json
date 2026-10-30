@@ -364,6 +364,68 @@
       ]
     },
     {
+      "key": "source-file-name-assumption",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "invoice-importreadservice-guessed",
+          "summary": "一覧で未確認のImportReadServiceというclass名からpathを作り読込に失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:50:51+00:00"
+        },
+        {
+          "event": "invoice-customerimportconfirmation-guessed",
+          "summary": "CustomerImportConfirmationという未存在class名を推測して同じ読込失敗が再発した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-29T23:50:51+00:00"
+        },
+        {
+          "event": "invoice-ui-customerdetail-guessed-20261030",
+          "summary": "未列挙のCustomerDetailという画面名を推測し読込に失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-30T01:29:06+00:00"
+        },
+        {
+          "event": "invoice-ui-historyservice-guessed-20261030",
+          "summary": "未列挙のInvoiceHistoryServiceというclass名を推測し読込に失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-30T01:29:06+00:00"
+        },
+        {
+          "event": "invoice-details-service-guessed-20261030",
+          "summary": "Coordinatorが未列挙のInvoiceDetailsService.javaを責務から推測してsedで読み込み不存在の終了値2となった。解決済み文書guardでは再発を防げなかった",
+          "evidence": "docs/learning/source-read-validation.md",
+          "recorded_at": "2026-10-30T01:32:53+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "package内catalogを確認せず責務からclass名を推測し未存在pathを読んだ",
+          "prevention": "rg --filesの出力を先に確認し実在pathだけで次の読込commandを構成する。推測catをdiscoveryと同時に実行しない",
+          "verification": "実在ImportStoreとImportConfirmationTransactionを列挙後に読込成功。invoicepreviewのOpenAPI生成とcompile/Checkstyle成功、対象単体と実PG統合9件成功",
+          "guard": "docs/learning/README.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-29T23:50:51+00:00"
+        },
+        {
+          "cause": "読込先の実在をrgで列挙する前に責務からsource名を推測した",
+          "prevention": "推測名のcatを止め、rg --files出力に存在するpathだけを読込commandへ渡す",
+          "verification": "invoice packageをrgで列挙して実在するInvoiceQueries.javaを読み、履歴の昇順とcursor契約を確認。訂正UI全体単体が成功",
+          "guard": "docs/learning/README.md",
+          "event_count": 4,
+          "resolved_at": "2026-10-30T01:29:06+00:00"
+        },
+        {
+          "cause": "未観測source名を責務や過去文脈から推測して直接読込んだ。READMEの注意だけでは再発操作を止められなかった",
+          "prevention": "read-source.pyで同checkoutのGit tracked実catalogだけを検索し一意の実pathのみ読込む。複数や不一致は候補のみ返す。root/BE/FEのAGENTSに先callのcatalog観測から次callの実path読込を必須化した",
+          "verification": "source reader6testsとPython全24tests成功。Coordinatorが同checkoutでrg catalog観測後に実在InvoiceQueriesを別callで読込成功。新helperでもInvoice --listが21pathsを列挙し次callで出力由来InvoiceQueries.javaの46行を読込成功。docs/learning/source-read-validation.mdに記録",
+          "guard": "scripts/read-source.py",
+          "event_count": 5,
+          "resolved_at": "2026-10-30T01:33:56+00:00"
+        }
+      ]
+    },
+    {
       "key": "spring-test-pool-capacity",
       "status": "resolved",
       "events": [
@@ -530,34 +592,6 @@
           "guard": "docs/learning/README.md",
           "event_count": 8,
           "resolved_at": "2026-10-30T00:11:22+00:00"
-        }
-      ]
-    },
-    {
-      "key": "source-file-name-assumption",
-      "status": "resolved",
-      "events": [
-        {
-          "event": "invoice-importreadservice-guessed",
-          "summary": "一覧で未確認のImportReadServiceというclass名からpathを作り読込に失敗した",
-          "evidence": "docs/learning/README.md",
-          "recorded_at": "2026-10-29T23:50:51+00:00"
-        },
-        {
-          "event": "invoice-customerimportconfirmation-guessed",
-          "summary": "CustomerImportConfirmationという未存在class名を推測して同じ読込失敗が再発した",
-          "evidence": "docs/learning/README.md",
-          "recorded_at": "2026-10-29T23:50:51+00:00"
-        }
-      ],
-      "resolutions": [
-        {
-          "cause": "package内catalogを確認せず責務からclass名を推測し未存在pathを読んだ",
-          "prevention": "rg --filesの出力を先に確認し実在pathだけで次の読込commandを構成する。推測catをdiscoveryと同時に実行しない",
-          "verification": "実在ImportStoreとImportConfirmationTransactionを列挙後に読込成功。invoicepreviewのOpenAPI生成とcompile/Checkstyle成功、対象単体と実PG統合9件成功",
-          "guard": "docs/learning/README.md",
-          "event_count": 2,
-          "resolved_at": "2026-10-29T23:50:51+00:00"
         }
       ]
     }

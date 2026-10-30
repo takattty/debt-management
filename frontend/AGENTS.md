@@ -1,6 +1,7 @@
 # Frontend
 
 - React / TypeScript。UI文言とエラーは簡潔な日本語、識別子は英語。
+- component/source名を過去文脈から推測しない。rootの `scripts/read-source.py QUERY --list` で同checkoutの実catalogを別callで観測し、次callでその実pathを読込む。別checkoutは `--worktree` を明示する。
 - 顧客コード・請求書番号等の制約はbackendも検証する。UIだけのテナント制御は禁止。
 - 認証はHttpOnly cookie session。Basic headerやpasswordの常時保持を使わず、passwordはlogin送信成功後に入力stateから除去する。ログ・localStorage・URLへ出力しない。
 - login前に匿名CSRFを取得し、成功後はGET sessionで新CSRFを取得する。再読込はcookieからsessionを復元し、401またはCSRF_INVALIDで顧客データを破棄する。ACCESS_DENIEDは権限拒否としてsessionを維持し、失敗した変更を自動再送しない。

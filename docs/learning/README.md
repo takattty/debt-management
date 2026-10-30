@@ -52,3 +52,5 @@ source classのfilenameも推測しない。最初に`rg --files`で対象packag
 FE packageコマンドをrepository rootから実行してpackage.json不在となる再発も観測した。複数worktreeのCoordinatorは `npm --prefix /absolute/checkout/frontend ...` でpackage所有先を固定し、source編集とpackage実行を別commandへ分ける。cwdとpackage rootが一致するという仮定を持ち越さない。
 
 複数fileのpatchでは、各fileの前に正しい `Update File` を一つ置く。同一pathへのDeleteとAddを一つのpatchへ重ねず、既存fileの置換はUpdateを使う。適用前に全file headerと実際のcontextを確認し、toolの拒否後は変更有無を確認してからpatchを作り直す。
+
+source名の推測読込も再発したため、同checkoutの `read-source.py QUERY --list` を別callで先に観測し、次callに実出力の相対pathを渡す。helperはGit管理下の実在するJava/TS/JS/Python/shell/SQL/CSS/HTML等のsourceだけを対象にし、dotfile・work/build・既知のsecret名・symlink・未追跡fileを除外する。設定・鍵fileの汎用readerとして使わない。部分名または `--regex` で探し、一意なら `--start/--end` の範囲を表示する。複数候補・不一致は内容を読まず実catalog候補を返す。絶対path・親directory参照をqueryに渡さない。helper所有先と対象checkoutが違う場合はhelper絶対pathと `--worktree /absolute/target` を明示する。

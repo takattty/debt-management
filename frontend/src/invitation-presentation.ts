@@ -1,10 +1,11 @@
 import type { InvitationRole } from './api';
+import { formatJstTimestamp } from './timestamp-presentation';
 
 export const invitationRoleNames: Record<InvitationRole, string> = { ADMIN: '管理者', ACCOUNTANT: '経理担当者' };
 export const invalidInvitationMessage = 'この招待は利用できません。有効な招待リンクを管理者に確認してください。';
 
 export function invitationExpiry(value: string) {
-  return new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tokyo' }).format(new Date(value));
+  return formatJstTimestamp(value);
 }
 
 export function shareableInvitationUrl(relative: string) {

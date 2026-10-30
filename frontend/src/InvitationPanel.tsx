@@ -45,7 +45,7 @@ export default function InvitationPanel({ session, onSessionExpired, onBusyChang
     {issued && <div className="issued-invitation" aria-labelledby="issued-title">
       <h3 id="issued-title">招待リンクを作成しました</h3>
       <p>招待先：{issued.recipient}（{invitationRoleNames[issued.role]}）</p>
-      <p>有効期限：{invitationExpiry(issued.expiresAt)}（日本時間）</p>
+      <p>有効期限：{invitationExpiry(issued.expiresAt)}</p>
       <p>この画面を離れるとリンクは再表示できません。招待する相手にだけ共有してください。</p>
       <label htmlFor="invitation-link">招待リンク<input id="invitation-link" ref={linkInput} data-sensitive readOnly value={issued.shareUrl} onFocus={(event) => event.currentTarget.select()} /></label>
       <div className="button-row"><button type="button" className="primary-button" onClick={copyLink}>リンクをコピー</button><button type="button" className="secondary-button" onClick={() => { setIssued(null); setNotice(''); }}>リンク表示を閉じる</button></div>

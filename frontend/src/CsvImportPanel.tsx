@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { formatJstTimestamp } from './timestamp-presentation';
 import { api, ApiError, type ImportBatch, type ImportError, type ImportRow, type PaymentImportRow, type Session } from './api';
 
 type Props = {
@@ -186,7 +187,7 @@ export default function CsvImportPanel({ kind = 'CUSTOMER', confirmationEnabled 
     {batch && <div className="import-preview" aria-labelledby="preview-title">
       <h3 id="preview-title">{batch.status === 'CONFIRMED' ? '取込結果' : 'プレビュー内容'}</h3>
       <p className="import-summary">データ {batch.rowCount}行 / エラー {batch.errorCount}件</p>
-      <p className="import-guide">{batch.status === 'CONFIRMED' ? `確定済み：${batch.confirmedCount}件登録` : `まだ1件も登録されていません。プレビュー有効期限：${new Date(batch.expiresAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}（日本時間）`}</p>
+      <p className="import-guide">{batch.status === 'CONFIRMED' ? `確定済み：${batch.confirmedCount}件登録` : `まだ1件も登録されていません。プレビュー有効期限：${formatJstTimestamp(batch.expiresAt)}`}</p>
       {batch.status !== 'CONFIRMED' && expired && <p className="error">有効期限が切れています。CSVをもう一度プレビューしてください。</p>}
       {batch.errorCount > 0 && <section aria-labelledby="import-errors-title">
         <h4 id="import-errors-title" tabIndex={-1} ref={errorHeading}>修正が必要な項目</h4>

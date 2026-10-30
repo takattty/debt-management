@@ -10,7 +10,7 @@ const invoice: Receivable = { id: '11111111-1111-1111-1111-111111111181', custom
 const cursor = `2026-11-30:${invoice.id}`;
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 
-function mockServer(options: { paginated?: boolean; listingFailure?: { status: number; code: string }; referenceConflict?: boolean; lostResponse?: boolean } = {}) {
+function mockServer(options: { paginated?: boolean; states?: boolean; listingFailure?: { status: number; code: string }; referenceConflict?: boolean; lostResponse?: boolean } = {}) {
   let uploadNumber = 0;
   let invalid = false;
   let committed = false;
@@ -22,6 +22,11 @@ function mockServer(options: { paginated?: boolean; listingFailure?: { status: n
     if (path.startsWith('/api/receivables?')) {
       if (options.listingFailure) return json({ code: options.listingFailure.code }, options.listingFailure.status);
       const query = new URL(path, 'http://example.test').searchParams;
+      if (options.states) {
+        const cancelled: Receivable = { ...invoice, id: 'cancelled-invoice', invoiceNumber: query.has('cursor') ? 'CANCELLED-002' : 'CANCELLED-001', outstandingAmount: 0, status: 'CANCELLED' };
+        const state = query.get('status') ?? 'ACTIVE';
+        return json({ items: state === 'ALL' ? [invoice, cancelled] : state === 'CANCELLED' ? [cancelled] : [invoice], nextCursor: options.paginated && state === 'CANCELLED' && !query.has('cursor') ? cursor : null });
+      }
       return json({ items: [{ ...invoice, invoiceNumber: query.has('cursor') ? 'INV-002' : 'INV-001' }], nextCursor: options.paginated && !query.has('cursor') ? cursor : null });
     }
     if (path === '/api/imports/invoices/preview') {
@@ -55,6 +60,35 @@ async function upload(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('Confirmed invoices and server-paged receivables', () => {
+  it('defaults to active invoices and sends the selected state together with applied filters and the exact cursor', async () => {
+    const fetch = mockServer({ states: true, paginated: true }); const user = await start();
+    await screen.findByRole('table', { name: '債権一覧' });
+    expect(screen.getByRole('combobox', { name: '請求の状態' })).toHaveValue('ACTIVE');
+    expect(screen.queryByRole('cell', { name: 'CANCELLED-001' })).not.toBeInTheDocument();
+    const initial = new URL(fetch.mock.calls.find(([path]) => String(path).startsWith('/api/receivables?'))?.[0], 'http://example.test').searchParams;
+    expect(initial.get('status')).toBe('ACTIVE');
+    await user.selectOptions(screen.getByRole('combobox', { name: '請求の状態' }), 'CANCELLED');
+    await user.selectOptions(screen.getByRole('combobox', { name: '顧客で絞り込む' }), customer.id);
+    await user.type(screen.getByLabelText('支払期日（終了）'), '2026-11-30');
+    await user.click(screen.getByRole('button', { name: '条件で表示' }));
+    const row = (await screen.findByRole('cell', { name: 'CANCELLED-001' })).closest('tr')!;
+    expect(row).toHaveTextContent('取消済み'); expect(row).toHaveTextContent('￥0'); expect(row).toHaveTextContent('9,007,199,254,740,991');
+    expect(within(row).getByRole('button', { name: '請求 CANCELLED-001 の履歴' })).toHaveTextContent('履歴を確認');
+    await user.selectOptions(screen.getByRole('combobox', { name: '請求の状態' }), 'ACTIVE');
+    await user.clear(screen.getByLabelText('支払期日（終了）'));
+    await user.click(screen.getByRole('button', { name: '次の50件' }));
+    expect(await screen.findByRole('cell', { name: 'CANCELLED-002' })).toBeVisible();
+    const calls = fetch.mock.calls.filter(([path]) => String(path).startsWith('/api/receivables?'));
+    const applied = new URL(calls.at(-1)?.[0], 'http://example.test').searchParams;
+    expect(applied.get('status')).toBe('CANCELLED'); expect(applied.get('customerId')).toBe(customer.id); expect(applied.get('dueTo')).toBe('2026-11-30'); expect(applied.get('cursor')).toBe(cursor);
+    await user.selectOptions(screen.getByRole('combobox', { name: '請求の状態' }), 'ALL');
+    await user.click(screen.getByRole('button', { name: '条件で表示' }));
+    expect(await screen.findByRole('cell', { name: 'INV-001' })).toBeVisible();
+    expect(screen.getByRole('cell', { name: 'CANCELLED-001' })).toBeVisible();
+    const final = new URL(fetch.mock.calls.filter(([path]) => String(path).startsWith('/api/receivables?')).at(-1)?.[0], 'http://example.test').searchParams;
+    expect(final.get('status')).toBe('ALL'); expect(final.has('cursor')).toBe(false);
+  });
+
   it('formats the largest safe yen integer exactly without calculating totals', async () => {
     mockServer(); await start();
     const table = await screen.findByRole('table', { name: '債権一覧' });

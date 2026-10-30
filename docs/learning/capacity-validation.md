@@ -60,3 +60,23 @@ Cloud見積りはdaemonrootとworkspaceの実空きを測定する。VFSでは�
 read-only planは `check-docker-capacity.py --cloud-local --worktree ROOT_PROJECT up`。helperは自分のcheckoutを使い、Compose sourceの所有先を明示する。raw config/inspectに含まれ得る環境値は表示せず、安全な予算内訳だけを出力する。既存のworkspace/CI/認証phase/fixture/processownership guardsは保持する。
 
 同じ既存projectのread-only build planも、実buildを始めず検査した。build/context/layer1536753779B、後続app clone398156569B、PG455836883B、reserve1073741824Bの合計3464489055Bに対しavailable3435003904Bのため終了値1で拒否した。guardの拒否は追加の偶発ENOSPC eventではない。rootがrebuildを選ぶ場合は余裕確保後に再測定し、既存imageのupだけを選ぶ場合も直前のup planで判定する。
+
+## VFS init/RW二層の追加修正
+
+`docker-vfs-init-rw-budget-underestimate-20261030` はrootのfresh recreate実測で判明したモデル誤りで、capacityの第6event。元の5eventsとresolutionは保持する。意図した旧閾値fixtureのREDはこのeventの検証であり第7eventではない。
+
+Engine28.4.0/vfsでrootがdown後available4705030144Bからup後2918805504Bを観測した（delta1786224640B、後続snapshot約9.38MBを含む）。image.Size合計853936108Bを1copyだけ見積った旧required2383514815Bでは、閾値から同じ消費が起きると残り597290175Bとなり1GiB reserveを割る。host vfs/dirの直接allocationはrootもUnixPermissionDeniedで取得不能だった。sudo・FS bind・新containerによる権限回避は行わない。
+
+公式[Moby v28.4.0](https://github.com/moby/moby/tree/249d679a6baf8a32bb6d72d6ac5cc7ab9c90b4ea)をdirectory catalogから読んだ。
+
+- [daemon/create.go](https://github.com/moby/moby/blob/249d679a6baf8a32bb6d72d6ac5cc7ab9c90b4ea/daemon/create.go#L234) がsetupInitLayerを渡し、[images/service.go](https://github.com/moby/moby/blob/249d679a6baf8a32bb6d72d6ac5cc7ab9c90b4ea/daemon/images/service.go#L121-L148)がInitFuncとしてlayer storeへ伝える。
+- [layer_store.go](https://github.com/moby/moby/blob/249d679a6baf8a32bb6d72d6ac5cc7ab9c90b4ea/layer/layer_store.go#L518-L533) はinitMount後にRW mountを作り、[initMount自身](https://github.com/moby/moby/blob/249d679a6baf8a32bb6d72d6ac5cc7ab9c90b4ea/layer/layer_store.go#L649-L674)もCreateReadWriteを呼ぶ。
+- [VFS driver](https://github.com/moby/moby/blob/249d679a6baf8a32bb6d72d6ac5cc7ab9c90b4ea/daemon/graphdriver/vfs/driver.go#L159-L187)はその都度parentをCopyDirし、[Linux copy](https://github.com/moby/moby/blob/249d679a6baf8a32bb6d72d6ac5cc7ab9c90b4ea/daemon/graphdriver/vfs/copy_linux.go#L5-L6)はContent copyを使う。
+
+新規/再作成のruntime containerとbuild後の将来app containerは2×image.Sizeを計上する。Sizeは論理bytesでallocation実測ではないため、VFSのclone/build予算に比例する10%を別のallocation allowanceとし、daemon filesystemの実block size単位に切り上げる。現在のpinned runtime-image集合のroot総実測は、snapshotやPG初期化も含め2copy論理量を約4.6%上回ったため、その約2倍以上を見込む較正値である。PG起動余裕と1GiB reserveは別枠のまま保つ。driver/image/block size等が取得不能なら拒否する。
+
+この10%は任意のimage・filesystem・将来のデータ増大に対する数学的上界ではない。pinned baseやCOPY内容/負荷の変更時は再較正する。tar exportや新containerを計測のために作成していない。通常Mac/Desktop/remoteのcontext/COWモデルは変えない。
+
+BuildKit/legacy builderの一時copyを一律2層とは断言しない。[image_builder.go](https://github.com/moby/moby/blob/249d679a6baf8a32bb6d72d6ac5cc7ab9c90b4ea/daemon/images/image_builder.go#L59-L68)にはinit無しのCreateRWLayer経路もある。既存filesystem-layer/context予算は維持し、将来container分を二層へ直す。rootで測ったのはcached buildで、cold/concurrent builderのpeak allocationは未検証であり厳密上限を実証したとはしない。実Docker writeとcold検証は独立review後にrootが管理する。
+
+検証ではroot値を使う旧境界fixtureが未修正でPASSしてしまうRED（期待拒否1に対し0）を1回保存し、修正後は拒否へ変わった。新しいhealthy全一致はcopy/allocation0を維持し、PGが既存healthyでも新app cloneのallocation余裕は消さず、実FS blockで丸める。対象13tests・全Python63tests、bash構文・diff検査は成功。read-onlyのroot既存project計画はup通過/build不足拒否を確認した。作者による新Docker build/up/start/create/stop/rm、tar export、FS bindはない。

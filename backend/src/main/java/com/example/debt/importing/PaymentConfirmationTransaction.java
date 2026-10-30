@@ -69,7 +69,7 @@ public class PaymentConfirmationTransaction {
                 VALUES (?,?,?,?,?,?,?,?,?)
                 """, created, 500, (statement, payment) -> {
                     statement.setObject(1, payment.id()); statement.setObject(2, user.tenantId());
-                    statement.setString(3, payment.values().transactionId()); statement.setDate(4, java.sql.Date.valueOf(payment.values().transferDate()));
+                    statement.setString(3, payment.values().transactionId()); statement.setObject(4, payment.values().transferDate());
                     statement.setString(5, payment.values().payerName()); statement.setLong(6, payment.values().amountJpy());
                     statement.setObject(7, id); statement.setObject(8, user.userId()); statement.setTimestamp(9, Timestamp.from(recordedAt));
                 });

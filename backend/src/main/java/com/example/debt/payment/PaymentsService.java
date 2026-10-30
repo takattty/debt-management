@@ -35,7 +35,7 @@ public class PaymentsService {
         }
         sql.append(" ORDER BY transfer_date,id LIMIT :limit");
         var rows = jdbc.sql(sql.toString()).params(parameters).query((result, number) -> new Row(result.getObject("id", UUID.class),
-                result.getString("transaction_id"), result.getDate("transfer_date").toLocalDate(), result.getString("payer_name"),
+                result.getString("transaction_id"), result.getObject("transfer_date", LocalDate.class), result.getString("payer_name"),
                 result.getLong("amount_jpy"), result.getObject("source_batch_id", UUID.class), result.getObject("created_by_user_id", UUID.class),
                 result.getTimestamp("created_at").toInstant())).list();
         List<Row> page = rows.stream().limit(limit).toList();

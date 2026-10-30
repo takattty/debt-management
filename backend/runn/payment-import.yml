@@ -100,12 +100,12 @@ steps:
     api:
       /api/imports/{{ good }}/payment-rows?limit=1:
         get: {body: null}
-    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.nextCursor == 1 && current.res.body.items[0].valid && current.res.body.items[0].amount == '100000' && current.res.body.items[0].payerName == '架空入金A'
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.nextCursor == 1 && current.res.body.items[0].valid && current.res.body.items[0].amount == '100000' && current.res.body.items[0].payerName == '架空入金A' && current.res.body.items[0].transferDate == '0001-01-01'
   next:
     api:
       /api/imports/{{ good }}/payment-rows?cursor=1&limit=1:
         get: {body: null}
-    test: current.res.status == 200 && current.res.body.nextCursor == 0 && current.res.body.items[0].amount == '200000'
+    test: current.res.status == 200 && current.res.body.nextCursor == 0 && current.res.body.items[0].amount == '200000' && current.res.body.items[0].transferDate == '9999-12-31'
   unsupportedRows:
     api:
       /api/imports/{{ good }}/rows:
@@ -134,12 +134,12 @@ steps:
     bind:
       nextPayment: current.res.body.nextCursor
       firstId: current.res.body.items[0].id
-    test: current.res.status == 200 && len(current.res.body.items) == 1 && nextPayment != null && current.res.body.items[0].amount == current.res.body.items[0].unallocatedAmount && current.res.body.items[0].createdByUserId != null
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && nextPayment != null && current.res.body.items[0].amount == current.res.body.items[0].unallocatedAmount && current.res.body.items[0].createdByUserId != null && current.res.body.items[0].transferDate == '0001-01-01' && current.res.body.items[0].sourceBatchId == good
   nextPayment:
     api:
       /api/payments?limit=1&cursor={{ nextPayment }}:
         get: {body: null}
-    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id != firstId
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].id != firstId && current.res.body.items[0].transferDate == '9999-12-31' && current.res.body.items[0].sourceBatchId == good
   invalidConfirm:
     api:
       /api/imports/{{ bad }}/confirm:

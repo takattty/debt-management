@@ -71,6 +71,38 @@ class PaymentConfirmationTest {
     }
 
     @Test
+    void preservesSupportedTransferDatesAcrossConfirmationPagesSourceAndAudit() {
+        var dates = List.of("0001-01-01", "1500-03-01", "1582-10-04", "1582-10-05", "1582-10-10", "1582-10-15", "9999-12-31");
+        String rows = dates.stream().map(date -> "DATE-" + date + "," + date + ",架空の日付検証,100\n")
+                .collect(java.util.stream.Collectors.joining());
+        var batch = preview(rows);
+        assertThat(batch.status()).isEqualTo(ImportBatch.Status.PREVIEW_VALID);
+        var source = store.paymentRows(user.tenantId(), batch.id(), 0, 100);
+        assertThat(source).extracting(PaymentCsv.Row::transferDate).containsExactlyElementsOf(dates);
+        confirmation.confirm(user, batch.id(), 0);
+        assertThat(store.paymentRows(user.tenantId(), batch.id(), 0, 100)).isEqualTo(source);
+        var all = payments.list(user.tenantId(), LocalDate.of(1, 1, 1), LocalDate.of(9999, 12, 31), null, 100);
+        assertThat(all.items()).extracting(row -> row.transferDate().toString()).containsExactlyElementsOf(dates);
+        String cursor = null;
+        for (String date : dates) {
+            var page = payments.list(user.tenantId(), null, null, cursor, 1);
+            var payment = page.items().getFirst();
+            assertThat(payment.transferDate().toString()).isEqualTo(date);
+            assertThat(payment.sourceBatchId()).isEqualTo(batch.id());
+            assertThat(payment.createdByUserId()).isEqualTo(user.userId());
+            assertThat(jdbc.sql("SELECT transfer_date::text FROM payment WHERE tenant_id=? AND id=?")
+                    .params(user.tenantId(), payment.id()).query(String.class).single()).isEqualTo(date);
+            assertThat(jdbc.sql("SELECT (details->>'transferDate') || '/' || (details->>'sourceBatchId') FROM audit_event "
+                    + "WHERE tenant_id=? AND entity_id=? AND action='PAYMENT_CREATED'")
+                    .params(user.tenantId(), payment.id()).query(String.class).single()).isEqualTo(date + "/" + batch.id());
+            assertThat(payments.list(user.tenantId(), LocalDate.parse(date), LocalDate.parse(date), null, 100).items())
+                    .containsExactly(payment);
+            cursor = page.nextCursor();
+        }
+        assertThat(cursor).isNull();
+    }
+
+    @Test
     void confirmsEveryPaymentAndAuditOnceAndRecoversLostResponseAfterExpiry() {
         var batch = preview(row("A", "100") + row("B", "200"));
         assertThatThrownBy(() -> customerConfirmation.confirm(user, batch.id(), 0)).hasMessage("IMPORT_KIND_UNSUPPORTED");

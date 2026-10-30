@@ -180,7 +180,9 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       404: importing ? '取込内容を表示できません。CSVをもう一度プレビューしてください。' : '顧客が見つかりません。編集を閉じて一覧を確認してください。',
       409: invitation ? '招待を処理できませんでした。管理者にご確認ください。'
         : importing ? '取込内容が変わっています。状態を確認して、CSVをもう一度プレビューしてください。'
-          : code === 'VERSION_CONFLICT' ? '他の担当者が更新しました。最新内容を取得し、入力中の内容と比較してから更新してください。' : 'この顧客コードは登録済みです。別のコードを入力してください。',
+          : code === 'VERSION_CONFLICT' ? '他の担当者が更新しました。最新内容を取得し、入力中の内容と比較してから更新してください。'
+            : endpoint.path.startsWith('/api/customers') && code === 'DUPLICATE_CUSTOMER_CODE' ? 'この顧客コードは登録済みです。別のコードを入力してください。'
+              : '現在の状態では処理できません。最新内容を取得して確認してください。',
       413: 'CSVファイルは10MiB以下にしてください。ファイルを分けて、もう一度プレビューしてください。',
       429: invitation ? '操作が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。'
         : 'ログイン試行が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。',
@@ -201,7 +203,7 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       NOT_FOUND: '請求が見つかりません。請求IDと一覧を確認してください。',
     };
     const invoiceMessage = invoicing ? (code ? invoiceMessages[code] : undefined) ?? (response.status === 400 ? '顧客・日付・正の円整数の金額・理由を確認してください。' : response.status === 404 ? invoiceMessages.NOT_FOUND : undefined) : undefined;
-    const allocationMessages: Record<string, string> = { VERSION_CONFLICT: '他の担当者が残高を更新しました。最新内容を再取得して確認してください。', INSUFFICIENT_BALANCE: '現金または請求の残高が不足しています。最新内容を確認してください。', INVOICE_NOT_ACTIVE: '選択した請求は取消済みです。最新候補から選び直してください。', ALREADY_REVERSED: 'この消込はすでに取消済みです。履歴を再取得してください。', IDEMPOTENCY_CONFLICT: '同じ操作IDに別の内容が指定されました。履歴を確認してください。', VERSION_EXHAUSTED: 'versionの上限に達しました。管理者にご確認ください。' };
+    const allocationMessages: Record<string, string> = { VERSION_CONFLICT: '他の担当者が残高を更新しました。最新内容を再取得して確認してください。', BALANCE_CONFLICT: '現金または請求の残高が不足しています。最新内容を再取得して確認してください。', INVOICE_NOT_ACTIVE: '選択した請求は取消済みです。最新候補から選び直してください。', ALLOCATION_ALREADY_REVERSED: 'この消込はすでに取消済みです。履歴を再取得してください。', IDEMPOTENCY_CONFLICT: '同じ操作IDに別の内容が指定されました。履歴を確認してください。', VERSION_EXHAUSTED: 'versionの上限に達しました。管理者にご確認ください。' };
     const allocationMessage = allocating ? (code ? allocationMessages[code] : undefined) ?? (response.status === 400 ? '現金・明示した手数料・理由を確認してください。' : response.status === 404 ? '入金または請求が見つかりません。最新内容を確認してください。' : undefined) : undefined;
     throw new ApiError(response.status, allocationMessage ?? invoiceMessage ?? (importing && code ? importMessages[code] : undefined) ?? messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
   }

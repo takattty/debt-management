@@ -2,6 +2,34 @@
   "schema_version": 1,
   "failures": [
     {
+      "key": "api-error-code-domain-fallback",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "independent-balance-code-mismatch-20261030",
+          "summary": "独立レビューのBALANCE_CONFLICT実code probeが未対応で顧客コード重複案内へfallbackした",
+          "evidence": "work/settlement-fe-independent-boundary-6ef7e3e-RED.log",
+          "recorded_at": "2026-10-30T08:51:57+00:00"
+        },
+        {
+          "event": "independent-reversed-code-mismatch-20261030",
+          "summary": "独立レビューのALLOCATION_ALREADY_REVERSED実code probeも未対応で顧客コード重複案内へfallbackした",
+          "evidence": "work/settlement-fe-independent-boundary-6ef7e3e-RED.log",
+          "recorded_at": "2026-10-30T08:51:57+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "ApiError.codeはOpenAPI上stringでcode enumがなく、FEが実装未照合の消込code名を使った。共通409fallbackが全domainの未知codeを顧客重複へ誤分類した",
+          "prevention": "AllocationCommandsとAllocationErrorsの実送信codeを照合して専用案内を定義する。未知409は最新内容確認の一般案内とし、顧客endpointかつDUPLICATE_CUSTOMER_CODEのときだけ重複案内を表示する。実code6件と未知/欠落/別domain code・顧客重複の回帰を維持する",
+          "verification": "実BEのBALANCE_CONFLICTとALLOCATION_ALREADY_REVERSEDのthrow/409変換をcatalog読込で直接確認。新16回帰と既存unit含む全129件・型・lint/statusguard4testsが成功。旧独立7probeの5成功2REDを同SHA256 copyで保持、独立ReviewerのnewSHA再検証は未実施",
+          "guard": "frontend/src/api-errors.test.tsx",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T08:53:02+00:00"
+        }
+      ]
+    },
+    {
       "key": "bfcache-secret-replay",
       "status": "resolved",
       "events": [

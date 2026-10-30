@@ -114,6 +114,10 @@ export default function CsvImportPanel({ kind = 'CUSTOMER', confirmationEnabled 
         if (failure instanceof ApiError && failure.code === 'IMPORT_ALREADY_CONFIRMED') {
           setOriginalBatchId(failure.details.find((item) => item.field === 'batchId')?.message ?? '');
         }
+        if (failure instanceof ApiError && failure.code === 'IMPORT_REFERENCE_CONFLICT') {
+          try { await showBatch(await api.getImportBatch(batch.id)); }
+          catch (lookupFailure) { report(lookupFailure); working(false); return; }
+        }
         report(failure);
       }
       working(false); return;

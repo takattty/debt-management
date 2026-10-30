@@ -2,7 +2,7 @@
 
 架空データで、ログイン、顧客・請求の登録、入金取込、消込・取消、滞留確認と督促対応までを試す手順です。必要なツール、Docker Composeの起動・停止、架空アカウントは[READMEのローカル起動](../README.md#開発用ローカル起動)に従ってください。ここでは起動コマンドを重ねて記載しません。
 
-**prepared版では、この売掛金フローを実DB・画面・Composeで確認済みです。** 最終mainへの全sourceとruntimeの結合確認は継続中です。利用する版の画面と[検証表](#検証対象と最終mainへの結合)を確認し、preparedの実績を最終mainでの再実行済みとは扱わないでください。
+**この売掛金フローはmainへ統合済みです。** 実DB・画面・Composeでの確認内容と対象版は、末尾の[検証表](#検証対象と最終mainへの結合)を参照してください。
 
 画面の記録日時と有効期限は「日本時間 / JST」で表示します。請求日・支払期日・振込日などの業務日付は、CSVに入力した `YYYY-MM-DD` のまま扱います。今回の作業は売掛金の仕上げで停止し、貸付元本は保留します。メール送信・利息計算・貸付金の操作は本手順の対象外です。
 
@@ -222,17 +222,20 @@ CSV取込の画面を離れるとファイルと表示結果を破棄します�
 
 ## 検証対象と最終mainへの結合
 
-以下はprepared `6404ccc9dd41898b18506762e91e35bbdc20151b` と本ガイドの旧固定版 `a4b9097e3b82bda0ea0030a107c58d86f66b9b8b` に対する実証です。最終mainで再実行した結果ではありません。
+旧全体受入（prepared `6404ccc9dd41898b18506762e91e35bbdc20151b`、ガイド旧固定版 `a4b9097e3b82bda0ea0030a107c58d86f66b9b8b`）、手数料なしの追加例、新しいbusy制御の追加phaseを分けて記載します。機能/運用統合mainとのsource/runtime結合は確認済みです。既存実行証拠の結合であり、最終mainでCloudのAPI/browser検証を新たに再実行した結果とは扱いません。
 
-| 対象 | preparedで確認した結果 |
+| 対象 | 実行結果・source/runtimeとの結合 |
 | --- | --- |
 | 実API・production proxy | normal runn 15件＋production proxy 2件、skip0・failure0 |
 | 実画面と履歴復帰 | Playwright 32件＋production distのnative BFCache 2件 |
 | 独立した実画面ガイド | 同一fixtureを事実確認して安全な地点から再開し完走、製品阻害所見0。一部入金・複数顧客・手数料440円・過入金・操作全体取消3件・請求訂正を確認 |
 | 独立SQL・引継ぎ・コピー | 最終未回収70,000円、未充当20,000円。メモ/次回日/保留/解除、別担当者の履歴引継ぎ、70,000円の草案と実clipboard一致。メール送信なし |
-| 原本保持と再作成 | 元12,514行の全PK/row hash保持。最終17table/12,722行を停止・再作成後も全保持し、同じJAR/dist/migration・PG volumeを確認 |
-| 最終mainの結合 | **pending**。最終mainの304入力・JAR・dist・runtimeとの一致を後続で確認し、対象SHAと証拠を更新する。prepared実行をfinal main再実行と表記しない |
+| 原本保持と再作成（旧phase） | 元12,514行の全PK/row hash保持。17table/12,722行を停止・再作成後も全保持し、同じJAR/dist/migration・PG volumeを確認 |
+| 手数料なしの追加例 | test source `9b6eb0` のrunn1冊/1scenario・55steps、failure0/skip0。請求100,000・現金99,560・手数料0で未回収440・未充当0。既存12,722行の全hash保持→12,765行。前行の再作成後に実行した別phase |
+| 入れ子の請求変更・busy制御 | candidate `f51e0bd6dbf50cbc4e1450b986e44fe7a0ecde69` の新productionで関連real E2E9件・native BFCache2件が成功。既存12,765行の全hash保持→13,225行。旧32件の再実行とは区別 |
+| 機能/運用統合mainの結合 | main `553aedd4c5a78abf43dae7a7ea1c237a793ed636` と上記f51のapplication/build入力166pathsのmode/blobが全一致・差0。mainの全Git treeも独立レビュー/全CI済headと一致。JAR/new dist・V1..10・3container/image/config/volumeと13,225行全hashをread-onlyで再照合し、web/CSRFは200 |
+| 検証の境界 | 12,765行以降の再create、Mac実機、物理VM/Cloud task再起動、常時Coordinatorは未実施。既存の再作成確認12,722行や再接続後の13,225行保持と混同しません。貸付金は保留 |
 
-Cloudの証拠ownerは `debt-ar-prepared-acceptance/work` の `whole-ar-current-evidence-index.json`、`guide-root-retention.json`、`recreate-staged-01-result.json` と、`review-whole-ar-guide-independent/work/whole-ar-independent-report.md`・`ar-requirements-evidence-map.md/.json` です。詳細は[検証・再開記録](runtime-evidence.md)とIssue #1/#4/#5へ引き継ぎます。今回の文書更新に伴うAPI・browser・buildの追加実行はありません。
+Cloudの証拠ownerは `debt-ar-prepared-acceptance/work` です。旧全体/ガイド/再作成は `guide-root-retention.json`・`recreate-staged-01-result.json`、追加phaseは `whole-ar-guarded-candidate-evidence-index.json`、最終source/runtime結合は `final-main96-source-runtime-binding.json`・`main-app-binding-553aedd4c5a7.json`・`runtime-final-ar-main96.json` に保存しています。独立した実画面ガイドは `review-whole-ar-guide-independent/work/whole-ar-independent-report.md`・`ar-requirements-evidence-map.md/.json` です。詳細とガイド統合後の最終head確認は[検証・再開記録](runtime-evidence.md)とIssue #1/#4/#5へ引き継ぎます。今回の文書更新に伴うCloudのAPI・browser・buildの追加実行はありません。
 
 仕様上の根拠は[要件](requirements.md)、[業務例 EX-I01〜11・EX-M01〜13・EX-C01〜05](business-examples.md)、[Issue #4](https://github.com/takattty/debt-management/issues/4)、[Issue #5](https://github.com/takattty/debt-management/issues/5)を参照してください。

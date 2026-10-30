@@ -6,7 +6,7 @@
 
 売掛金の操作対象は **ログイン/手動リンク招待、顧客・請求・入金CSVの確認/全件確定、名義対応、理由付き消込、一部入金・複数顧客・手数料・過入金、取消/請求訂正/履歴、滞留・次回対応・保留・引継ぎ・メール草案コピー** です。[操作手順と架空CSVサンプル](docs/user-guide.md)を参照してください。
 
-現在のmainは入金・金融機能まで順次統合中で、回収を含む全ARのsource統合と最終受入は継続中です。prepared `6404ccc9dd41898b18506762e91e35bbdc20151b` の実DB・画面・Compose実証を、最終mainでの再実行や完成と混同しません。[検証対象と結合待ちの状態](docs/user-guide.md#検証対象と最終mainへの結合)を確認してください。
+売掛金の必須機能はmainに統合済みです。実DB・画面・Composeによる実証と、機能/運用統合mainの166 application/build paths・保持runtimeの一致を[検証表](docs/user-guide.md#検証対象と最終mainへの結合)へ記録しています。既存実行証拠の結合と、CloudでのAPI/browserの新規再実行は区別しています。
 
 今回の作業は売掛金の仕上げまでで停止します。貸付元本は保留し、Loanへ自動継続しません。メール送信、利息計算、商用インフラは対象外です。[入金修正例](docs/samples/payments-corrected.csv)・[エラー例](docs/samples/payments-invalid.csv)・[対応する請求](docs/samples/invoices-ar.csv)は架空データだけを含みます。
 
@@ -32,7 +32,7 @@ docker compose down
 
 build-local は成果物の作成用で、テスト成功の証拠にはなりません。merge前には以下を必ず実施します。
 
-起動後は[売掛金の操作手順](docs/user-guide.md)で架空データを登録できます。売掛金全体のprepared実証と停止・再作成時の17table/12,722行保持は、同ガイドの検証表にまとめています。最終mainの304入力・JAR・dist・runtimeへの結合確認は後続です。
+起動後は[売掛金の操作手順](docs/user-guide.md)で架空データを登録できます。実画面での確認、旧phaseの停止・再作成、追加phase、統合mainと保持runtimeの照合は、同ガイドの検証表に分けてまとめています。
 
 managed CloudのVFSでは、container作成でimage全体の複製が必要です。Docker検証は他の重いworkerを止め、`scripts/docker-verify.sh --cloud-local` を使います。実測したimage・build入力・既存container・PG起動余裕に1GiBの空きを残せない場合や、測定不能の場合は作成前に停止します。Cloudでは固定したbase imageを事前に用意し、不足時は所有者と復旧方法を確認してください。guardはpull・cleanup・daemon設定変更を行いません。通常のMac/Desktop/remoteではこのmodeを使わず、上の起動手順と選択済みDocker contextをそのまま使います。
 

@@ -45,14 +45,13 @@ async function upload(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('Invoice CSV preview', () => {
-  it('keeps invalid amount text and physical correction details, then shows a repaired preview without exposing confirmation', async () => {
+  it('keeps invalid amount text and physical correction details, then enables confirmation only after a repaired preview', async () => {
     const fetch = mockServer({ invalid: true });
     const user = await open(); await upload(user);
     expect(await screen.findByRole('table', { name: 'CSVエラー一覧' })).toHaveTextContent('100000のような正の整数');
     expect(within(screen.getByRole('table', { name: '請求CSVプレビュー' })).getByText('abc')).toBeVisible();
     expect(screen.getByText(/まだ1件も登録されていません/)).toBeVisible();
-    expect(screen.getByText(/請求の確定登録はまだ利用できません/)).toBeVisible();
-    expect(screen.queryByRole('button', { name: /確定して登録/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /確定して登録/ })).toBeDisabled();
     const sent = fetch.mock.calls.find(([path]) => path === '/api/imports/invoices/preview')?.[1];
     expect(sent.body).toBeInstanceOf(FormData);
     expect(sent.headers).not.toHaveProperty('Content-Type');
@@ -60,6 +59,7 @@ describe('Invoice CSV preview', () => {
     await upload(user);
     expect(screen.queryByRole('table', { name: 'CSVエラー一覧' })).not.toBeInTheDocument();
     expect(await screen.findByRole('table', { name: '請求CSVプレビュー' })).toHaveTextContent('200000');
+    expect(screen.getByRole('button', { name: /確定して登録/ })).toBeEnabled();
     expect(fetch.mock.calls.some(([path]) => String(path).endsWith('/confirm'))).toBe(false);
   });
 

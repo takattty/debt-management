@@ -8,6 +8,8 @@ export type InvitationIssued = components['schemas']['InvitationIssuedResponse']
 export type ImportBatch = components['schemas']['ImportBatchResponse'];
 export type ImportRow = components['schemas']['ImportRowResponse'];
 export type ImportError = components['schemas']['ImportErrorResponse'];
+export type Receivable = components['schemas']['ReceivableResponse'];
+export type ReceivablesQuery = NonNullable<operations['listReceivables']['parameters']['query']>;
 type Csrf = components['schemas']['CsrfResponse'];
 type LoginInput = operations['login']['requestBody']['content']['application/json'];
 type CustomerCreateInput = operations['createCustomer']['requestBody']['content']['application/json'];
@@ -34,6 +36,11 @@ export const api = {
   login: (body: LoginInput, csrf: Csrf) => request({ path: '/api/auth/login', method: 'POST' }, csrf, body),
   getSession: () => request({ path: '/api/session', method: 'GET' }, undefined),
   listCustomers: () => request({ path: '/api/customers', method: 'GET' }, undefined),
+  listReceivables: (query: ReceivablesQuery = {}) => {
+    const parameters = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => { if (value !== undefined) parameters.set(key, String(value)); });
+    return request({ path: '/api/receivables', method: 'GET', url: `/api/receivables?${parameters}` }, undefined);
+  },
   createCustomer: (csrf: Csrf, body: CustomerCreateInput) => request(
     { path: '/api/customers', method: 'POST' }, csrf, body,
   ),
@@ -124,7 +131,8 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       400: endpoint.path === '/api/auth/login' ? 'メールアドレスとパスワードの入力内容を確認してください。'
         : endpoint.path === '/api/invitations' ? '招待先のメールアドレスと権限を確認してください。'
           : invitation ? '入力したメールアドレスとパスワードの条件を確認してください。'
-            : importing ? 'CSVファイルと入力形式を確認して、もう一度プレビューしてください。' : '顧客コード・顧客名の形式や文字数を確認してください。',
+            : importing ? 'CSVファイルと入力形式を確認して、もう一度プレビューしてください。'
+              : endpoint.path === '/api/receivables' ? '顧客と支払期日の検索条件を確認してください。' : '顧客コード・顧客名の形式や文字数を確認してください。',
       401: endpoint.path === '/api/auth/login' ? 'メールアドレスまたはパスワードを確認してください。' : 'ログインの有効期限が切れました。もう一度ログインしてください。',
       403: code === 'ACCESS_DENIED' ? 'この操作を行う権限がありません。管理者にご確認ください。'
         : code === 'CSRF_INVALID' ? 'ログインの有効期限が切れました。もう一度ログインしてください。'

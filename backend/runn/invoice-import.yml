@@ -162,6 +162,7 @@ steps:
           body: null
     bind:
       firstReceivable: current.res.body.items[0].id
+      firstAmount: current.res.body.items[0].amount
       next: current.res.body.nextCursor
     test: current.res.status == 200 && len(current.res.body.items) == 1 && next != null
       && current.res.body.items[0].amount == current.res.body.items[0].outstandingAmount
@@ -204,6 +205,75 @@ steps:
               version: 0
     test: current.res.status == 409 && current.res.body.code == 'IMPORT_ALREADY_CONFIRMED'
       && current.res.body.errors[0].field == 'batchId' && current.res.body.errors[0].message == validBatch
+  detail:
+    api:
+      /api/invoices/{{ firstReceivable }}:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.body.version == 0 && current.res.body.amount == firstAmount
+      && current.res.body.status == 'ACTIVE'
+  missingReason:
+    invalid:
+      /api/invoices/{{ firstReceivable }}:
+        put:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 0
+              customerId: '{{ customerId }}'
+              issueDate: '2026-10-29'
+              dueDate: '2026-11-30'
+              amount: 110000
+    test: current.res.status == 400
+  correct:
+    api:
+      /api/invoices/{{ firstReceivable }}:
+        put:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 0
+              customerId: '{{ customerId }}'
+              issueDate: '2026-10-29'
+              dueDate: '2026-11-30'
+              amount: 110000
+              reason: 税込金額を訂正
+    test: current.res.status == 200 && current.res.body.version == 1 && current.res.body.amount == 110000
+      && current.res.body.outstandingAmount == 110000
+  staleCorrection:
+    api:
+      /api/invoices/{{ firstReceivable }}:
+        put:
+          headers:
+            X-CSRF-TOKEN: '{{ token }}'
+          body:
+            application/json:
+              version: 0
+              customerId: '{{ customerId }}'
+              issueDate: '2026-10-29'
+              dueDate: '2026-11-30'
+              amount: 120000
+              reason: 古い画面からの訂正
+    test: current.res.status == 409 && current.res.body.code == 'VERSION_CONFLICT'
+  initialHistory:
+    api:
+      /api/invoices/{{ firstReceivable }}/history?limit=1:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.body.items[0].operation == 'CREATED'
+      && current.res.body.items[0].snapshot.amount == firstAmount && current.res.body.nextCursor == 0
+  correctedHistory:
+    api:
+      /api/invoices/{{ firstReceivable }}/history?cursor=0&limit=1:
+        get:
+          body: null
+    test: current.res.status == 200 && current.res.body.items[0].operation == 'CORRECTED'
+      && current.res.body.items[0].snapshot.amount == 110000 && current.res.body.items[0].reason == '税込金額を訂正'
+      && current.res.body.nextCursor == null
   betaCsrf:
     beta:
       /api/csrf:
@@ -239,3 +309,21 @@ steps:
             X-Tenant-Id: 11111111-1111-1111-1111-111111111111
           body: null
     test: current.res.status == 200 && len(current.res.body.items) == 0
+  noInvoiceTenantLeak:
+    beta:
+      /api/invoices/{{ firstReceivable }}:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'
+  noHistoryTenantLeak:
+    beta:
+      /api/invoices/{{ firstReceivable }}/history:
+        get:
+          useCookie: false
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+          body: null
+    test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'

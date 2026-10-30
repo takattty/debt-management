@@ -32,6 +32,81 @@ tags:
 - name: Imports
   description: Immutable tenant-scoped CSV previews and explicit all-or-nothing confirmation
 paths:
+  /api/invoices/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    get:
+      tags: [Invoices]
+      operationId: getInvoice
+      summary: Read an invoice including its cancelled state
+      responses:
+        '200':
+          description: Current invoice facts and derived outstanding amount
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InvoiceResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
+    put:
+      tags: [Invoices]
+      operationId: correctInvoice
+      summary: Correct an active unallocated invoice with a reason and expected version
+      description: Invoice number is immutable, including after cancellation. Locks the invoice and appends revision and audit atomically; a stale version or active allocation prevents changes. Settlement dispatch is not present yet; enabling it requires a real ledger eligibility adapter.
+      security:
+      - sessionAuth: []
+        csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InvoiceCorrectionRequest'}
+      responses:
+        '200':
+          description: Corrected invoice and incremented version
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InvoiceResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
+        '409':
+          description: VERSION_CONFLICT, INVOICE_NOT_ACTIVE or INVOICE_ALLOCATED; reload or reverse the active settlement first.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApiError'}
+  /api/invoices/{id}/history:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    get:
+      tags: [Invoices]
+      operationId: listInvoiceHistory
+      summary: Read immutable invoice revisions in increasing revision order
+      parameters:
+      - name: cursor
+        in: query
+        schema: {type: integer, format: int64, minimum: -1, default: -1}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        '200':
+          description: At most limit revisions; null nextCursor indicates the end
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InvoiceHistoryPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/InvoiceNotFound'}
   /api/receivables:
     get:
       tags: [Invoices]
@@ -623,6 +698,11 @@ components:
       description: Authenticated server-side servlet session; HttpOnly, SameSite=Lax, Path=/; local HTTP only permits
         Secure=false
   responses:
+    InvoiceNotFound:
+      description: Invoice not found in the authenticated tenant, including deliberately hidden cross-tenant IDs
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
     ImportNotFound:
       description: Batch not found in the authenticated tenant
       content:
@@ -649,6 +729,68 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
   schemas:
+    InvoiceCorrectionRequest:
+      type: object
+      additionalProperties: false
+      required: [version, customerId, issueDate, dueDate, amount, reason]
+      properties:
+        version: {type: integer, format: int64, minimum: 0}
+        customerId: {type: string, format: uuid}
+        issueDate: {type: string, format: date}
+        dueDate: {type: string, format: date}
+        amount: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        reason: {type: string, minLength: 1, maxLength: 1000}
+    InvoiceResponse:
+      type: object
+      required: [id, customerId, customerCode, customerName, invoiceNumber, issueDate, dueDate, amount, outstandingAmount, version, status, createdAt, updatedAt, cancelledAt]
+      properties:
+        id: {type: string, format: uuid}
+        customerId: {type: string, format: uuid}
+        customerCode: {type: string, minLength: 1, maxLength: 50}
+        customerName: {type: string, minLength: 1, maxLength: 200}
+        invoiceNumber: {type: string, minLength: 1, maxLength: 100}
+        issueDate: {type: string, format: date}
+        dueDate: {type: string, format: date}
+        amount: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        outstandingAmount: {type: integer, format: int64, minimum: 0, maximum: 9007199254740991}
+        version: {type: integer, format: int64, minimum: 0}
+        status: {type: string, enum: [ACTIVE, CANCELLED]}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        cancelledAt: {type: string, format: date-time, nullable: true}
+    InvoiceHistorySnapshot:
+      type: object
+      required: [customerId, customerCode, customerName, invoiceNumber, issueDate, dueDate, amount, status, sourceBatchId, version]
+      properties:
+        customerId: {type: string, format: uuid}
+        customerCode: {type: string, minLength: 1, maxLength: 50}
+        customerName: {type: string, minLength: 1, maxLength: 200}
+        invoiceNumber: {type: string, minLength: 1, maxLength: 100}
+        issueDate: {type: string, format: date}
+        dueDate: {type: string, format: date}
+        amount: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        status: {type: string, enum: [ACTIVE, CANCELLED]}
+        sourceBatchId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+    InvoiceHistoryEntry:
+      type: object
+      required: [revision, operation, reason, actorUserId, occurredAt, snapshot]
+      properties:
+        revision: {type: integer, format: int64, minimum: 0}
+        operation: {type: string, enum: [CREATED, CORRECTED, CANCELLED]}
+        reason: {type: string, nullable: true, maxLength: 1000}
+        actorUserId: {type: string, format: uuid}
+        occurredAt: {type: string, format: date-time}
+        snapshot: {$ref: '#/components/schemas/InvoiceHistorySnapshot'}
+    InvoiceHistoryPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/InvoiceHistoryEntry'}
+        nextCursor: {type: integer, format: int64, minimum: 0, nullable: true}
     ReceivableResponse:
       type: object
       required: [id, customerId, customerCode, customerName, invoiceNumber, issueDate, dueDate, amount, outstandingAmount, version]

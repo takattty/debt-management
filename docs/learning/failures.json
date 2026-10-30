@@ -642,6 +642,34 @@
           "resolved_at": "2026-10-30T00:11:22+00:00"
         }
       ]
+    },
+    {
+      "key": "test-fixture-global-order-assumption",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "payment-runn-first-fixture-20261030",
+          "summary": "既存入金の残るDBで先頭入金を自fixtureと仮定したrunnが失敗した",
+          "evidence": "docs/learning/README.md",
+          "recorded_at": "2026-10-30T01:59:24+00:00"
+        },
+        {
+          "event": "invoice-e2e-first-page-fixture-20261030",
+          "summary": "他顧客の既存請求52件が残るDBで未絞込先頭50件に自fixtureがあると仮定したE2Eが失敗した",
+          "evidence": "frontend/e2e/invoice-imports.spec.ts",
+          "recorded_at": "2026-10-30T01:59:24+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "受入テストが共有tenantの全体先頭や先頭50件を自fixtureの位置と見なし、既存データによる順序と件数の変化を考慮しなかった",
+          "prevention": "各testのID・顧客filter・keysetで自fixtureを特定し、DB全体の先頭順や件数を仮定しない。既存データを削除せず同DBで複数回検証する",
+          "verification": "入金runn修正版は既存9facts保持DBで全10冊を2回成功。請求E2E修正ac5c942は別顧客の以前日付52請求を実APIでseedし未絞込先頭50件を占める同DBで全12件を2回成功。取消段階cf92fc5も同DBで全14件を2回成功。52原請求のSHA256 fingerprintはseed時と全4実行後で同一",
+          "guard": "frontend/e2e/invoice-imports.spec.ts",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T02:03:13+00:00"
+        }
+      ]
     }
   ]
 }

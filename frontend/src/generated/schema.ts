@@ -17,7 +17,7 @@ export interface paths {
         get: operations["getInvoice"];
         /**
          * Correct an active unallocated invoice with a reason and expected version
-         * @description Invoice number is immutable, including after cancellation. Locks the invoice and appends revision and audit atomically; a stale version or active allocation prevents changes. Settlement dispatch is not present yet; enabling it requires a real ledger eligibility adapter.
+         * @description Invoice number is immutable, including after cancellation. Locks the invoice and appends revision and audit atomically; a stale version or active allocation prevents changes. The real ledger adapter rejects any active cash or explicit fee, including one yen. Whole-operation reversals must remove every active allocation before correction or cancellation. Public allocation/reversal commands are not introduced here.
          */
         put: operations["correctInvoice"];
         post?: never;

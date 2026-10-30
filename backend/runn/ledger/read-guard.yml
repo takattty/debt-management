@@ -1,0 +1,131 @@
+desc: Real active ledger balances and invoice mutation protection (prepared fictional V8 fixtures)
+concurrency: debt-api-acceptance
+labels: [api, reconciliation, ledger]
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../../contracts/openapi.yaml
+    useCookie: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+  customer: ${RUNN_LEDGER_CUSTOMER}
+  payment: ${RUNN_LEDGER_PAYMENT}
+  partial: ${RUNN_LEDGER_PARTIAL}
+  feeOnly: ${RUNN_LEDGER_FEE_ONLY}
+  cancelled: ${RUNN_LEDGER_CANCELLED}
+  reversed: ${RUNN_LEDGER_REVERSED}
+secrets: [vars.password, anonymousToken, anonymousCookie, cookie, token]
+steps:
+  csrf:
+    api:
+      /api/csrf:
+        get: {body: null}
+    bind:
+      anonymousToken: current.res.body.csrfToken
+      anonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  login:
+    api:
+      /api/auth/login:
+        post:
+          headers: {Cookie: 'JSESSIONID={{ anonymousCookie }}', X-CSRF-TOKEN: '{{ anonymousToken }}'}
+          body:
+            application/json: {email: alpha-accountant@example.test, password: '{{ vars.password }}'}
+    bind: {cookie: current.res.cookies.JSESSIONID.Value}
+    test: current.res.status == 204
+  session:
+    api:
+      /api/session:
+        get: {body: null}
+    bind: {token: current.res.body.csrfToken}
+    test: current.res.status == 200
+  paymentFirst:
+    api:
+      /api/payments?dateFrom=9999-12-31&dateTo=9999-12-31&limit=50:
+        get: {body: null}
+    bind:
+      paymentCursor: current.res.body.nextCursor
+      paymentSeen: 'len(filter(current.res.body.items, {#.id == vars.payment && #.amount == 120000 && #.unallocatedAmount == 60000})) == 1'
+    test: current.res.status == 200
+  paymentPages:
+    loop:
+      count: 1000
+      until: paymentCursor == nil
+    api:
+      /api/payments?dateFrom=9999-12-31&dateTo=9999-12-31&limit=50&cursor={{ paymentCursor ?? '' }}:
+        get: {body: null}
+    bind:
+      paymentSeen: 'paymentSeen || len(filter(current.res.body.items, {#.id == vars.payment && #.amount == 120000 && #.unallocatedAmount == 60000})) == 1'
+      paymentCursor: current.res.body.nextCursor
+    test: current.res.status == 200
+  paymentFound:
+    test: paymentSeen
+  partial:
+    api:
+      /api/invoices/{{ vars.partial }}:
+        get: {body: null}
+    test: current.res.status == 200 && current.res.body.amount == 100000 && current.res.body.outstandingAmount == 39560 && current.res.body.version == 1
+  feeOnly:
+    api:
+      /api/invoices/{{ vars.feeOnly }}:
+        get: {body: null}
+    test: current.res.status == 200 && current.res.body.amount == 100000 && current.res.body.outstandingAmount == 99999 && current.res.body.version == 1
+  cancelled:
+    api:
+      /api/invoices/{{ vars.cancelled }}:
+        get: {body: null}
+    test: current.res.status == 200 && current.res.body.amount == 100000 && current.res.body.outstandingAmount == 0 && current.res.body.status == 'CANCELLED'
+  receivables:
+    api:
+      /api/receivables?customerId={{ vars.customer }}&status=ALL:
+        get: {body: null}
+    test: >-
+      current.res.status == 200 && len(current.res.body.items) == 4
+      && len(filter(current.res.body.items, {#.id == vars.partial && #.outstandingAmount == 39560 && #.version == 1})) == 1
+      && len(filter(current.res.body.items, {#.id == vars.feeOnly && #.outstandingAmount == 99999 && #.version == 1})) == 1
+      && len(filter(current.res.body.items, {#.id == vars.cancelled && #.outstandingAmount == 0 && #.status == 'CANCELLED'})) == 1
+  denyPartialCorrection:
+    api:
+      /api/invoices/{{ vars.partial }}:
+        put:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 1, customerId: '{{ vars.customer }}', issueDate: '0001-01-01', dueDate: '9999-12-31', amount: 200000, reason: 'Fictional blocked correction'}
+    test: current.res.status == 409 && current.res.body.code == 'INVOICE_ALLOCATED'
+  denyPartialCancel:
+    api:
+      /api/invoices/{{ vars.partial }}/cancel:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 1, reason: 'Fictional blocked cancellation'}
+    test: current.res.status == 409 && current.res.body.code == 'INVOICE_ALLOCATED'
+  denyFeeCorrection:
+    api:
+      /api/invoices/{{ vars.feeOnly }}:
+        put:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 1, customerId: '{{ vars.customer }}', issueDate: '0001-01-01', dueDate: '9999-12-31', amount: 200000, reason: 'Fictional blocked fee correction'}
+    test: current.res.status == 409 && current.res.body.code == 'INVOICE_ALLOCATED'
+  denyFeeCancel:
+    api:
+      /api/invoices/{{ vars.feeOnly }}/cancel:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 1, reason: 'Fictional blocked fee cancellation'}
+    test: current.res.status == 409 && current.res.body.code == 'INVOICE_ALLOCATED'
+  correctAfterWholeReversal:
+    api:
+      /api/invoices/{{ vars.reversed }}:
+        put:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 2, customerId: '{{ vars.customer }}', issueDate: '0001-01-01', dueDate: '9999-12-31', amount: 110000, reason: 'Fictional correction after reversal'}
+    test: current.res.status == 200 && current.res.body.outstandingAmount == 110000 && current.res.body.version == 3
+  originalHistory:
+    api:
+      /api/invoices/{{ vars.reversed }}/history:
+        get: {body: null}
+    test: current.res.status == 200 && len(current.res.body.items) == 2 && current.res.body.items[0].snapshot.amount == 100000 && current.res.body.items[1].snapshot.amount == 110000

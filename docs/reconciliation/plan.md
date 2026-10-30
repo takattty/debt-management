@@ -15,6 +15,7 @@ B05/Q02: 手動の名義→顧客対応を優先し、未回収額一致、期�
 | 2 原子的確定と入金一覧 | 版・期限・取引ID・semantic fingerprintを再確認し、全入金/監査/batchを一transactionで確定。再送・並行確定・監査失敗rollback。bounded一覧 | 実PG race/rollback/retry、runn全件拒否と確定結果。ledger未導入の間だけ未充当=入金額と明記 |
 | 3 手動名義対応 | B05の名義→顧客の登録、active一覧、誤登録の理由/版付き無効化と原対応の詳細。V7はpayer_alias専用 | 共通名義ルール、実PG activepair race/監査rollback/tenant FK、runn ADMIN/ACCOUNTANT・CSRF・未知field・越境 |
 | 4 理由付き候補read-only | B05の手動名義対応→現在未回収/未充当額の一致→期日/id順、対応状態と人の確認を明示。V8のみを同snapshotで読む。詳細は [candidate-design](candidate-design.md) | 名前variants、金額/fee/reversal、独立計算とのproperty対照、snapshot race、tenant/no write、keyset/1万行、実runn |
+| 5 公開残高と請求変更 guard | V8 実台帳から既存 GET 残高を同 snapshot で導出し、invoice lock 内の実 eligibility で現金/明示手数料1円でも訂正・取消を拒否。全取消後だけ解禁。[設計](public-read-design.md) | 実PG保存則/並行read/API拒否/実lock待機/監査rollback、既存ledger全回帰、実runn |
 | 後続 ledger command | 手動確定、複数請求・一部充当・明示手数料・過入金・取消の保存則。V8内部storage/read準備は候補/公開commandの完成ではない | 実ledgerと請求訂正/取消race、現金/手数料1円でも有効なら訂正拒否、取消後の解禁。B06/B07回答とpolicyが必要 |
 
 前後空白以外は変換しない。取引ID100、名義200 code points、制御文字・改行はstrip前に拒否する。日付の将来日制限は合意されておらず追加しない。
@@ -26,9 +27,9 @@ semantic fingerprintはkind/formatと長さ付き各値を用い、BOM・改行�
 顧客/請求のImportRowResponseは維持し、入金は正本OpenAPIのPaymentImportRowResponseからJava/TypeScriptを生成する。GET /api/imports/{id}/payment-rowsは入金専用。共通rowsは入金に409、他tenantには404。共通batch/errorsを再利用し、段階2のconfirmはkindごとの確定ユースケースへdispatchし、他tenantには404を返す。
 paymentはtenant/取引ID/振込日/名義/金額/source batch/actor/記録時刻を持ち、更新・削除をDBでも拒否する。source batchとactorをtenant付きFKで検証する。顧客対応や可変残高を入金事実へ混ぜない。
 
-入金取込・名義対応だけではdebt.reconciliation.enabledを有効化しない。InvoiceMutationEligibilityのpreSettlement guardは実Allocation adapter導入まで維持する。V7を名義対応に予約し、ledger設計はV8以降の別段階。B06顧客横断充当とB07手数料の事後調整は未回答であり、名義対応では暗黙に決めない。
+入金取込・名義対応だけではdebt.reconciliation.enabledを有効化しない。公開残高・請求変更guardの段階でInvoiceMutationEligibilityを実V8 adapterへ置換する。公開commandの有効化とは分離する。V7を名義対応に予約し、ledger設計はV8以降の別段階。B06顧客横断充当とB07手数料の事後調整は未回答であり、名義対応では暗黙に決めない。
 
-段階2はGET /api/paymentsをtransfer_date,id順・limit1〜100で取得し、任意のdateFrom/dateToを含むkeysetページングで読む。記録者・記録時刻・sourceBatchIdを返す。ledger未導入の間だけunallocatedAmount=amountであり、reconciliation有効化前に必ず実ledger由来へ置換する。入金事実や監査に部分成功を残さず、期限がtransaction途中に切れた場合もrollbackする。
+段階2はGET /api/paymentsをtransfer_date,id順・limit1〜100で取得し、任意のdateFrom/dateToを含むkeysetページングで読む。記録者・記録時刻・sourceBatchIdを返す。公開残高の段階でunallocatedAmountは有効な現金充当を引く実ledger由来となり、原本金額とは分離する。入金事実や監査に部分成功を残さず、期限がtransaction途中に切れた場合もrollbackする。
 
 ## 手動名義対応の技術選択（段階3）
 

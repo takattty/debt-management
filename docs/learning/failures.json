@@ -754,6 +754,34 @@
           "resolved_at": "2026-10-30T04:47:12+00:00"
         }
       ]
+    },
+    {
+      "key": "tool-output-truncation",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "gitdb-publish-metadata-truncated-20261030",
+          "summary": "Coordinator引継ぎsummary由来。Git DB公開metadataの巨大JSON stdoutがtool上限で切断されWarning: truncatedを含む結果のJSON.parseに失敗した。今回担当者の新たな直接観測とは扱わない",
+          "evidence": "docs/learning/evidence-output-validation.md",
+          "recorded_at": "2026-10-30T05:38:24+00:00"
+        },
+        {
+          "event": "docker-log-json-capture-truncated-20261030",
+          "summary": "Coordinatorが今回観測して引き継いだ停止済みDocker logs退避の巨大JSON stdoutがtool上限で切断されJSON.parseに失敗した。圧縮size guardの意図的停止は別eventに数えない",
+          "evidence": "docs/learning/evidence-output-validation.md",
+          "recorded_at": "2026-10-30T05:38:24+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "行数制限だけのreaderが単一巨大行を無制限に出力し、呼出側もtoolの完了・終了値・切断をJSON parseより先に検査していなかった",
+          "prevention": "通常readerはheader込みUTF8 16KiBを超えるとstdout空で拒否し、大JSONはfile保存・最大4096byteのbase64 JSON chunkとwholeSHA再結合を使う。raw tool結果は完了・exit0・truncation無しを確認してからparseする",
+          "verification": "reader15件と全Python49件成功。既存27765byte Docker artifactを7chunks・最大応答5739byteで再結合し元file SHA31ddf497a9821216c728b1f680485c25683366ed9b86a38d608e42bda348b0d7と一致。内部archive112159byte/SHA26593d956e814d21ef29473246df6511b119b056496aafd86cb2bdc9b8c3a18bを実展開照合し元artifactと13証拠fileを保持した",
+          "guard": "docs/learning/evidence-output-validation.md",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T05:40:00+00:00"
+        }
+      ]
     }
   ]
 }

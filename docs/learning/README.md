@@ -51,6 +51,8 @@ helperが未導入の古い証拠checkoutから相対pathでhelperを呼ぶ失�
 
 `read-evidence.py`自身は絶対pathで呼ぶが、証拠引数は `work/name.log` の相対pathにする。所有treeは `--worktree /absolute/owner` で指定する。helperのpathと証拠引数の形式を混同しない。
 
+行数だけでは単一巨大行のtool出力を制限できない。通常readerはheader込みUTF-8 16KiBを超えるとstdout空で拒否する。巨大JSON/logはfileへ保存し、`--json-chunk --offset N --size 4096` のbounded JSONを使う。owner/path・offset・実size・total・whole SHA256を揃えて再結合し、最後にhashを照合する。exec/tool応答の完了・exit0・truncationなしをJSON parseより先に確認し、切断prefixを除去してparseを再試行しない。2実失敗と実archive再結合の記録は[Evidence output validation](evidence-output-validation.md)を参照する。
+
 新worktreeにはworkディレクトリがない。`verify.sh >work/log` はscript内のmkdirより先に失敗するため、Cloudの保存付き検証は `bash /absolute/checkout/scripts/verify-cloud.sh` を外側リダイレクトなしで実行する。wrapperが保存先を作り、verifyの終了値を保ったままwork/cloud-verify.logへ保存する。読み取りは既存readerで行う。
 
 source classのfilenameも推測しない。最初に`rg --files`で対象packageの実在pathを列挙し、出力を確認した次のcommandで列挙済みpathだけを読む。discoveryと未確認の`cat`を同じbatchに組み込まず、名前の近いclassや責務からfilenameを作らない。

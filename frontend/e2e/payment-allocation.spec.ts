@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import { loginPaymentUser } from './payment-fixtures';
 import { sessionHeaders } from './invoice-fixtures';
-import type { Customer, ImportBatch, Payment, PaymentCandidates, Session } from '../src/api';
+import type { Customer, ImportBatch, Payment, PaymentCandidates, Session, AllocationHistoryPage } from '../src/api';
 
 async function importCsv(page: Page, kind: 'invoices' | 'payments', csv: string) {
   const headers = await sessionHeaders(page);
@@ -26,12 +26,23 @@ async function seed(page: Page, count = 2) {
   } while (!payment && cursor);
   expect(payment).toBeDefined(); return { prefix, payment: payment!, customers };
 }
-async function openPayment(page: Page, payment: Payment) {
+async function openPayment(page: Page, payment: Payment, hasCandidates = true) {
   await page.getByRole('button', { name: '入金一覧', exact: true }).click();
-  await page.getByLabel('振込日（開始）', { exact: true }).fill(payment.transferDate); await page.getByLabel('振込日（終了）', { exact: true }).fill(payment.transferDate); await page.getByRole('button', { name: '条件で表示', exact: true }).click();
+  await page.getByLabel('振込日（開始）', { exact: true }).fill(payment.transferDate); await page.getByLabel('振込日（終了）', { exact: true }).fill(payment.transferDate);
+  const filtered = page.waitForResponse((response) => { const url = new URL(response.url()); return url.pathname === '/api/payments' && url.searchParams.get('dateFrom') === payment.transferDate && url.searchParams.get('dateTo') === payment.transferDate && !url.searchParams.has('cursor'); });
+  await page.getByRole('button', { name: '条件で表示', exact: true }).click(); const response = await filtered; expect(response.status()).toBe(200);
+  let rendered: { items: Payment[]; nextCursor: string | null } = await response.json();
+  const list = page.getByRole('table', { name: '入金一覧', exact: true });
+  for (const item of rendered.items) await expect(list.getByRole('cell', { name: item.transactionId, exact: true })).toBeVisible();
   const button = page.getByRole('button', { name: `入金 ${payment.transactionId} の消込`, exact: true });
-  while (await button.count() === 0) { await expect(page.getByRole('button', { name: '次の50件', exact: true })).toBeEnabled(); await page.getByRole('button', { name: '次の50件', exact: true }).click(); await expect(page.getByRole('table', { name: '入金一覧', exact: true })).toBeVisible(); }
-  await button.click(); await expect(page.getByRole('table', { name: '消込候補', exact: true })).toBeVisible();
+  while (!rendered.items.some((item) => item.id === payment.id)) {
+    expect(rendered.nextCursor).not.toBeNull(); const cursor = rendered.nextCursor!;
+    const next = page.waitForResponse((entry) => { const url = new URL(entry.url()); return url.pathname === '/api/payments' && url.searchParams.get('cursor') === cursor; });
+    await page.getByRole('button', { name: '次の50件', exact: true }).click(); const response = await next; expect(response.status()).toBe(200); rendered = await response.json();
+    for (const item of rendered.items) await expect(list.getByRole('cell', { name: item.transactionId, exact: true })).toBeVisible();
+  }
+  await expect(button).toBeVisible();
+  await button.click(); if (hasCandidates) await expect(page.getByRole('table', { name: '消込候補', exact: true })).toBeVisible(); else await expect(page.getByText('未充当現金がありません。過去の消込を変更する場合は元の操作全体を取り消してください。', { exact: true })).toBeVisible();
 }
 
 test('real candidate selection is human, cross-customer, keyset-paged and tenant/session scoped', async ({ page, browser }) => {
@@ -63,4 +74,21 @@ test('real split allocation with explicit fees recovers a lost response using th
   const current: PaymentCandidates = await (await page.request.get(`/api/payments/${payment.id}/candidates`)).json(); expect(current.unallocatedAmount).toBe(1000); expect(current.expectedPaymentVersion).toBe('1');
   for (const index of [0, 1]) { const item = current.items.find((candidate) => candidate.invoiceNumber === `${prefix}-INV-${index}`)!; expect(item.outstandingAmount).toBe(index === 0 ? 4000 : 6500); }
   const session: Session = await (await page.request.get('/api/session')).json(); expect(session.email).toBe('alpha-accountant@example.test'); await page.reload(); await openPayment(page, payment); await expect(page.getByText(/現在の未充当現金：1,000円/)).toBeVisible(); await expect(page.getByText(/入金原本：.*10,000円/)).toBeVisible();
+  const firstHistory: AllocationHistoryPage = await (await page.request.get(`/api/payments/${payment.id}/allocations`)).json(); const original = firstHistory.items.find((item) => item.kind === 'CONFIRM')!;
+  const history = page.getByRole('region', { name: '消込履歴', exact: true }); await expect(history).toContainText('alpha-accountant@example.test'); await expect(history).toContainText('日本時間 / JST');
+  await page.getByRole('button', { name: `操作 ${original.id} の取消内容を再取得`, exact: true }).click(); await page.getByLabel('取消理由', { exact: true }).fill('架空手数料を見直すため全件取消'); await page.getByRole('checkbox', { name: '全請求の現金と手数料をまとめて取り消すことを確認しました', exact: true }).check();
+  const reversalBodies: string[] = []; let dropReversal = true;
+  await page.route(`**/api/payments/${payment.id}/allocations/${original.id}/reversal`, async (route) => { reversalBodies.push(route.request().postData()!); const response = await route.fetch(); expect(response.status()).toBe(200); if (dropReversal) { dropReversal = false; await route.abort('failed'); } else await route.fulfill({ response }); });
+  await page.getByRole('button', { name: '操作全体を取り消す', exact: true }).click(); await expect(history.getByRole('alert')).toContainText('取消結果が不明'); await expect(page.getByRole('button', { name: '消込を閉じる', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '同じ取消操作IDで結果を確認', exact: true }).click(); await expect(history.getByRole('status')).toContainText('操作全体を取り消しました'); expect(reversalBodies).toHaveLength(2); expect(reversalBodies[0]).toBe(reversalBodies[1]);
+  await expect(page.getByRole('checkbox', { checked: true })).toHaveCount(0); await expect(page.getByText(/現在の未充当現金：10,000円/)).toBeVisible();
+  const reversed: AllocationHistoryPage = await (await page.request.get(`/api/payments/${payment.id}/allocations`)).json(); expect(reversed.items).toHaveLength(2); expect(reversed.items.find((item) => item.id === original.id)?.reversedByOperationId).toBeTruthy();
+  for (const index of [0, 1]) await page.getByRole('checkbox', { name: `請求 ${prefix}-INV-${index} を選択`, exact: true }).check();
+  await page.getByRole('button', { name: '選択内容を再取得して確認', exact: true }).click(); await page.getByLabel(`現金（円） ${prefix}-INV-0`, { exact: true }).fill('6000'); await page.getByLabel(`現金（円） ${prefix}-INV-1`, { exact: true }).fill('4000'); await page.getByLabel(`手数料（円） ${prefix}-INV-1`, { exact: true }).fill('300');
+  await page.getByLabel('消込理由', { exact: true }).fill('架空手数料300円で再確定'); await page.getByRole('checkbox', { name: '顧客・請求・現金額・明示した手数料を確認しました', exact: true }).check(); await page.getByRole('button', { name: 'この内容で消込を確定', exact: true }).click(); await expect(page.getByRole('region', { name: '消込内容の確認', exact: true }).getByRole('status')).toContainText('消込を確定しました');
+  await expect(page.getByText('未充当現金がありません。過去の消込を変更する場合は元の操作全体を取り消してください。', { exact: true })).toBeVisible();
+  const after: AllocationHistoryPage = await (await page.request.get(`/api/payments/${payment.id}/allocations`)).json(); expect(after.items).toHaveLength(3); expect(after.expectedPaymentVersion).toBe('3');
+  expect(after.items.find((item) => item.id === original.id)?.lines).toEqual(original.lines.map((line) => ({ ...line, currentInvoiceVersion: '3' })));
+  const latest = after.items.find((item) => item.kind === 'CONFIRM' && item.id !== original.id)!; expect(latest.lines.find((line) => line.invoiceNumber === `${prefix}-INV-1`)?.feeAmount).toBe(300);
+  await page.reload(); await openPayment(page, payment, false); await expect(page.getByRole('region', { name: '消込履歴', exact: true })).toContainText(original.id); await expect(page.getByText(/現在の未充当現金：0円/)).toBeVisible();
 });

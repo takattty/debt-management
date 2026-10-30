@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { api, ApiError, type PaymentCandidate, type PaymentCandidates, type Session, type AllocationConfirmation } from './api';
 import { parseYen, validReason, validVersion } from './allocation-input';
 
-type Props = { paymentId: string; selected: PaymentCandidate[]; session: Session; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void; onConfirmed: () => Promise<void> };
+type Props = { paymentId: string; externallyBusy?: boolean; selected: PaymentCandidate[]; session: Session; onBusyChange: (busy: boolean) => void; onSessionExpired: (failure: ApiError) => void; onConfirmed: () => Promise<void> };
 type Prepared = { page: PaymentCandidates; items: PaymentCandidate[] };
-export default function AllocationConfirmation({ paymentId, selected, session, onBusyChange, onSessionExpired, onConfirmed }: Props) {
+export default function AllocationConfirmation({ paymentId, externallyBusy = false, selected, session, onBusyChange, onSessionExpired, onConfirmed }: Props) {
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [amounts, setAmounts] = useState<Record<string, { cash: string; fee: string }>>({});
   const [reason, setReason] = useState('');
@@ -71,10 +71,10 @@ export default function AllocationConfirmation({ paymentId, selected, session, o
     const body: AllocationConfirmation = { requestId: crypto.randomUUID(), expectedPaymentVersion: prepared.page.expectedPaymentVersion, reason: reason.trim(), lines: prepared.items.map((item) => ({ invoiceId: item.invoiceId, expectedInvoiceVersion: item.expectedInvoiceVersion, cashAmount: Number(parseYen(amounts[item.invoiceId].cash)), feeAmount: Number(parseYen(amounts[item.invoiceId].fee)) })) };
     void send(body);
   }
-  const locked = busy || pending !== null || blocked || done;
+  const locked = busy || externallyBusy || pending !== null || blocked || done;
   return <section aria-label="消込内容の確認"><h3>現金と手数料を指定して確定</h3>
     <p>選択内容を再取得してから金額を入力します。一部入金・複数請求への分割・余剰金の未充当保持に対応します。手数料は自動補完しません。後で変更するときは操作全体の取消と再確定が必要です。</p>
-    {!pending && !done && <button type="button" className="secondary-button" disabled={busy} onClick={prepare}>選択内容を再取得して確認</button>}
+    {!pending && !done && <button type="button" className="secondary-button" disabled={busy || externallyBusy} onClick={prepare}>選択内容を再取得して確認</button>}
     {prepared && <><p>確認時の未充当現金：{prepared.page.unallocatedAmount.toLocaleString('ja-JP')}円 / version {prepared.page.expectedPaymentVersion}</p>
       {prepared.items.map((item) => <fieldset key={item.invoiceId} disabled={locked}><legend>{item.customerCode} / {item.customerName} / {item.invoiceNumber}</legend><p>請求原額 {item.amount.toLocaleString('ja-JP')}円 / 現在未回収 {item.outstandingAmount.toLocaleString('ja-JP')}円 / version {item.expectedInvoiceVersion}</p>
         <label>現金（円） {item.invoiceNumber}<input inputMode="numeric" value={amounts[item.invoiceId]?.cash ?? ''} onChange={(event) => { setAmounts({ ...amounts, [item.invoiceId]: { ...amounts[item.invoiceId], cash: event.target.value } }); setReviewed(false); }} /></label>

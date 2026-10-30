@@ -8,6 +8,9 @@ export type InvitationIssued = components['schemas']['InvitationIssuedResponse']
 export type ImportBatch = components['schemas']['ImportBatchResponse'];
 export type ImportRow = components['schemas']['ImportRowResponse'];
 export type PaymentImportRow = components['schemas']['PaymentImportRowResponse'];
+export type AllocationHistory = components['schemas']['AllocationHistoryEntry'];
+export type AllocationHistoryPage = components['schemas']['AllocationHistoryPage'];
+export type AllocationReversal = operations['reverseAllocation']['requestBody']['content']['application/json'];
 export type AllocationConfirmation = operations['confirmAllocation']['requestBody']['content']['application/json'];
 export type PaymentCandidate = components['schemas']['PaymentCandidateResponse'];
 export type PaymentCandidates = components['schemas']['PaymentCandidatesPage'];
@@ -49,6 +52,8 @@ export const api = {
     Object.entries(query).forEach(([key, value]) => { if (value !== undefined) parameters.set(key, String(value)); });
     return request({ path: '/api/payments', method: 'GET', url: `/api/payments?${parameters}` }, undefined);
   },
+  listAllocationHistory: (id: string, cursor?: string) => request({ path: '/api/payments/{paymentId}/allocations', method: 'GET', url: `/api/payments/${encodeURIComponent(id)}/allocations?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` }, undefined),
+  reverseAllocation: (csrf: Csrf, id: string, operationId: string, body: AllocationReversal) => request({ path: '/api/payments/{paymentId}/allocations/{allocationId}/reversal', method: 'POST', url: `/api/payments/${encodeURIComponent(id)}/allocations/${encodeURIComponent(operationId)}/reversal` }, csrf, body),
   confirmAllocation: (csrf: Csrf, id: string, body: AllocationConfirmation) => request({ path: '/api/payments/{paymentId}/allocations', method: 'POST', url: `/api/payments/${encodeURIComponent(id)}/allocations` }, csrf, body),
   listPaymentCandidates: (id: string, cursor?: string) => request({ path: '/api/payments/{id}/candidates', method: 'GET', url: `/api/payments/${encodeURIComponent(id)}/candidates?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}` }, undefined),
   getInvoice: (id: string) => request({ path: '/api/invoices/{id}', method: 'GET', url: invoiceUrl(id) }, undefined),

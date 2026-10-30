@@ -52,6 +52,34 @@
       ]
     },
     {
+      "key": "e2e-async-render-before-branch",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "allocation-candidate-render-20261030",
+          "summary": "候補E2Eがfilter応答と描画前にlocator.countを分岐に使い次ページdisabledで失敗した",
+          "evidence": "work/settlement-fe-20261030T0825-e2e.log",
+          "recorded_at": "2026-10-30T08:26:19+00:00"
+        },
+        {
+          "event": "allocation-confirm-render-20261030",
+          "summary": "確認E2Eでも同じhelperがfilter応答と描画前にlocator.countを分岐に使い次ページdisabledで失敗した",
+          "evidence": "work/settlement-fe-20261030T0825-e2e.log",
+          "recorded_at": "2026-10-30T08:26:19+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "非同期filter後にDOMの瞬間的なlocator.countを分岐へ使い、応答と描画が終わる前に次ページへ進もうとした",
+          "prevention": "exact日付filterとcursorのAPI応答を待ち、そのresponse.items全IDの画面描画をexpectした後にresponse.itemsで対象fixtureを判定する。次ページも同じ応答と描画guardを使う",
+          "verification": "修正helperを読んでcount分岐と固定sleepが無く、exactquery応答と返却ID全件のexpectがあることを検査した。型検査・lint・全112unit成功。realE2E再実行は履歴backend待ちのためまだ未実施であり、旧2失敗ログは保持した",
+          "guard": "frontend/e2e/payment-allocation.spec.ts",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T08:28:41+00:00"
+        }
+      ]
+    },
+    {
       "key": "github-integration-permissions",
       "status": "resolved",
       "events": [

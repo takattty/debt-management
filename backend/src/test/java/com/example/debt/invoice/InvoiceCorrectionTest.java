@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -223,6 +224,84 @@ class InvoiceCorrectionTest {
 
     private InvoiceState correct(long amount, String reason) {
         return mutations.correct(user, invoice, 0, customer, LocalDate.of(2026, 10, 29), LocalDate.of(2026, 11, 30), amount, reason);
+    }
+
+    @Test
+    void cancellationKeepsOriginalFactsAndReasonExcludesReceivableAndPermanentlyReservesNumber() throws Exception {
+        String number = queries.get(user.tenantId(), invoice, false).invoiceNumber();
+        mvc.perform(post("/api/invoices/" + invoice + "/cancel").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                .content("{\"version\":0,\"reason\":\" 重複請求の取消 \"}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED")).andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.amount").value(100000)).andExpect(jsonPath("$.outstandingAmount").value(0))
+                .andExpect(jsonPath("$.invoiceNumber").value(number)).andExpect(jsonPath("$.cancelledAt").isNotEmpty());
+        mvc.perform(get("/api/receivables?customerId=" + customer).session(alpha)).andExpect(jsonPath("$.items").isEmpty());
+        var history = queries.history(user.tenantId(), invoice, -1, 100).items();
+        assertThat(history).hasSize(2); assertThat(history.getFirst().snapshot().amount()).isEqualTo(100000);
+        assertThat(history.getLast().operation()).isEqualTo("CANCELLED");
+        assertThat(history.getLast().reason()).isEqualTo("重複請求の取消");
+        assertThatThrownBy(() -> mutations.cancel(user, invoice, 1, "二重取消")).isInstanceOf(InvoiceConflict.class).hasMessage("INVOICE_NOT_ACTIVE");
+        assertThatThrownBy(() -> correct(110000L, "取消後の訂正")).isInstanceOf(InvoiceConflict.class);
+        var preview = previews.preview(user, new ByteArrayInputStream((InvoiceCsv.HEADER + code + "," + number
+                + ",2026-10-29,2026-11-30,200000\n").getBytes(StandardCharsets.UTF_8)));
+        try {
+            assertThat(preview.errorCount()).isEqualTo(1);
+            assertThat(preview.status().name()).isEqualTo("PREVIEW_INVALID");
+        } finally {
+            for (String table : List.of("import_error", "import_row", "import_batch")) {
+                jdbc.sql("DELETE FROM " + table + " WHERE tenant_id=? AND " + (table.equals("import_batch") ? "id" : "batch_id") + "=?")
+                        .params(user.tenantId(), preview.id()).update();
+            }
+        }
+    }
+
+    @Test
+    void cancellationRequiresReasonCsrfTenantAndEligibilityAndNeverMutatesOnDenial() throws Exception {
+        mvc.perform(post("/api/invoices/" + invoice + "/cancel").session(alpha).contentType("application/json")
+                .content("{\"version\":0,\"reason\":\"取消\"}")).andExpect(status().isForbidden());
+        mvc.perform(post("/api/invoices/" + invoice + "/cancel").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                .content("{\"version\":0,\"reason\":\" \"}")).andExpect(status().isBadRequest());
+        var beta = AuthFixtures.login(mvc, "beta-admin@example.test");
+        mvc.perform(post("/api/invoices/" + invoice + "/cancel").session(beta).with(csrf().asHeader()).contentType("application/json")
+                .content("{\"version\":0,\"reason\":\"越境\"}")).andExpect(status().isNotFound());
+        doThrow(new InvoiceConflict("INVOICE_ALLOCATED")).when(eligibility).requireUnallocated(user.tenantId(), invoice);
+        mvc.perform(post("/api/invoices/" + invoice + "/cancel").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                .content("{\"version\":0,\"reason\":\"取消\"}")).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INVOICE_ALLOCATED"));
+        assertThat(queries.get(user.tenantId(), invoice, false).status()).isEqualTo("ACTIVE");
+        assertThat(queries.history(user.tenantId(), invoice, -1, 100).items()).hasSize(1);
+    }
+
+    @Test
+    void auditFailureRollsBackCancellationTimeStatusRevisionAndVersion() {
+        jdbc.sql("CREATE FUNCTION reject_cancel_fixture() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.action='INVOICE_CANCELLED' THEN RAISE EXCEPTION 'Fictional rejection'; END IF; RETURN NEW; END $$").update();
+        jdbc.sql("CREATE TRIGGER reject_cancel_fixture BEFORE INSERT ON audit_event FOR EACH ROW EXECUTE FUNCTION reject_cancel_fixture()").update();
+        try {
+            assertThatThrownBy(() -> mutations.cancel(user, invoice, 0, "監査失敗の取消検証")).isInstanceOf(DataAccessException.class);
+            var state = queries.get(user.tenantId(), invoice, false);
+            assertThat(state.status()).isEqualTo("ACTIVE"); assertThat(state.cancelledAt()).isNull(); assertThat(state.version()).isZero();
+            assertThat(queries.history(user.tenantId(), invoice, -1, 100).items()).hasSize(1);
+        } finally {
+            jdbc.sql("DROP TRIGGER reject_cancel_fixture ON audit_event").update(); jdbc.sql("DROP FUNCTION reject_cancel_fixture()").update();
+        }
+    }
+
+    @Test
+    void cancellationAgainstCorrectionUsesSameInvoiceLockAndVersion() throws Exception {
+        CountDownLatch start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var cancel = pool.submit(() -> {
+                start.await(); try { return mutations.cancel(user, invoice, 0, "同時取消"); } catch (InvoiceConflict conflict) { return conflict; }
+            });
+            var correction = pool.submit(() -> {
+                start.await(); try { return correct(110000L, "同時訂正"); } catch (InvoiceConflict conflict) { return conflict; }
+            });
+            start.countDown();
+            var results = List.of(cancel.get(10, TimeUnit.SECONDS), correction.get(10, TimeUnit.SECONDS));
+            assertThat(results.stream().filter(InvoiceState.class::isInstance)).hasSize(1);
+            assertThat(results.stream().filter(InvoiceConflict.class::isInstance).map(InvoiceConflict.class::cast)).singleElement()
+                    .extracting(InvoiceConflict::code).isEqualTo("VERSION_CONFLICT");
+        }
+        assertThat(queries.get(user.tenantId(), invoice, false).version()).isEqualTo(1);
+        assertThat(queries.history(user.tenantId(), invoice, -1, 100).items()).hasSize(2);
     }
     private String body(long version, long amount, String reason) {
         return json.writeValueAsString(Map.of("version", version, "customerId", customer, "issueDate", "2026-10-29", "dueDate", "2026-11-30", "amount", amount, "reason", reason));

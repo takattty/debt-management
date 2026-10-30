@@ -5,6 +5,7 @@ import com.example.debt.generated.api.InvoicesApi;
 import com.example.debt.generated.model.ReceivableResponse;
 import com.example.debt.generated.model.ReceivablesPage;
 import com.example.debt.generated.model.InvoiceCorrectionRequest;
+import com.example.debt.generated.model.InvoiceCancelRequest;
 import com.example.debt.generated.model.InvoiceResponse;
 import com.example.debt.generated.model.InvoiceHistoryPage;
 import com.example.debt.generated.model.InvoiceHistoryEntry;
@@ -36,6 +37,12 @@ public class InvoiceController implements InvoicesApi {
     public ResponseEntity<InvoiceResponse> correctInvoice(UUID id, InvoiceCorrectionRequest request) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response(mutations.correct(current.require(), id, request.getVersion(),
                 request.getCustomerId(), request.getIssueDate(), request.getDueDate(), request.getAmount(), request.getReason())));
+    }
+
+    @Override
+    public ResponseEntity<InvoiceResponse> cancelInvoice(UUID id, InvoiceCancelRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(response(mutations.cancel(current.require(), id, request.getVersion(), request.getReason())));
     }
 
     @Override

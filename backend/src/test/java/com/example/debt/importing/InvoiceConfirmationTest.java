@@ -3,6 +3,7 @@ package com.example.debt.importing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doReturn;
 
 import com.example.debt.access.AuthFixtures;
 import com.example.debt.access.TenantUser;
@@ -33,6 +34,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 @SpringBootTest
 @ActiveProfiles("auth-test")
@@ -41,7 +43,7 @@ class InvoiceConfirmationTest {
     @Autowired InvoiceImportService previews;
     @Autowired ConfirmInvoiceImport confirmation;
     @Autowired ConfirmCustomerImport customerConfirmation;
-    @Autowired ImportStore store;
+    @MockitoSpyBean ImportStore store;
     @Autowired UserAccounts users;
     @Autowired ReceivablesService receivables;
     @Autowired JdbcClient jdbc;
@@ -154,6 +156,22 @@ class InvoiceConfirmationTest {
         assertThat(results.stream().filter(ImportRejected.class::isInstance).map(ImportRejected.class::cast)).singleElement()
                 .extracting(ImportRejected::code).isEqualTo("IMPORT_REFERENCE_CONFLICT");
         assertThat(invoices()).isEqualTo(2); assertThat(revisions()).isEqualTo(2); assertThat(invoiceAudits()).isEqualTo(2);
+    }
+
+    @Test
+    void matchingBatchCommittedAfterInitialFingerprintReadStillReportsOriginalResult() {
+        var first = preview(twoRows("100", "200"));
+        var second = preview(twoRows("100", "200"));
+        confirmation.confirm(user, first.id(), 0);
+        // Model the first read occurring just before the winning transaction commits; subsequent SQL sees its invoices.
+        doReturn(null, first.id()).when(store).confirmedDuplicate(second);
+        assertThatThrownBy(() -> confirmation.confirm(user, second.id(), 0))
+                .isInstanceOfSatisfying(ImportRejected.class, error -> {
+                    assertThat(error.code()).isEqualTo("IMPORT_ALREADY_CONFIRMED");
+                    assertThat(error.originalBatchId()).isEqualTo(first.id());
+                });
+        assertThat(invoices()).isEqualTo(2);
+        assertThat(store.errors(user.tenantId(), second.id(), 0, 10).getFirst().value().reasonCode()).isEqualTo("IMPORT_ALREADY_CONFIRMED");
     }
 
     @Test

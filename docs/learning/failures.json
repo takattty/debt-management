@@ -1052,6 +1052,34 @@
           "resolved_at": "2026-10-30T02:53:32+00:00"
         }
       ]
+    },
+    {
+      "key": "csv-preview-stale-read-publication",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "payment-preview-new-batch-late-rows-20261030",
+          "summary": "ce81714導入regression。error GET失敗でbusy解除後、新batch表示に旧rows GETの遅い成功が上書きし、表示額とconfirm対象が不一致になった",
+          "evidence": "work/independent-preview-races-2cases-1eba170.log",
+          "recorded_at": "2026-10-30T11:10:39+00:00"
+        },
+        {
+          "event": "payment-preview-same-batch-late-page-20261030",
+          "summary": "同regressionの別実case。同batch再取得とpage2表示後にも旧初期rowsがpage1とcursorを上書きした。batchIdだけのguardでは防げなかった",
+          "evidence": "work/independent-preview-races-2cases-1eba170.log",
+          "recorded_at": "2026-10-30T11:10:39+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "ce81714の新refactorで副作用付きloadRowsをPromise.allへ渡し、片側失敗後も遅いrows setterが残った。base0aのraw2response成功後applyからのregressionであり既存mainの不具合ではない",
+          "prevention": "並列readは副作用なしにしbatch/rows/errors/cursorsを成功後に1stateで公開。全非同期操作の世代・session境界・unmountをguardし、古い成功/失敗/finallyや同batch旧pageを適用しない。retry IDとconfirm可能なsnapshotを分ける",
+          "verification": "旧2REDと追加4RED、actual baseのcustomer/invoice2GREENと分類訂正を保存。reviewerの無変更4case sourceをauthorで4GREEN。追加のbusy/confirmtarget/session/unmount/pageguardを含むCSV46件と全140unit・型・lint/guard4・生成整合・buildが成功。新fixでの実E2Eと独立承認は未実施、旧19/native2証拠を新SHAへ流用しない",
+          "guard": "frontend/src/CsvImportPanelConcurrency.test.tsx",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T11:15:31+00:00"
+        }
+      ]
     }
   ]
 }

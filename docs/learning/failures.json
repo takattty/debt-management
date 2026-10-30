@@ -924,6 +924,70 @@
           "resolved_at": "2026-10-30T09:15:47+00:00"
         }
       ]
+    },
+    {
+      "key": "api-error-code-domain-fallback",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "independent-balance-code-mismatch-20261030",
+          "summary": "独立レビューのBALANCE_CONFLICT実code probeが未対応で顧客コード重複案内へfallbackした",
+          "evidence": "work/settlement-fe-independent-boundary-6ef7e3e-RED.log",
+          "recorded_at": "2026-10-30T08:51:57+00:00"
+        },
+        {
+          "event": "independent-reversed-code-mismatch-20261030",
+          "summary": "独立レビューのALLOCATION_ALREADY_REVERSED実code probeも未対応で顧客コード重複案内へfallbackした",
+          "evidence": "work/settlement-fe-independent-boundary-6ef7e3e-RED.log",
+          "recorded_at": "2026-10-30T08:51:57+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "ApiError.codeはOpenAPI上stringでcode enumがなく、FEが実装未照合の消込code名を使った。共通409fallbackが全domainの未知codeを顧客重複へ誤分類した",
+          "prevention": "AllocationCommandsとAllocationErrorsの実送信codeを照合して専用案内を定義する。未知409は最新内容確認の一般案内とし、顧客endpointかつDUPLICATE_CUSTOMER_CODEのときだけ重複案内を表示する。実code6件と未知/欠落/別domain code・顧客重複の回帰を維持する",
+          "verification": "実BEのBALANCE_CONFLICTとALLOCATION_ALREADY_REVERSEDのthrow/409変換をcatalog読込で直接確認。新16回帰と既存unit含む全129件・型・lint/statusguard4testsが成功。旧独立7probeの5成功2REDを同SHA256 copyで保持、独立ReviewerのnewSHA再検証は未実施",
+          "guard": "frontend/src/api-errors.test.tsx",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T08:53:02+00:00"
+        },
+        {
+          "cause": "実BEと未照合のcode名を使い、未知409を共通fallbackで顧客重複と誤分類した。OpenAPIのcodeはstringでenum検証では防げなかった",
+          "prevention": "production conflictGuidanceへ409案内を集約し、顧客の正しいmutationと実DUPLICATE codeだけ重複案内を許す。実消込6code集合を9cのthrowと照合し、reviewed8aと文言を一致させる。現HTTP clientの未知/欠落/別domain/methodとhelperの負例を回帰検査する",
+          "verification": "6code/文言の一致を機械検査。main既存80と新25の105unit・型・lint・生成整合・buildが全成功。旧独立7probeの5成功2REDを同SHA256 copyで保持。新transport DTO/API関数・BE/契約の変更なし。E2Eは範囲に含めず、独立再評価とCIは後続",
+          "guard": "frontend/src/api-errors.test.tsx",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T09:57:22+00:00"
+        }
+      ]
+    },
+    {
+      "key": "api-error-prototype-property-lookup",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "invoice-http-prototype-dictionary-20261030",
+          "summary": "独立HTTP invoice clientの3入力constructor/toString/__proto__が既存辞書の継承propertyへ一致しnative function/object案内となった。1clientの1実caseとして記録し、8a/ce/基点にも既存",
+          "evidence": "work/independent-http-boundaries-18-ce50a74-RED.log",
+          "recorded_at": "2026-10-30T10:11:45+00:00"
+        },
+        {
+          "event": "import-http-prototype-dictionary-20261030",
+          "summary": "独立HTTP import clientの同じ3入力が既存辞書の継承propertyへ一致し取込案内を上書きした。1clientの1実caseとして記録し、8a/ce/基点にも既存",
+          "evidence": "work/independent-http-boundaries-18-ce50a74-RED.log",
+          "recorded_at": "2026-10-30T10:11:45+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "既存invoice/import message辞書が未知codeで通常objectの継承propertyも参照し、共通409案内をnative function/objectで上書きした。新helper以前から8a/ce/基点に存在した",
+          "prevention": "全error-message辞書の動的参照をMap.getまたはObject.hasOwnで自身のkeyだけに制限する。実HTTP clientを通し、各clientの実code・未知/欠落とprototype名3入力を検査する。3値は各client1実caseとして数える",
+          "verification": "api.tsのinvoice/import/数値statusとconflict-guidanceの計4辞書を棚卸し、全動的参照がown-property検査後であることを確認。現HTTP2client×3回帰と既存未知/欠落/実codeを保持して全111unit・型・lint/guard4成功。旧15probe12成功3RED、新18probe12成功6RED、基点証拠を保持。独立18probeの再評価は未実施で後続",
+          "guard": "frontend/src/api-errors.test.tsx",
+          "event_count": 2,
+          "resolved_at": "2026-10-30T10:13:06+00:00"
+        }
+      ]
     }
   ]
 }

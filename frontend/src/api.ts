@@ -1,3 +1,4 @@
+import { conflictGuidance } from './conflict-guidance';
 import type { components, operations, paths } from './generated/schema';
 
 export type Customer = components['schemas']['CustomerResponse'];
@@ -150,9 +151,7 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
         : code === 'CSRF_INVALID' ? 'ログインの有効期限が切れました。もう一度ログインしてください。'
           : '操作を続けられません。画面を再読み込みして、もう一度お試しください。',
       404: importing ? '取込内容を表示できません。CSVをもう一度プレビューしてください。' : '顧客が見つかりません。編集を閉じて一覧を確認してください。',
-      409: invitation ? '招待を処理できませんでした。管理者にご確認ください。'
-        : importing ? '取込内容が変わっています。状態を確認して、CSVをもう一度プレビューしてください。'
-          : code === 'VERSION_CONFLICT' ? '他の担当者が更新しました。最新内容を取得し、入力中の内容と比較してから更新してください。' : 'この顧客コードは登録済みです。別のコードを入力してください。',
+      409: conflictGuidance(endpoint.path, endpoint.method, code),
       413: 'CSVファイルは10MiB以下にしてください。ファイルを分けて、もう一度プレビューしてください。',
       429: invitation ? '操作が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。'
         : 'ログイン試行が続いたため、一時的に利用できません。時間をおいて、もう一度お試しください。',
@@ -172,8 +171,10 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       INVOICE_ALLOCATED: '消込がある請求は訂正・取消できません。先に対象の消込を取り消してください。',
       NOT_FOUND: '請求が見つかりません。請求IDと一覧を確認してください。',
     };
-    const invoiceMessage = invoicing ? (code ? invoiceMessages[code] : undefined) ?? (response.status === 400 ? '顧客・日付・正の円整数の金額・理由を確認してください。' : response.status === 404 ? invoiceMessages.NOT_FOUND : undefined) : undefined;
-    throw new ApiError(response.status, invoiceMessage ?? (importing && code ? importMessages[code] : undefined) ?? messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
+    const invoiceMessage = invoicing ? (code && Object.hasOwn(invoiceMessages, code) ? invoiceMessages[code] : undefined) ?? (response.status === 400 ? '顧客・日付・正の円整数の金額・理由を確認してください。' : response.status === 404 ? invoiceMessages.NOT_FOUND : undefined) : undefined;
+    const importMessage = importing && code && Object.hasOwn(importMessages, code) ? importMessages[code] : undefined;
+    const statusMessage = Object.hasOwn(messages, response.status) ? messages[response.status] : undefined;
+    throw new ApiError(response.status, invoiceMessage ?? importMessage ?? statusMessage ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
   }
   return response;
 }

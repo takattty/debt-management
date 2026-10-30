@@ -4,9 +4,11 @@
 
 業務要件の入口: [Issue #1](https://github.com/takattty/debt-management/issues/1)。[要件](docs/requirements.md)、[業務例](docs/business-examples.md)、[設計](docs/design.md)、[後続Issueと順序](docs/roadmap.md)、[検証・再開記録](docs/runtime-evidence.md)。
 
-現在利用できるのは **メールアドレス/パスワードのログイン・管理者による手動リンク招待・顧客の登録/一覧/個別編集/新規CSV取込・請求CSVのプレビュー/全件確定・状態/顧客/支払期日での債権一覧・請求の訂正/取消/履歴** です。取消済みの一覧から原本を開き、担当者メールと日本時間で履歴を確認できます。[画面の操作手順と架空CSVサンプル](docs/user-guide.md)を参照してください。
+売掛金の操作対象は **ログイン/手動リンク招待、顧客・請求・入金CSVの確認/全件確定、名義対応、理由付き消込、一部入金・複数顧客・手数料・過入金、取消/請求訂正/履歴、滞留・次回対応・保留・引継ぎ・メール草案コピー** です。[操作手順と架空CSVサンプル](docs/user-guide.md)を参照してください。
 
-入金・名義対応・消込候補/消込・督促・貸付元本は、このmainの利用可能機能には含めていません。開発全体の完了ではなく、商用インフラも対象外です。
+売掛金の必須機能はmainに統合済みです。実DB・画面・Composeによる実証と、機能/運用統合mainの166 application/build paths・保持runtimeの一致を[検証表](docs/user-guide.md#検証対象と最終mainへの結合)へ記録しています。既存実行証拠の結合と、CloudでのAPI/browserの新規再実行は区別しています。
+
+今回の作業は売掛金の仕上げまでで停止します。貸付元本は保留し、Loanへ自動継続しません。メール送信、利息計算、商用インフラは対象外です。[入金修正例](docs/samples/payments-corrected.csv)・[エラー例](docs/samples/payments-invalid.csv)・[対応する請求](docs/samples/invoices-ar.csv)は架空データだけを含みます。
 
 ## 開発用ローカル起動
 
@@ -30,7 +32,7 @@ docker compose down
 
 build-local は成果物の作成用で、テスト成功の証拠にはなりません。merge前には以下を必ず実施します。
 
-請求・入金を含むCompose起動・停止再作成の実証は、別の準備ブランチ `acceptance/invoice-payment-compose` の `docs/verification/compose-invoice-payment.md` にあります。main以外の後続機能を含む統合候補の記録であり、このmainの入金対応や各PRの受入完了を示すものではありません。
+起動後は[売掛金の操作手順](docs/user-guide.md)で架空データを登録できます。実画面での確認、旧phaseの停止・再作成、追加phase、統合mainと保持runtimeの照合は、同ガイドの検証表に分けてまとめています。
 
 managed CloudのVFSでは、container作成でimage全体の複製が必要です。Docker検証は他の重いworkerを止め、`scripts/docker-verify.sh --cloud-local` を使います。実測したimage・build入力・既存container・PG起動余裕に1GiBの空きを残せない場合や、測定不能の場合は作成前に停止します。Cloudでは固定したbase imageを事前に用意し、不足時は所有者と復旧方法を確認してください。guardはpull・cleanup・daemon設定変更を行いません。通常のMac/Desktop/remoteではこのmodeを使わず、上の起動手順と選択済みDocker contextをそのまま使います。
 

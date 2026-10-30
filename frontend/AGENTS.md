@@ -19,4 +19,5 @@
 - 招待リンクはmemory内で一度表示し、画面を離れると破棄する。accept-invitationのfragmentは起動時とhashchange直後にhistoryから除去し、POST本文にだけ送る。
 - pagehideではReact rootを同期unmountし、秘密を持つDOM/stateをBFCacheへ残さない。pageshow.persistedではURL/cookieから新しく起動し、旧招待token・入力済passwordを復元しない。通常PlaywrightはBFCache無効なのでproduction distのnative BFCache guardも維持する。
 - E2Eは共通fixtureを使い、data-sensitive/password要素を画像でmaskする。自動DOM snapshotもbearerリンクを含み得るため、秘密を含まないerror-context attachmentで置き換える。
-- 現在は顧客登録の縦断基盤。請求・消込・督促等が完成したと報告しない。
+- 今回の受入対象は顧客・請求・入金取込・名義対応・消込/取消/履歴・滞留と回収対応・文面コピーまでの売掛金必須機能。source/契約/JAR/dist/runtimeが最新mainへ結合された証拠と一致する範囲で完成を報告し、prepared実証を最終mainの再実行と混同しない。
+- 売掛金の仕上げ後に停止する。貸付元本は保留し、Loanへ自動継続しない。メール送信と利息計算は今回の対象外。

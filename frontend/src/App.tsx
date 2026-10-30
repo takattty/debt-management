@@ -2,6 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, type Customer, type Session } from './api';
 import InvitationPanel from './InvitationPanel';
 import AcceptInvitation from './AcceptInvitation';
+import CsvImportPanel from './CsvImportPanel';
+import CustomerDirectory from './CustomerDirectory';
+import ReceivablesPanel from './ReceivablesPanel';
 import type { InvitationEntry } from './invitation-entry';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '処理に失敗しました。もう一度お試しください。';
@@ -22,7 +25,7 @@ function Workspace() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [page, setPage] = useState<'customers' | 'invitations'>('customers');
+  const [page, setPage] = useState<'customers' | 'imports' | 'invoice-imports' | 'receivables' | 'invitations'>('customers');
 
   useEffect(() => {
     let active = true;
@@ -93,18 +96,23 @@ function Workspace() {
     finally { setBusy(false); }
   }
 
+  const pageTitle = { customers: '顧客管理', imports: '顧客CSV取込', 'invoice-imports': '請求CSV取込', receivables: '債権一覧', invitations: 'メンバー招待' }[page];
+
   return <div className="app-shell">
     <aside className="sidebar">
       <a className="brand" href="/" aria-label="債権管理 ホーム"><span className="brand-mark">債</span><span>債権管理<small>RECEIVABLES WORKSPACE</small></span></a>
       <p className="nav-caption">WORKSPACE</p>
       <button className={page === 'customers' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => setPage('customers')}><span aria-hidden="true">▦</span> 顧客管理</button>
+      {session && <button className={page === 'imports' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => { setError(''); setNotice(''); setPage('imports'); }}>顧客CSV取込</button>}
+      {session && <button className={page === 'invoice-imports' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => { setError(''); setNotice(''); setPage('invoice-imports'); }}>請求CSV取込</button>}
+      {session && <button className={page === 'receivables' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => { setError(''); setNotice(''); setPage('receivables'); }}>債権一覧</button>}
       {session?.role === 'ADMIN' && <button className={page === 'invitations' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => setPage('invitations')}>メンバー招待</button>}
       <div className="sidebar-foot"><span className="status-dot" /> ローカル検証環境<p>架空データでご利用ください</p></div>
     </aside>
     <main>
-      <header className="topbar"><span>債権管理 / {page === 'invitations' ? 'メンバー招待' : '顧客管理'}</span>{session && <div className="account"><span className="account-email" title={session.email}>{session.email}</span><span className="account-role">{roleNames[session.role]}</span><button className="text-button" disabled={busy} onClick={logout}>ログアウト</button></div>}</header>
+      <header className="topbar"><span>債権管理 / {pageTitle}</span>{session && <div className="account"><span className="account-email" title={session.email}>{session.email}</span><span className="account-role">{roleNames[session.role]}</span><button className="text-button" disabled={busy} onClick={logout}>ログアウト</button></div>}</header>
       <div className="content">
-        <div className="page-heading"><div><p className="eyebrow">{page === 'invitations' ? 'MEMBERS' : 'CUSTOMERS'}</p><h1>{page === 'invitations' ? 'メンバー招待' : '顧客管理'}</h1><p className="subtitle">{page === 'invitations' ? '同じ契約企業で利用するメンバーを招待します。' : '請求・入金管理の基礎となる取引先を登録します。'}</p></div>{session && page === 'customers' && <span className="count-badge">登録顧客 <strong>{customers.length}</strong> 件</span>}</div>
+        <div className="page-heading"><div><p className="eyebrow">{page === 'invitations' ? 'MEMBERS' : page === 'receivables' ? 'RECEIVABLES' : page === 'imports' || page === 'invoice-imports' ? 'CSV IMPORT' : 'CUSTOMERS'}</p><h1>{pageTitle}</h1><p className="subtitle">{page === 'invitations' ? '同じ契約企業で利用するメンバーを招待します。' : page === 'receivables' ? '確定した請求と未回収額を確認します。' : page === 'invoice-imports' ? '請求の内容と修正箇所をプレビューで確認します。' : page === 'imports' ? 'プレビューで内容を確認し、全件をまとめて確定します。' : '請求・入金管理の基礎となる取引先を登録します。'}</p></div>{session && page === 'customers' && <span className="count-badge">登録顧客 <strong>{customers.length}</strong> 件</span>}</div>
         {restoring ? <section className="panel login-panel"><p role="status">ログイン状態を確認しています…</p></section> : !session ? <section className="panel login-panel" aria-labelledby="login-title">
           <div className="panel-heading"><span className="step-number">01</span><div><h2 id="login-title">ワークスペースにログイン</h2><p>所属する契約企業の顧客情報を表示します。</p></div></div>
           <form onSubmit={login}>
@@ -114,7 +122,7 @@ function Workspace() {
             <button className="primary-button" disabled={busy}>{busy ? '確認中…' : 'ログイン'}</button>
           </form>
           <p className="helper">登録されたメールアドレスでログインしてください。</p>
-        </section> : page === 'invitations' && session.role === 'ADMIN' ? <InvitationPanel session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : <>
+        </section> : page === 'invitations' && session.role === 'ADMIN' ? <InvitationPanel session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'receivables' ? <ReceivablesPanel session={session} customers={customers} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'invoice-imports' ? <CsvImportPanel key="INVOICE" kind="INVOICE" session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} onShowRecords={async () => { setPage('receivables'); }} /> : page === 'imports' ? <CsvImportPanel key="CUSTOMER" session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} onConfirmed={async () => { setCustomers(await api.listCustomers()); }} onShowRecords={async () => { setCustomers(await api.listCustomers()); setError(''); setNotice(''); setPage('customers'); }} /> : <>
           <section className="panel" aria-labelledby="register-title">
             <div className="panel-heading"><span className="step-number">＋</span><div><h2 id="register-title">顧客を登録</h2><p>顧客コードは契約企業内で重複しない値を指定してください。</p></div></div>
             <form className="customer-form" onSubmit={register}>
@@ -125,10 +133,7 @@ function Workspace() {
             {error && <p className="error" role="alert">{error}</p>}
             {notice && <p className="success" role="status">{notice}</p>}
           </section>
-          <section className="panel list-panel" aria-labelledby="list-title">
-            <div className="list-heading"><h2 id="list-title">登録済みの顧客</h2><span>{customers.length} 件</span></div>
-            {customers.length === 0 ? <div className="empty-state"><span aria-hidden="true">▦</span><h3>顧客はまだ登録されていません</h3><p>上のフォームから、最初の取引先を登録してください。</p></div> : <div className="table-scroll"><table><thead><tr><th scope="col">顧客コード</th><th scope="col">顧客名</th></tr></thead><tbody>{customers.map((customer) => <tr key={customer.id}><td className="customer-code">{customer.code}</td><td>{customer.name}</td></tr>)}</tbody></table></div>}
-          </section>
+          <CustomerDirectory customers={customers} session={session} busy={busy} onBusyChange={setBusy} onFailure={reportWorkspaceFailure} onReload={async () => { const records = await api.listCustomers(); setCustomers(records); return records; }} />
         </>}
         <footer className="content-foot">顧客情報は所属する契約企業の中で共有されます。</footer>
       </div>

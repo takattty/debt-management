@@ -90,7 +90,7 @@ export default function AcceptInvitation({ token }: { token: string | null }) {
     {phase === 'failed' && <><p className="error" role="alert">{error}</p><button className="primary-button" disabled={busy} onClick={retry}>招待を再確認</button></>}
     {phase === 'signed-in' && existing && <><p>{existing.email}でログインしています。</p><p>この招待を受けるには、現在のアカウントからログアウトしてください。</p><div className="button-row"><button className="primary-button" disabled={busy} onClick={signOutAndContinue}>ログアウトして招待を確認</button><a className="secondary-button link-button" href="/">現在のアカウントを続ける</a></div></>}
     {phase === 'ready' && preview && <>
-      <dl className="invitation-details"><div><dt>契約企業</dt><dd>{preview.tenantDisplayName}</dd></div><div><dt>招待先</dt><dd>{preview.maskedEmail}</dd></div><div><dt>権限</dt><dd>{invitationRoleNames[preview.role]}</dd></div><div><dt>有効期限</dt><dd>{invitationExpiry(preview.expiresAt)}（日本時間）</dd></div></dl>
+      <dl className="invitation-details"><div><dt>契約企業</dt><dd>{preview.tenantDisplayName}</dd></div><div><dt>招待先</dt><dd>{preview.maskedEmail}</dd></div><div><dt>権限</dt><dd>{invitationRoleNames[preview.role]}</dd></div><div><dt>有効期限</dt><dd>{invitationExpiry(preview.expiresAt)}</dd></div></dl>
       <form className="invitation-form" onSubmit={accept}>
         <label htmlFor="accept-email">招待されたメールアドレス<input id="accept-email" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} disabled={busy} /></label>
         <label htmlFor="accept-password">新しいパスワード<input id="accept-password" type="password" autoComplete="new-password" required aria-describedby="password-hint" value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} /></label>

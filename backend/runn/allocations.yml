@@ -1,0 +1,603 @@
+desc: Public human-confirmed allocation, explicit fees, cross-customer split and immutable whole reversal
+concurrency: debt-api-acceptance
+labels:
+- api
+- payments
+- candidates
+- security
+runners:
+  api:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: false
+  beta:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: false
+  invalid:
+    endpoint: ${RUNN_BASE_URL:-http://127.0.0.1:8080}
+    openapi3: ../../contracts/openapi.yaml
+    useCookie: false
+    skipValidateRequest: true
+vars:
+  password: ${LOCAL_SEED_PASSWORD}
+  fixture: json://../../work/runn-allocation-metadata.json
+secrets:
+- vars.password
+- anonymousToken
+- anonymousCookie
+- cookie
+- token
+- betaAnonymousToken
+- betaAnonymousCookie
+- betaCookie
+- betaToken
+steps:
+  unauthenticated:
+    invalid:
+      /api/payments/00000000-0000-0000-0000-000000000000/candidates:
+        get:
+          useCookie: false
+          body: null
+    test: current.res.status == 401
+  csrf:
+    api:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      anonymousToken: current.res.body.csrfToken
+      anonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  login:
+    api:
+      /api/auth/login:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: alpha-accountant@example.test
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ anonymousCookie }}
+            X-CSRF-TOKEN: '{{ anonymousToken }}'
+    bind:
+      cookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  session:
+    api:
+      /api/session:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      token: current.res.body.csrfToken
+    test: current.res.status == 200
+  firstCustomer:
+    api:
+      /api/customers:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              code: '{{ vars.fixture.firstCustomerCode }}'
+              name: 架空候補顧客first
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      firstCustomer: current.res.body.id
+    test: current.res.status == 201
+  secondCustomer:
+    api:
+      /api/customers:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              code: '{{ vars.fixture.secondCustomerCode }}'
+              name: 架空候補顧客second
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      secondCustomer: current.res.body.id
+    test: current.res.status == 201
+  invoicePreview:
+    api:
+      /api/imports/invoices/preview:
+        post:
+          useCookie: false
+          body:
+            multipart/form-data:
+              file: ../../work/runn-allocation-invoices.csv
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      invoiceBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID'
+  invoiceConfirm:
+    api:
+      /api/imports/{{ invoiceBatch }}/confirm:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              version: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.confirmedCount == 2
+  firstInvoice:
+    api:
+      /api/receivables?customerId={{ firstCustomer }}&limit=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      firstInvoice: current.res.body.items[0].id
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].customerId == firstCustomer
+  secondInvoice:
+    api:
+      /api/receivables?customerId={{ secondCustomer }}&limit=1:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      secondInvoice: current.res.body.items[0].id
+    test: current.res.status == 200 && len(current.res.body.items) == 1 && current.res.body.items[0].customerId == secondCustomer
+  paymentPreview:
+    api:
+      /api/imports/payments/preview:
+        post:
+          useCookie: false
+          body:
+            multipart/form-data:
+              file: ../../work/runn-allocation-payment.csv
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      paymentBatch: current.res.body.id
+    test: current.res.status == 201 && current.res.body.status == 'PREVIEW_VALID'
+  paymentConfirm:
+    api:
+      /api/imports/{{ paymentBatch }}/confirm:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              version: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.confirmedCount == 1
+  paymentSearch:
+    bind:
+      paymentPageSuffix: '""'
+  payments:
+    api:
+      /api/payments?dateFrom=0001-01-01&dateTo=0001-01-01&limit=100{{ paymentPageSuffix }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    bind:
+      ownPayment: filter(current.res.body.items, {#.transactionId == vars.fixture.transactionId})
+      paymentPageSuffix: 'current.res.body.nextCursor == null ? "" : "&cursor=" + current.res.body.nextCursor'
+    loop:
+      count: 10000
+      interval: 0
+      until: current.res.status == 200 && (len(ownPayment) == 1 || current.res.body.nextCursor == null)
+  selectPayment:
+    bind:
+      paymentId: ownPayment[0].id
+    test: len(ownPayment) == 1
+  requestIds:
+    bind:
+      confirmRequest: faker.UUID()
+      reverseRequest: faker.UUID()
+  missingCsrf:
+    invalid:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ confirmRequest }}'
+              expectedPaymentVersion: '0'
+              reason: 架空の顧客横断充当と明示手数料
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 99560
+                feeAmount: 440
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 20000
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 403 && current.res.body.code == 'CSRF_INVALID'
+  nullConfirmRow:
+    invalid:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '0'
+              reason: 架空のnull行拒否
+              lines: [null]
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 400
+  feeOnlyStandalone:
+    api:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '0'
+              reason: 架空の顧客横断充当と明示手数料
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 0
+                feeAmount: 440
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 0
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 400
+  confirmSplit:
+    api:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ confirmRequest }}'
+              expectedPaymentVersion: '0'
+              reason: 架空の顧客横断充当と明示手数料
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 99560
+                feeAmount: 440
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 20000
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      original: current.res.body.id
+    test: current.res.status == 200 && current.res.body.kind == 'CONFIRM' && current.res.body.paymentVersion == '1'
+  replay:
+    api:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ confirmRequest }}'
+              expectedPaymentVersion: '0'
+              reason: 架空の顧客横断充当と明示手数料
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 99560
+                feeAmount: 440
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 20000
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.id == original && current.res.body.paymentVersion == '1'
+  changedReplay:
+    api:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ confirmRequest }}'
+              expectedPaymentVersion: '0'
+              reason: 架空の顧客横断充当と明示手数料
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 99560
+                feeAmount: 440
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 20001
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 409 && current.res.body.code == 'IDEMPOTENCY_CONFLICT'
+  stale:
+    api:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '0'
+              reason: 架空の顧客横断充当と明示手数料
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 99560
+                feeAmount: 440
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 20000
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 409 && current.res.body.code == 'VERSION_CONFLICT'
+  firstPaid:
+    api:
+      /api/invoices/{{ firstInvoice }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.outstandingAmount == 0 && current.res.body.version == 1
+  secondPartial:
+    api:
+      /api/invoices/{{ secondInvoice }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.outstandingAmount == 30000 && current.res.body.version == 1
+  nullReverseRow:
+    invalid:
+      /api/payments/{{ paymentId }}/allocations/{{ original }}/reversal:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '1'
+              reason: 架空のnull行拒否
+              invoices: [null]
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 400
+  incompleteReversal:
+    api:
+      /api/payments/{{ paymentId }}/allocations/{{ original }}/reversal:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '1'
+              reason: 架空の全体取消
+              invoices:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '1'
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 400
+  reverse:
+    api:
+      /api/payments/{{ paymentId }}/allocations/{{ original }}/reversal:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ reverseRequest }}'
+              expectedPaymentVersion: '1'
+              reason: 架空の全体取消
+              invoices:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '1'
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '1'
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    bind:
+      reversal: current.res.body.id
+    test: current.res.status == 200 && current.res.body.kind == 'REVERSE' && current.res.body.reversesId == original && current.res.body.paymentVersion == '2'
+  reverseReplay:
+    api:
+      /api/payments/{{ paymentId }}/allocations/{{ original }}/reversal:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ reverseRequest }}'
+              expectedPaymentVersion: '1'
+              reason: 架空の全体取消
+              invoices:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '1'
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '1'
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.id == reversal
+  duplicateReverse:
+    api:
+      /api/payments/{{ paymentId }}/allocations/{{ original }}/reversal:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '2'
+              reason: 架空の全体取消
+              invoices:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '2'
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '2'
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 409 && current.res.body.code == 'ALLOCATION_ALREADY_REVERSED'
+  confirmReplayAfterReverse:
+    api:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ confirmRequest }}'
+              expectedPaymentVersion: '0'
+              reason: 架空の顧客横断充当と明示手数料
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 99560
+                feeAmount: 440
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 20000
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.id == original && current.res.body.paymentVersion == '1'
+  firstRestored:
+    api:
+      /api/invoices/{{ firstInvoice }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.outstandingAmount == 100000 && current.res.body.version == 2
+  secondRestored:
+    api:
+      /api/invoices/{{ secondInvoice }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.outstandingAmount == 50000 && current.res.body.version == 2
+  reconfirmWithChangedFee:
+    api:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '2'
+              reason: 架空の顧客横断充当と明示手数料
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '2'
+                cashAmount: 99900
+                feeAmount: 100
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '2'
+                cashAmount: 20000
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+            X-CSRF-TOKEN: '{{ token }}'
+    test: current.res.status == 200 && current.res.body.paymentVersion == '3'
+  reconfirmed:
+    api:
+      /api/invoices/{{ firstInvoice }}:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ cookie }}
+    test: current.res.status == 200 && current.res.body.outstandingAmount == 0 && current.res.body.version == 3
+  betaCsrf:
+    beta:
+      /api/csrf:
+        get:
+          useCookie: false
+          body: null
+    bind:
+      betaAnonymousToken: current.res.body.csrfToken
+      betaAnonymousCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 200
+  betaLogin:
+    beta:
+      /api/auth/login:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              email: beta-admin@example.test
+              password: '{{ vars.password }}'
+          headers:
+            Cookie: JSESSIONID={{ betaAnonymousCookie }}
+            X-CSRF-TOKEN: '{{ betaAnonymousToken }}'
+    bind:
+      betaCookie: current.res.cookies.JSESSIONID.Value
+    test: current.res.status == 204
+  betaSession:
+    beta:
+      /api/session:
+        get:
+          useCookie: false
+          body: null
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+    bind:
+      betaToken: current.res.body.csrfToken
+    test: current.res.status == 200
+  foreignPayment:
+    beta:
+      /api/payments/{{ paymentId }}/allocations:
+        post:
+          useCookie: false
+          body:
+            application/json:
+              requestId: '{{ faker.UUID() }}'
+              expectedPaymentVersion: '0'
+              reason: 架空の顧客横断充当と明示手数料
+              lines:
+              - invoiceId: '{{ firstInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 99560
+                feeAmount: 440
+              - invoiceId: '{{ secondInvoice }}'
+                expectedInvoiceVersion: '0'
+                cashAmount: 20000
+                feeAmount: 0
+          headers:
+            Cookie: JSESSIONID={{ betaCookie }}
+            X-CSRF-TOKEN: '{{ betaToken }}'
+    test: current.res.status == 404 && current.res.body.code == 'NOT_FOUND'

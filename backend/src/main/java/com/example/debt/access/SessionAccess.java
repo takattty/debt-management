@@ -45,6 +45,7 @@ public class SessionAccess {
                         .requestMatchers("/api/csrf", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/invitations/inspect", "/api/invitations/accept").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/invitations").hasRole("ADMIN")
+                        .requestMatchers("/api/payments/*/allocations", "/api/payments/*/allocations/**").hasAnyRole("ADMIN", "ACCOUNTANT")
                         .requestMatchers("/api/payer-aliases", "/api/payer-aliases/**").hasAnyRole("ADMIN", "ACCOUNTANT")
                         .anyRequest().authenticated())
                 .securityContext(context -> context.securityContextRepository(contexts).requireExplicitSave(true))

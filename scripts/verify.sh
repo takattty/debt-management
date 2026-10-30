@@ -48,5 +48,6 @@ for _ in $(seq 1 60); do
 done
 if [ "$ready" != true ]; then cat work/backend.log; exit 1; fi
 RUNN_BASE_URL=http://127.0.0.1:8080 scripts/runn.sh run --scopes read:parent backend/runn/*.yml
+bash scripts/verify-proxy.sh
 npm --prefix frontend run test:e2e
 kill -0 "$backend_pid" || { cat work/backend.log; exit 1; }

@@ -61,7 +61,7 @@ public class CollectionController implements CollectionsApi {
         var draft = drafts.preview(current.require().tenantId(), id, asOf);
         var facts = draft.facts();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new CollectionDraftResponse().invoiceId(id).asOf(asOf)
-                .customerName(facts.customerName()).outstandingAmount(facts.balance().outstanding().longValueExact())
+                .customerName(facts.customerName()).outstandingAmount(facts.effectiveOutstanding().longValueExact())
                 .subject(draft.subject()).body(draft.body()).held(facts.held()).holdReason(facts.holdReason()));
     }
     private ResponseEntity<CollectionStateResponse> state(UUID id, CollectionQueries.Event event) {

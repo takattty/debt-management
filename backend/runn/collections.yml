@@ -231,3 +231,21 @@ steps:
       /api/collections/{{ invoiceId }}?asOf=2026-12-01:
         get: {body: null}
     test: current.res.status == 200 && current.res.body.invoiceStatus == 'CANCELLED' && !current.res.body.eligible && current.res.body.amount == amount && current.res.body.outstandingAmount == 0
+  closedNote:
+    api:
+      /api/collections/{{ invoiceId }}/actions:
+        post:
+          headers: {X-CSRF-TOKEN: '{{ token }}'}
+          body:
+            application/json: {version: 4, note: 取消後の確認メモ, nextActionDate: null}
+    test: current.res.status == 200 && current.res.body.version == 5 && current.res.body.event.note == '取消後の確認メモ'
+  closedDraft:
+    api:
+      /api/collections/{{ invoiceId }}/draft?asOf=2026-12-01:
+        get: {body: null}
+    test: current.res.status == 409 && current.res.body.code == 'COLLECTION_NOT_ELIGIBLE'
+  closedHistory:
+    api:
+      /api/collections/{{ invoiceId }}/history?limit=5:
+        get: {body: null}
+    test: current.res.status == 200 && len(current.res.body.items) == 5 && current.res.body.items[0].note == '請求書再送の依頼' && current.res.body.items[4].note == '取消後の確認メモ'

@@ -226,6 +226,33 @@ class CollectionReadTest {
     }
 
     @Test
+    void postCancellationNotesKeepEffectiveBalanceZeroAndPreserveActiveHistoryAndAudit() throws Exception {
+        actions.record(user(), overdue, 0, "ACTIVE時点で未回収100000円を確認", LocalDate.of(2026, 12, 5));
+        var originalEvent = queries.history(AuthFixtures.ALPHA, overdue, 0, 1).items().getFirst();
+        String originalAudit = jdbc.sql("SELECT details::text FROM audit_event WHERE tenant_id=? AND entity_id=? AND action='COLLECTION_NOTE' AND (details->>'version')::bigint=1")
+                .params(AuthFixtures.ALPHA, overdue).query(String.class).single();
+        jdbc.sql("UPDATE invoice SET status='CANCELLED',cancelled_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?")
+                .params(AuthFixtures.ALPHA, overdue).update();
+        mvc.perform(post("/api/collections/" + overdue + "/actions").session(alpha).with(csrf().asHeader()).contentType("application/json")
+                .content(noteBody(1, "取消後の事後確認", null))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2)).andExpect(jsonPath("$.event.note").value("取消後の事後確認"));
+        mvc.perform(get("/api/collections/" + overdue + "?asOf=2026-12-01").session(alpha)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(100000)).andExpect(jsonPath("$.invoiceStatus").value("CANCELLED"))
+                .andExpect(jsonPath("$.eligible").value(false)).andExpect(jsonPath("$.outstandingAmount").value(0));
+        mvc.perform(get("/api/collections/" + overdue + "/draft?asOf=2026-12-01").session(alpha)).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("COLLECTION_NOT_ELIGIBLE"));
+        assertThat(queries.history(AuthFixtures.ALPHA, overdue, 0, 1).items().getFirst()).isEqualTo(originalEvent);
+        assertThat(jdbc.sql("SELECT details::text FROM audit_event WHERE tenant_id=? AND entity_id=? AND action='COLLECTION_NOTE' AND (details->>'version')::bigint=1")
+                .params(AuthFixtures.ALPHA, overdue).query(String.class).single()).isEqualTo(originalAudit);
+        var currentAudit = json.readTree(jdbc.sql("SELECT details::text FROM audit_event WHERE tenant_id=? AND entity_id=? AND action='COLLECTION_NOTE' AND (details->>'version')::bigint=2")
+                .params(AuthFixtures.ALPHA, overdue).query(String.class).single());
+        assertThat(currentAudit.get("note").asString()).isEqualTo("取消後の事後確認");
+        // Events/audits snapshot follow-up metadata, not a newly invented monetary balance.
+        assertThat(currentAudit.has("outstandingAmount")).isFalse();
+        assertThat(ledger.invoice(AuthFixtures.ALPHA, overdue).balance().outstanding()).isEqualTo(BigInteger.valueOf(100000));
+    }
+
+    @Test
     void dueDayIsZeroAndTheNextBusinessDayHasOneDayOverdueWithoutInventingBuckets() throws Exception {
         var dueDay = queries.get(AuthFixtures.ALPHA, overdue, LocalDate.of(2026, 11, 30));
         assertThat(dueDay.daysOverdue()).isZero(); assertThat(dueDay.eligible()).isFalse();

@@ -13,8 +13,8 @@ public class CollectionDrafts {
     public CollectionDrafts(CollectionQueries queries) { this.queries = queries; }
     public Draft preview(UUID tenant, UUID invoice, LocalDate asOf) {
         var row = queries.get(tenant, invoice, asOf);
-        if (!row.eligible()) { throw new CollectionActions.Conflict("COLLECTION_NOT_ELIGIBLE"); }
-        String amount = NumberFormat.getIntegerInstance(Locale.JAPAN).format(row.balance().outstanding());
+        if (!row.eligible() || row.effectiveOutstanding().signum() <= 0) { throw new CollectionActions.Conflict("COLLECTION_NOT_ELIGIBLE"); }
+        String amount = NumberFormat.getIntegerInstance(Locale.JAPAN).format(row.effectiveOutstanding());
         return new Draft(row, "お支払い状況の確認：請求書 " + row.invoiceNumber(), row.customerName() + " 御中\n\n"
                 + "請求書 " + row.invoiceNumber() + " について、お支払い状況の確認をお願いいたします。\n"
                 + "お支払期日：" + row.dueDate() + "\n確認基準日：" + row.asOf() + "\n現在の未回収額：" + amount + " 円\n\n"

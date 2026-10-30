@@ -12,3 +12,6 @@ Generator 更新時は upstream template との差分を確認し、補助文字
 JSON 型は `StrictJsonTypes` で Jackson の暗黙変換を拒否する。
 小数から integer、string から integer、number/boolean から string への変換を認めない。
 契約の許容文字種・最大長を狭めてこの不一致を回避しない。
+
+`beanValidation.mustache` は required かつ nullable の property を `@NotNull` の対象外とする。required は JSON member の存在、nullable は明示 null の許可を示す。
+CollectionActionRequest の nextActionDate は限定 RequestBodyAdvice で存在を検査し、省略400・明示 null による消去を保つ。既存 CodePointSize、数値・collection 制約は変更しない。

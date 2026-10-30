@@ -4,6 +4,94 @@
  */
 
 export interface paths {
+    "/api/collections/{id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a shared note and explicitly retained, changed or cleared next action date
+         * @description ADMIN and ACCOUNTANT update independent collection state. Notes remain possible after payoff or cancellation. No payment, invoice amount or ledger fact is changed. State, immutable event and audit commit atomically.
+         */
+        post: operations["recordCollectionAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collections/{id}/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hold follow-up with a reason while retaining the note and plan
+         * @description ADMIN and ACCOUNTANT update independent collection state. Notes remain possible after payoff or cancellation. No payment, invoice amount or ledger fact is changed. State, immutable event and audit commit atomically.
+         */
+        post: operations["holdCollection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collections/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release an explicit hold with a reason while retaining the note and plan
+         * @description ADMIN and ACCOUNTANT update independent collection state. Notes remain possible after payoff or cancellation. No payment, invoice amount or ledger fact is changed. State, immutable event and audit commit atomically.
+         */
+        post: operations["releaseCollection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collections/{id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Preview plain text for human review and copying without sending any message
+         * @description Uses customer name, invoice number, due date and current real outstanding amount. Held candidates retain hold information. No recipient email master, sending endpoint or sent event is introduced.
+         */
+        get: operations["previewCollectionDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/collections": {
         parameters: {
             query?: never;
@@ -756,6 +844,47 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CollectionActionRequest: {
+            /** Format: int64 */
+            version: number;
+            /** @description Shared nonblank note; line breaks and tabs are allowed */
+            note: string;
+            /**
+             * Format: date
+             * @description Required member. Send the current date to retain it, a replacement date to change it, or explicit null to clear it. Missing is rejected without mutation.
+             */
+            nextActionDate: string | null;
+        };
+        CollectionReasonRequest: {
+            /** Format: int64 */
+            version: number;
+            reason: string;
+        };
+        CollectionStateResponse: {
+            /** Format: uuid */
+            invoiceId: string;
+            /** Format: int64 */
+            version: number;
+            held: boolean;
+            holdReason: string | null;
+            latestNote: string | null;
+            /** Format: date */
+            nextActionDate: string | null;
+            event: components["schemas"]["CollectionHistoryEntry"];
+        };
+        CollectionDraftResponse: {
+            /** Format: uuid */
+            invoiceId: string;
+            /** Format: date */
+            asOf: string;
+            customerName: string;
+            /** Format: int64 */
+            outstandingAmount: number;
+            subject: string;
+            body: string;
+            held: boolean;
+            holdReason: string | null;
+        };
         CollectionCaseResponse: {
             /** Format: uuid */
             invoiceId: string;
@@ -1398,6 +1527,160 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    recordCollectionAction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionActionRequest"];
+            };
+        };
+        responses: {
+            /** @description New collection state and its immutable event */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionStateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["InvoiceNotFound"];
+            /** @description VERSION_CONFLICT, COLLECTION_ALREADY_HELD or COLLECTION_NOT_HELD */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    holdCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description New collection state and its immutable event */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionStateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["InvoiceNotFound"];
+            /** @description VERSION_CONFLICT, COLLECTION_ALREADY_HELD or COLLECTION_NOT_HELD */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    releaseCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description New collection state and its immutable event */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionStateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["InvoiceNotFound"];
+            /** @description VERSION_CONFLICT, COLLECTION_ALREADY_HELD or COLLECTION_NOT_HELD */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    previewCollectionDraft: {
+        parameters: {
+            query: {
+                asOf: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Copyable subject and body; a human must check the recipient and content */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionDraftResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["InvoiceNotFound"];
+            /** @description COLLECTION_NOT_ELIGIBLE for non-overdue, paid or cancelled invoices */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listCollections: {
         parameters: {
             query: {

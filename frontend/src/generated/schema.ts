@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/receivables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active receivables in stable due-date and ID order
+         * @description Bounded keyset page. Cancelled invoices are excluded. Settlement is not enabled in this slice, so outstandingAmount equals the registered invoice amount. Balances are never editable inputs.
+         */
+        get: operations["listReceivables"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/imports/customers/template": {
         parameters: {
             query?: never;
@@ -75,7 +95,7 @@ export interface paths {
         put?: never;
         /**
          * Store an invoice CSV preview without creating any invoice
-         * @description Customers must already exist in the authenticated tenant. Duplicate invoice numbers invalidate the whole batch, including numbers reserved by cancelled invoices. Due date must be on or after issue date. Stores immutable facts and customer versions for 24 hours. This slice supports preview and correction only; confirm returns IMPORT_KIND_UNSUPPORTED. Maximum 10MiB and 10000 data records.
+         * @description Customers must already exist in the authenticated tenant. Duplicate invoice numbers invalidate the whole batch, including numbers reserved by cancelled invoices. Due date must be on or after issue date. Stores immutable facts and customer versions for 24 hours. Confirmation revalidates the stored customer references and creates every invoice, initial revision and audit atomically. Maximum 10MiB and 10000 data records.
          */
         post: operations["previewInvoiceImport"];
         delete?: never;
@@ -145,8 +165,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Confirm the immutable customer snapshot atomically
-         * @description Accepts only the preview version, never replacement rows. Customers, audits and batch confirmation share one transaction. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
+         * Confirm the immutable customer or invoice snapshot atomically
+         * @description Accepts only the preview version, never replacement rows. Customer or invoice facts, initial invoice revisions, audits and batch confirmation share one transaction. Invoice customer versions are revalidated under row locks. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
          */
         post: operations["confirmImport"];
         delete?: never;
@@ -386,6 +406,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ReceivableResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            customerId: string;
+            customerCode: string;
+            customerName: string;
+            invoiceNumber: string;
+            /** Format: date */
+            issueDate: string;
+            /** Format: date */
+            dueDate: string;
+            /** Format: int64 */
+            amount: number;
+            /** Format: int64 */
+            outstandingAmount: number;
+            /** Format: int64 */
+            version: number;
+        };
+        ReceivablesPage: {
+            items: components["schemas"]["ReceivableResponse"][];
+            nextCursor: string | null;
+        };
         ImportConfirmRequest: {
             /** Format: int64 */
             version: number;
@@ -607,6 +650,36 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listReceivables: {
+        parameters: {
+            query?: {
+                customerId?: string;
+                dueFrom?: string;
+                dueTo?: string;
+                /** @description Exact nextCursor from the preceding page; omit for the first page. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active invoices and their outstanding amounts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceivablesPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     downloadCustomerImportTemplate: {
         parameters: {
             query?: never;

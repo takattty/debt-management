@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Create fictional, unique CSV fixtures for repeatable HTTP acceptance runs."""
 import csv
+import json
 from pathlib import Path
 import uuid
 
@@ -17,9 +18,11 @@ for name, data in (
         writer.writerow(['customer_code', 'customer_name'])
         writer.writerows(data)
 
+invoice_customer = f'INV-C-{uuid.uuid4()}'
+(root / 'runn-invoice-metadata.json').write_text(json.dumps({'customerCode': invoice_customer}), encoding='utf-8')
 invoices = [
-    ['RUNN-INVOICE-CUSTOMER', f'INV-{uuid.uuid4()}', '2026-10-29', '2026-11-30', '100000'],
-    ['RUNN-INVOICE-CUSTOMER', f'INV-{uuid.uuid4()}', '2026-10-29', '2026-11-30', '200000'],
+    [invoice_customer, f'INV-{uuid.uuid4()}', '2026-10-29', '2026-11-30', '100000'],
+    [invoice_customer, f'INV-{uuid.uuid4()}', '2026-10-29', '2026-11-30', '200000'],
 ]
 for name, data in (
     ('valid', invoices),

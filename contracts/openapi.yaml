@@ -27,9 +27,43 @@ tags:
   description: Anonymous CSRF and email/password session login
 - name: Invitations
   description: Administrator-issued one-use manual invitation links
+- name: Invoices
+  description: Tenant-scoped invoice facts and bounded receivables views
 - name: Imports
   description: Immutable tenant-scoped CSV previews and explicit all-or-nothing confirmation
 paths:
+  /api/receivables:
+    get:
+      tags: [Invoices]
+      operationId: listReceivables
+      summary: List active receivables in stable due-date and ID order
+      description: Bounded keyset page. Cancelled invoices are excluded. Settlement is not enabled in this slice, so outstandingAmount equals the registered invoice amount. Balances are never editable inputs.
+      parameters:
+      - name: customerId
+        in: query
+        schema: {type: string, format: uuid}
+      - name: dueFrom
+        in: query
+        schema: {type: string, format: date}
+      - name: dueTo
+        in: query
+        schema: {type: string, format: date}
+      - name: cursor
+        in: query
+        schema: {type: string, maxLength: 47}
+        description: Exact nextCursor from the preceding page; omit for the first page.
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        '200':
+          description: Active invoices and their outstanding amounts
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReceivablesPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /api/imports/customers/template:
     get:
       tags: [Imports]
@@ -104,7 +138,7 @@ paths:
       tags: [Imports]
       operationId: previewInvoiceImport
       summary: Store an invoice CSV preview without creating any invoice
-      description: Customers must already exist in the authenticated tenant. Duplicate invoice numbers invalidate the whole batch, including numbers reserved by cancelled invoices. Due date must be on or after issue date. Stores immutable facts and customer versions for 24 hours. This slice supports preview and correction only; confirm returns IMPORT_KIND_UNSUPPORTED. Maximum 10MiB and 10000 data records.
+      description: Customers must already exist in the authenticated tenant. Duplicate invoice numbers invalidate the whole batch, including numbers reserved by cancelled invoices. Due date must be on or after issue date. Stores immutable facts and customer versions for 24 hours. Confirmation revalidates the stored customer references and creates every invoice, initial revision and audit atomically. Maximum 10MiB and 10000 data records.
       security:
       - sessionAuth: []
         csrfToken: []
@@ -175,8 +209,8 @@ paths:
     post:
       tags: [Imports]
       operationId: confirmImport
-      summary: Confirm the immutable customer snapshot atomically
-      description: Accepts only the preview version, never replacement rows. Customers, audits and batch confirmation share one transaction. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
+      summary: Confirm the immutable customer or invoice snapshot atomically
+      description: Accepts only the preview version, never replacement rows. Customer or invoice facts, initial invoice revisions, audits and batch confirmation share one transaction. Invoice customer versions are revalidated under row locks. Re-sending the original preview version after success returns the same result, even after expiry. A conflicting preview is invalidated only after the business transaction rolls back; re-preview the corrected CSV.
       security:
       - sessionAuth: []
         csrfToken: []
@@ -615,6 +649,29 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
   schemas:
+    ReceivableResponse:
+      type: object
+      required: [id, customerId, customerCode, customerName, invoiceNumber, issueDate, dueDate, amount, outstandingAmount, version]
+      properties:
+        id: {type: string, format: uuid}
+        customerId: {type: string, format: uuid}
+        customerCode: {type: string, minLength: 1, maxLength: 50}
+        customerName: {type: string, minLength: 1, maxLength: 200}
+        invoiceNumber: {type: string, minLength: 1, maxLength: 100}
+        issueDate: {type: string, format: date}
+        dueDate: {type: string, format: date}
+        amount: {type: integer, format: int64, minimum: 1, maximum: 9007199254740991}
+        outstandingAmount: {type: integer, format: int64, minimum: 0, maximum: 9007199254740991}
+        version: {type: integer, format: int64, minimum: 0}
+    ReceivablesPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/ReceivableResponse'}
+        nextCursor: {type: string, maxLength: 47, nullable: true}
     ImportConfirmRequest:
       type: object
       additionalProperties: false

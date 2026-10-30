@@ -86,7 +86,7 @@ public class ImportStore {
     public ImportBatch get(UUID tenant, UUID id, boolean lock) {
         return jdbc.sql("""
                 SELECT *,encode(semantic_fingerprint,'hex') AS fingerprint FROM import_batch
-                WHERE tenant_id=:tenant AND id=:id AND kind IN ('CUSTOMER','INVOICE')
+                WHERE tenant_id=:tenant AND id=:id AND kind IN ('CUSTOMER','INVOICE','PAYMENT')
                 """ + (lock ? " FOR UPDATE" : ""))
                 .param("tenant", tenant).param("id", id).query(this::batch).optional().orElseThrow(ImportNotFound::new);
     }
@@ -105,6 +105,14 @@ public class ImportStore {
                 WHERE tenant_id=:tenant AND batch_id=:id AND record_number>:cursor ORDER BY record_number LIMIT :limit
                 """).param("tenant", tenant).param("id", id).param("cursor", cursor).param("limit", limit)
                 .query((result, number) -> json.readValue(result.getString("snapshot"), InvoiceCsv.Row.class)).list();
+    }
+
+    public List<PaymentCsv.Row> paymentRows(UUID tenant, UUID id, int cursor, int limit) {
+        return jdbc.sql("""
+                SELECT typed_snapshot::text AS snapshot FROM import_row
+                WHERE tenant_id=:tenant AND batch_id=:id AND record_number>:cursor ORDER BY record_number LIMIT :limit
+                """).param("tenant", tenant).param("id", id).param("cursor", cursor).param("limit", limit)
+                .query((result, number) -> json.readValue(result.getString("snapshot"), PaymentCsv.Row.class)).list();
     }
 
     public record InvoiceSnapshot(InvoiceCsv.Row row, UUID customerId, Long customerVersion) { }

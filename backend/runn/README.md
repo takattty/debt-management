@@ -44,3 +44,5 @@ Binary と checksum は `scripts/runn.sh` で固定する。
 `scripts/runn.sh run`は`prepare-runn-fixtures.py`で実行ごとにUUIDの架空コードを持つCSVをignoredな`work/runn-customer-*.csv`へ作る。追加のexec scopeや既存DBの初期化を必要としない。固定ファイルの再使用で過去の登録が新しい検証へ混入しないようにする。
 
 CIのqualityはbootstrapの部分検証fallbackを廃止し、scripts/verify.shを必須実行する。verifier消失や非実行権限を部分成功に置き換えない。
+
+`payment-import.yml`は入金専用template/preview/payment-rows、修正前errorの固定、download、CSRF、tenant越境を実HTTPで検証する。段階1は業務入金を作らず、入金の共通rows/confirmを409で拒否する。入金確定と消込は後続段階。

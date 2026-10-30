@@ -33,3 +33,11 @@ for name, data in (
         writer = csv.writer(target, lineterminator='\r\n' if name != 'reordered' else '\n')
         writer.writerow(['customer_code', 'invoice_number', 'issue_date', 'due_date', 'amount'])
         writer.writerows(data)
+
+payments = [[f'PAY-{uuid.uuid4()}', '2026-10-30', '架空入金A', '100000'],
+            [f'PAY-{uuid.uuid4()}', '2026-10-31', '架空入金B', '200000']]
+for name, data in (('valid', payments), ('invalid', [payments[0], [payments[1][0], '2026-02-30', '架空入金B', '0']])):
+    with (root / f'runn-payment-{name}.csv').open('w', encoding='utf-8-sig', newline='') as target:
+        writer = csv.writer(target, lineterminator='\r\n')
+        writer.writerow(['transaction_id', 'transfer_date', 'payer_name', 'amount'])
+        writer.writerows(data)

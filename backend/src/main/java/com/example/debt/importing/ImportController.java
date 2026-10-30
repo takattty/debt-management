@@ -8,6 +8,8 @@ import com.example.debt.generated.model.ImportErrorsPage;
 import com.example.debt.generated.model.ImportRowResponse;
 import com.example.debt.generated.model.ImportRowsPage;
 import com.example.debt.generated.model.ImportConfirmRequest;
+import com.example.debt.generated.model.PaymentImportRowResponse;
+import com.example.debt.generated.model.PaymentImportRowsPage;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -32,13 +34,14 @@ public class ImportController implements ImportsApi {
     private static final MediaType CSV = new MediaType("text", "csv", StandardCharsets.UTF_8);
     private final CustomerImportService service;
     private final InvoiceImportService invoices;
+    private final PaymentImportService payments;
     private final ImportStore store;
     private final CurrentUser current;
     private final ConfirmCustomerImport confirmation;
     private final ConfirmInvoiceImport invoiceConfirmation;
 
-    public ImportController(CustomerImportService service, InvoiceImportService invoices, ImportStore store, CurrentUser current, ConfirmCustomerImport confirmation, ConfirmInvoiceImport invoiceConfirmation) {
-        this.service = service; this.invoices = invoices; this.store = store; this.current = current; this.confirmation = confirmation; this.invoiceConfirmation = invoiceConfirmation;
+    public ImportController(CustomerImportService service, InvoiceImportService invoices, ImportStore store, CurrentUser current, ConfirmCustomerImport confirmation, ConfirmInvoiceImport invoiceConfirmation, PaymentImportService payments) {
+        this.service = service; this.invoices = invoices; this.store = store; this.current = current; this.confirmation = confirmation; this.invoiceConfirmation = invoiceConfirmation; this.payments = payments;
     }
 
     @Override
@@ -61,6 +64,29 @@ public class ImportController implements ImportsApi {
     @Override
     public ResponseEntity<ImportBatchResponse> previewCustomerImport(MultipartFile file) {
         return previewFile(file, service::preview);
+    }
+
+    @Override
+    public ResponseEntity<Resource> downloadPaymentImportTemplate() {
+        current.require();
+        return csv(new ByteArrayResource(("\ufeff" + PaymentCsv.HEADER).getBytes(StandardCharsets.UTF_8)), "payments-template.csv");
+    }
+
+    @Override
+    public ResponseEntity<ImportBatchResponse> previewPaymentImport(MultipartFile file) {
+        return previewFile(file, payments::preview);
+    }
+
+    @Override
+    public ResponseEntity<PaymentImportRowsPage> listPaymentImportRows(UUID id, Integer cursor, Integer limit) {
+        var user = current.require();
+        if (store.get(user.tenantId(), id, false).kind() != ImportBatch.Kind.PAYMENT) { throw new ImportNotFound(); }
+        var rows = store.paymentRows(user.tenantId(), id, cursor, limit + 1);
+        var invalid = store.invalidLines(user.tenantId(), id, rows.stream().map(PaymentCsv.Row::rowNumber).toList());
+        var items = rows.stream().limit(limit).map(row -> new PaymentImportRowResponse(row.recordNumber(), row.rowNumber(),
+                row.transactionId(), row.transferDate(), row.payerName(), row.amount(), row.valid() && !invalid.contains(row.rowNumber()))).toList();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new PaymentImportRowsPage(items, rows.size() > limit ? items.getLast().getRecordNumber() : 0));
     }
 
     private ResponseEntity<ImportBatchResponse> previewFile(MultipartFile file,
@@ -96,6 +122,7 @@ public class ImportController implements ImportsApi {
     public ResponseEntity<ImportBatchResponse> confirmImport(UUID id, ImportConfirmRequest request) {
         var user = current.require();
         var batch = store.get(user.tenantId(), id, false);
+        if (batch.kind() == ImportBatch.Kind.PAYMENT) { throw new ImportRejected("IMPORT_KIND_UNSUPPORTED"); }
         ImportBatch confirmed = batch.kind() == ImportBatch.Kind.INVOICE
                 ? invoiceConfirmation.confirm(user, id, request.getVersion()) : confirmation.confirm(user, id, request.getVersion());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response(confirmed));
@@ -105,6 +132,7 @@ public class ImportController implements ImportsApi {
     public ResponseEntity<ImportRowsPage> listImportRows(UUID id, Integer cursor, Integer limit) {
         var user = current.require();
         ImportBatch batch = store.get(user.tenantId(), id, false);
+        if (batch.kind() == ImportBatch.Kind.PAYMENT) { throw new ImportRejected("IMPORT_KIND_UNSUPPORTED"); }
         if (batch.kind() == ImportBatch.Kind.INVOICE) {
             var rows = store.invoiceRows(user.tenantId(), id, cursor, limit + 1);
             var invalid = store.invalidLines(user.tenantId(), id, rows.stream().map(InvoiceCsv.Row::rowNumber).toList());

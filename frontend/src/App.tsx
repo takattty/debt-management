@@ -7,6 +7,7 @@ import CustomerDirectory from './CustomerDirectory';
 import ReceivablesPanel from './ReceivablesPanel';
 import PaymentsPanel from './PaymentsPanel';
 import PayerAliasesPanel from './PayerAliasesPanel';
+import CollectionsPanel from './CollectionsPanel';
 import type { InvitationEntry } from './invitation-entry';
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : '処理に失敗しました。もう一度お試しください。';
@@ -27,7 +28,7 @@ function Workspace() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [page, setPage] = useState<'customers' | 'imports' | 'invoice-imports' | 'payment-imports' | 'payments' | 'payer-aliases' | 'receivables' | 'invitations'>('customers');
+  const [page, setPage] = useState<'customers' | 'imports' | 'invoice-imports' | 'payment-imports' | 'payments' | 'payer-aliases' | 'collections' | 'receivables' | 'invitations'>('customers');
 
   useEffect(() => {
     let active = true;
@@ -98,7 +99,7 @@ function Workspace() {
     finally { setBusy(false); }
   }
 
-  const pageTitle = { customers: '顧客管理', imports: '顧客CSV取込', 'invoice-imports': '請求CSV取込', 'payment-imports': '入金CSV取込', payments: '入金一覧', 'payer-aliases': '振込名義の対応', receivables: '債権一覧', invitations: 'メンバー招待' }[page];
+  const pageTitle = { collections: '督促対応', customers: '顧客管理', imports: '顧客CSV取込', 'invoice-imports': '請求CSV取込', 'payment-imports': '入金CSV取込', payments: '入金一覧', 'payer-aliases': '振込名義の対応', receivables: '債権一覧', invitations: 'メンバー招待' }[page];
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -111,13 +112,14 @@ function Workspace() {
       {session && <button className={page === 'payments' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => { setError(''); setNotice(''); setPage('payments'); }}>入金一覧</button>}
       {session && <button className={page === 'payer-aliases' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => { setError(''); setNotice(''); setPage('payer-aliases'); }}>振込名義の対応</button>}
       {session && <button className={page === 'receivables' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => { setError(''); setNotice(''); setPage('receivables'); }}>債権一覧</button>}
+      {session && <button className={page === 'collections' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => { setError(''); setNotice(''); setPage('collections'); }}>督促対応</button>}
       {session?.role === 'ADMIN' && <button className={page === 'invitations' ? 'nav-current nav-button' : 'nav-button'} disabled={busy} onClick={() => setPage('invitations')}>メンバー招待</button>}
       <div className="sidebar-foot"><span className="status-dot" /> ローカル検証環境<p>架空データでご利用ください</p></div>
     </aside>
     <main>
       <header className="topbar"><span>債権管理 / {pageTitle}</span>{session && <div className="account"><span className="account-email" title={session.email}>{session.email}</span><span className="account-role">{roleNames[session.role]}</span><button className="text-button" disabled={busy} onClick={logout}>ログアウト</button></div>}</header>
       <div className="content">
-        <div className="page-heading"><div><p className="eyebrow">{page === 'payer-aliases' ? 'PAYER ALIASES' : page === 'payments' ? 'PAYMENTS' : page === 'invitations' ? 'MEMBERS' : page === 'receivables' ? 'RECEIVABLES' : page === 'imports' || page === 'invoice-imports' || page === 'payment-imports' ? 'CSV IMPORT' : 'CUSTOMERS'}</p><h1>{pageTitle}</h1><p className="subtitle">{page === 'invitations' ? '同じ契約企業で利用するメンバーを招待します。' : page === 'receivables' ? '確定した請求と未回収額を確認します。' : page === 'payer-aliases' ? '振込名義と顧客の対応を、担当者が確認して登録します。' : page === 'payments' ? '確定した入金と未充当額を確認します。消込はまだ利用できません。' : page === 'payment-imports' ? '受取入金の内容と修正箇所をプレビューで確認します。消込はまだ利用できません。' : page === 'invoice-imports' ? '請求の内容と修正箇所をプレビューで確認します。' : page === 'imports' ? 'プレビューで内容を確認し、全件をまとめて確定します。' : '請求・入金管理の基礎となる取引先を登録します。'}</p></div>{session && page === 'customers' && <span className="count-badge">登録顧客 <strong>{customers.length}</strong> 件</span>}</div>
+        <div className="page-heading"><div><p className="eyebrow">{page === 'collections' ? 'COLLECTIONS' : page === 'payer-aliases' ? 'PAYER ALIASES' : page === 'payments' ? 'PAYMENTS' : page === 'invitations' ? 'MEMBERS' : page === 'receivables' ? 'RECEIVABLES' : page === 'imports' || page === 'invoice-imports' || page === 'payment-imports' ? 'CSV IMPORT' : 'CUSTOMERS'}</p><h1>{pageTitle}</h1><p className="subtitle">{page === 'collections' ? '期日を過ぎた未回収の請求と共有の対応履歴を確認します。' : page === 'invitations' ? '同じ契約企業で利用するメンバーを招待します。' : page === 'receivables' ? '確定した請求と未回収額を確認します。' : page === 'payer-aliases' ? '振込名義と顧客の対応を、担当者が確認して登録します。' : page === 'payments' ? '確定した入金と未充当額を確認します。消込はまだ利用できません。' : page === 'payment-imports' ? '受取入金の内容と修正箇所をプレビューで確認します。消込はまだ利用できません。' : page === 'invoice-imports' ? '請求の内容と修正箇所をプレビューで確認します。' : page === 'imports' ? 'プレビューで内容を確認し、全件をまとめて確定します。' : '請求・入金管理の基礎となる取引先を登録します。'}</p></div>{session && page === 'customers' && <span className="count-badge">登録顧客 <strong>{customers.length}</strong> 件</span>}</div>
         {restoring ? <section className="panel login-panel"><p role="status">ログイン状態を確認しています…</p></section> : !session ? <section className="panel login-panel" aria-labelledby="login-title">
           <div className="panel-heading"><span className="step-number">01</span><div><h2 id="login-title">ワークスペースにログイン</h2><p>所属する契約企業の顧客情報を表示します。</p></div></div>
           <form onSubmit={login}>
@@ -127,7 +129,7 @@ function Workspace() {
             <button className="primary-button" disabled={busy}>{busy ? '確認中…' : 'ログイン'}</button>
           </form>
           <p className="helper">登録されたメールアドレスでログインしてください。</p>
-        </section> : page === 'invitations' && session.role === 'ADMIN' ? <InvitationPanel session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'receivables' ? <ReceivablesPanel session={session} customers={customers} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'payer-aliases' ? <PayerAliasesPanel customers={customers} session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'payments' ? <PaymentsPanel onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'payment-imports' ? <CsvImportPanel key="PAYMENT" kind="PAYMENT" onShowRecords={async () => { setPage('payments'); }} session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'invoice-imports' ? <CsvImportPanel key="INVOICE" kind="INVOICE" session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} onShowRecords={async () => { setPage('receivables'); }} /> : page === 'imports' ? <CsvImportPanel key="CUSTOMER" session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} onConfirmed={async () => { setCustomers(await api.listCustomers()); }} onShowRecords={async () => { setCustomers(await api.listCustomers()); setError(''); setNotice(''); setPage('customers'); }} /> : <>
+        </section> : page === 'invitations' && session.role === 'ADMIN' ? <InvitationPanel session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'collections' ? <CollectionsPanel customers={customers} session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'receivables' ? <ReceivablesPanel session={session} customers={customers} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'payer-aliases' ? <PayerAliasesPanel customers={customers} session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'payments' ? <PaymentsPanel onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'payment-imports' ? <CsvImportPanel key="PAYMENT" kind="PAYMENT" onShowRecords={async () => { setPage('payments'); }} session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} /> : page === 'invoice-imports' ? <CsvImportPanel key="INVOICE" kind="INVOICE" session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} onShowRecords={async () => { setPage('receivables'); }} /> : page === 'imports' ? <CsvImportPanel key="CUSTOMER" session={session} onSessionExpired={reportWorkspaceFailure} onBusyChange={setBusy} onConfirmed={async () => { setCustomers(await api.listCustomers()); }} onShowRecords={async () => { setCustomers(await api.listCustomers()); setError(''); setNotice(''); setPage('customers'); }} /> : <>
           <section className="panel" aria-labelledby="register-title">
             <div className="panel-heading"><span className="step-number">＋</span><div><h2 id="register-title">顧客を登録</h2><p>顧客コードは契約企業内で重複しない値を指定してください。</p></div></div>
             <form className="customer-form" onSubmit={register}>

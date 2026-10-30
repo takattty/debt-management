@@ -16,6 +16,9 @@ export type Receivable = components['schemas']['ReceivableResponse'];
 export type Invoice = components['schemas']['InvoiceResponse'];
 export type InvoiceHistory = components['schemas']['InvoiceHistoryEntry'];
 export type ReceivablesQuery = NonNullable<operations['listReceivables']['parameters']['query']>;
+export type CollectionCase = components['schemas']['CollectionCaseResponse'];
+export type CollectionHistory = components['schemas']['CollectionHistoryEntry'];
+export type CollectionsQuery = operations['listCollections']['parameters']['query'];
 type Csrf = components['schemas']['CsrfResponse'];
 type LoginInput = operations['login']['requestBody']['content']['application/json'];
 type CustomerCreateInput = operations['createCustomer']['requestBody']['content']['application/json'];
@@ -38,6 +41,9 @@ type RequestBody<E extends Endpoint> = OperationOf<E> extends { requestBody: { c
 
 // Only operation-specific functions are exposed to UI code; DTOs come from the contract.
 export const api = {
+  listCollections: (query: CollectionsQuery) => request({ path: '/api/collections', method: 'GET', url: `/api/collections?${queryString(query)}` }, undefined),
+  getCollection: (id: string, asOf: string) => request({ path: '/api/collections/{id}', method: 'GET', url: `${collectionUrl(id)}?${queryString({ asOf })}` }, undefined),
+  listCollectionHistory: (id: string, cursor = 0) => request({ path: '/api/collections/{id}/history', method: 'GET', url: `${collectionUrl(id)}/history?cursor=${cursor}&limit=50` }, undefined),
   getCsrf: () => request({ path: '/api/csrf', method: 'GET' }, undefined),
   login: (body: LoginInput, csrf: Csrf) => request({ path: '/api/auth/login', method: 'POST' }, csrf, body),
   getSession: () => request({ path: '/api/session', method: 'GET' }, undefined),
@@ -123,6 +129,8 @@ type RequestEndpoint<E extends Endpoint = Endpoint> = E & { url?: string };
 const importUrl = (id: string) => `/api/imports/${encodeURIComponent(id)}`;
 const invoiceUrl = (id: string) => `/api/invoices/${encodeURIComponent(id)}`;
 const payerAliasUrl = (id: string) => `/api/payer-aliases/${encodeURIComponent(id)}`;
+const collectionUrl = (id: string) => `/api/collections/${encodeURIComponent(id)}`;
+const queryString = (query: object) => new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)])).toString();
 
 async function request<E extends Endpoint>(endpoint: RequestEndpoint<E>, csrf: Csrf | undefined, ...body: RequestBody<E>): Promise<SuccessOf<OperationOf<E>>> {
   const response = await send(endpoint, csrf, body.length ? JSON.stringify(body[0]) : undefined);
@@ -166,6 +174,7 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
     const importing = endpoint.path.startsWith('/api/imports');
     const invoicing = endpoint.path.startsWith('/api/invoices');
     const aliasing = endpoint.path.startsWith('/api/payer-aliases');
+    const collecting = endpoint.path.startsWith('/api/collections');
     const messages: Record<number, string> = {
       400: endpoint.path === '/api/auth/login' ? 'メールアドレスとパスワードの入力内容を確認してください。'
         : endpoint.path === '/api/invitations' ? '招待先のメールアドレスと権限を確認してください。'
@@ -205,7 +214,8 @@ async function send(endpoint: RequestEndpoint, csrf: Csrf | undefined, body?: Bo
       : response.status === 409 ? '他の担当者が変更したか、すでに無効化されています。最新の詳細を取得して確認してください。'
         : response.status === 404 ? '対応または顧客が見つかりません。対応IDと顧客を確認してください。'
           : response.status === 400 ? '名義は200文字以内、無効化理由は500文字以内で入力してください。空白だけの入力や制御文字は使えません。' : undefined : undefined;
-    throw new ApiError(response.status, aliasMessage ?? invoiceMessage ?? (importing && code ? importMessages[code] : undefined) ?? messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
+    const collectionMessage = collecting ? response.status === 409 ? code === 'COLLECTION_NOT_ELIGIBLE' ? '期日超過の未回収がないため文面の対象外です。最新の対応状況を確認してください。' : '対応状況が変更されています。最新内容と入力中の内容を比較してください。' : response.status === 404 ? '請求または対応履歴が見つかりません。' : response.status === 400 ? '基準日・次回対応日・メモや理由の入力内容を確認してください。' : undefined : undefined;
+    throw new ApiError(response.status, collectionMessage ?? aliasMessage ?? invoiceMessage ?? (importing && code ? importMessages[code] : undefined) ?? messages[response.status] ?? '処理に失敗しました。時間をおいて、もう一度お試しください。', code, details);
   }
   return response;
 }

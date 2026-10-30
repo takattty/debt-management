@@ -24,6 +24,40 @@
       ]
     },
     {
+      "key": "cloud-workspace-capacity",
+      "status": "resolved",
+      "events": [
+        {
+          "event": "worktree-mkdir-enospc-20261030",
+          "summary": "Cloud overlay容量不足でCoordinatorのgit worktree addがdirectory作成に失敗した",
+          "evidence": "docs/learning/capacity-validation.md",
+          "recorded_at": "2026-10-30T01:46:41+00:00"
+        },
+        {
+          "event": "gradle-reports-enospc-20261030",
+          "summary": "独立reviewerのGradleがHTML/problems reportを書けずBUILD FAILEDとなった。126 assertions通過でも全体失敗を維持した",
+          "evidence": "docs/learning/capacity-validation.md",
+          "recorded_at": "2026-10-30T01:46:41+00:00"
+        },
+        {
+          "event": "e2e-results-enospc-20261030",
+          "summary": "FEのPlaywrightがtest-results mkdirで容量不足となりAPIへ到達する前に失敗した",
+          "evidence": "docs/learning/capacity-validation.md",
+          "recorded_at": "2026-10-30T01:46:41+00:00"
+        }
+      ],
+      "resolutions": [
+        {
+          "cause": "完了済み各worktreeの再生成可能node_modules/npm-cacheがCloud overlay約32GBへ累積し、独立したworktree/Gradle report/E2E results書込が容量不足となった",
+          "prevention": "新worktree/worker前にdfと所有者確認を実施。固定1GiB preflightをCloud log作成前・verify重いphase前・標準Linux CIで必須化。測定不能も拒否。完了treeのignored非symlink依存だけを整理しsource/jar/DB/logを保持する",
+          "verification": "Python全30tests成功。容量mock正常/1GiB未満/取得不能と実wrapper終了値0/19保持を確認。実available1.56GiBでpass。復旧後rootworktree作成成功、FE実PG E2E1件成功、reviewer Gradle126tests成功+runn9成功。所有logをreaderで確認しdocs/learning/capacity-validation.mdへ保存",
+          "guard": "scripts/check-workspace-capacity.py",
+          "event_count": 3,
+          "resolved_at": "2026-10-30T01:48:27+00:00"
+        }
+      ]
+    },
+    {
       "key": "customer-import-lock-order",
       "status": "resolved",
       "events": [

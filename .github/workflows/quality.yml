@@ -27,6 +27,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
+      - name: Check workspace capacity before heavy work
+        run: python3 scripts/check-workspace-capacity.py
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin

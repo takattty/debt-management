@@ -40,6 +40,8 @@ PRのhead/base取得は `python3 /absolute/active-checkout/scripts/gh-pr-metadat
 
 Cloudのログ保存付き検証は `bash /absolute/checkout/scripts/verify-cloud.sh` を外側リダイレクトなしで実行する。新worktreeのworkディレクトリ作成とログ保存はwrapperに任せ、終了値とwork/cloud-verify.logを確認する。
 
+新worktree・複数worker開始前は `df -h /workspace` と `python3 /absolute/active-checkout/scripts/check-workspace-capacity.py /workspace` で空き容量を確認する。重いbuild/npm/E2Eは1GiB未満または測定不能なら停止する。cleanupは所有者が完了を確認したtreeの再取得可能な `frontend/node_modules` / `work/npm-cache` だけを、`git check-ignore` とsymlinkでないことを確認して対象別に行う。稼働中tree・source・jar・DB・証拠/logを保持し、worktreeやnode_modulesを無差別に削除しない。verify/CIの容量gateをskipしない。read helperやgit読取を容量gateで止めない。
+
 ## PR と API 契約
 
 - PR本文・まとまったレビュー/検証コメントは [PRとコメントの書き方](docs/pr-writing.md) とrepoテンプレートに従う。本文は概要・何をやったか・なぜ・何をやらなかったか・ユーザーへの影響・検証・その他を埋め、結果/証拠は表にする。公開前とmerge直前に最新本文を検査し、空欄やSHAだけの説明で済ませない。

@@ -1,32 +1,29 @@
 package com.example.debt.invoice;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
+import com.example.debt.reconciliation.LedgerInvoiceMutationEligibility;
+import com.example.debt.reconciliation.LedgerRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 class InvoiceMutationConfigurationTest {
     private final ApplicationContextRunner context = new ApplicationContextRunner().withUserConfiguration(InvoiceMutationConfiguration.class);
 
     @Test
-    void preSettlementAdapterExistsOnlyBeforeReconciliationIsEnabled() {
-        context.run(application -> assertThat(application.getBean(InvoiceMutationEligibility.class))
-                .isInstanceOf(InvoiceMutationConfiguration.BeforeSettlement.class));
+    void missingRealLedgerFailsClosedEvenBeforePublicCommandsAreEnabled() {
+        context.run(application -> assertThat(application).hasFailed());
         context.withPropertyValues("debt.reconciliation.enabled=true").run(application -> assertThat(application).hasFailed());
     }
 
     @Test
-    void enabledReconciliationRequiresAnExplicitReplacementAdapter() {
-        context.withUserConfiguration(Replacement.class).withPropertyValues("debt.reconciliation.enabled=true")
-                .run(application -> assertThat(application).hasNotFailed());
-    }
-
-    @Configuration(proxyBeanMethods = false)
-    static class Replacement {
-        @Bean InvoiceMutationEligibility realAdapterFixture() {
-            return (tenant, invoice) -> { throw new InvoiceConflict("INVOICE_ALLOCATED"); };
+    void realLedgerAdapterIsInstalledIndependentlyOfPublicCommandFlag() {
+        for (boolean enabled : new boolean[] {false, true}) {
+            context.withBean(LedgerRepository.class, () -> mock(LedgerRepository.class))
+                    .withPropertyValues("debt.reconciliation.enabled=" + enabled)
+                    .run(application -> assertThat(application.getBean(InvoiceMutationEligibility.class))
+                            .isInstanceOf(LedgerInvoiceMutationEligibility.class));
         }
     }
 }

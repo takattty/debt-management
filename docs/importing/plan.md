@@ -139,3 +139,10 @@ R2はpreview機能だけの段階であるとUI/PRに明記し、Issue #3完了�
 
 Issue #3へB01〜03回答、各PR/SHA、R/EX対応、全CI・独立review、実DB/runn/実FE-E2E、10k実測、Docker再起動を記録する。
 確認していないSettlement/回収機能を完成扱いにしない。停止時はbranch/SHA/未commit保存先・次コマンド・回答依存箇所を保存する。
+
+
+## 訂正・取消とSettlementの有効化
+
+Issue #3では有効な消込ledgerがまだ存在しない。InvoiceMutationEligibilityをinvoice row lock内で必ず呼び、初期adapterは`debt.reconciliation.enabled=false`（既定）の場合だけ登録する。trueで実adapterがない場合は起動を拒否する。denial fixtureはportの拒否経路の検証に留まり、実消込済み請求を検証した証拠にしない。
+Issue #4はdispatchを有効にする前にこのadapterを実ledger読取へ置換し、有効な現金充当・明示手数料が1円でもあれば訂正・取消を拒否する。Allocation確定/取消と請求変更は同じinvoice row lockとversionを使用し、実ledgerによる競合・取消後の解禁を受入条件に含める。
+訂正は請求番号を入力に含めず、期待version・理由・同tenant顧客・日付・円整数を検証する。invoice更新、新revision、操作履歴は同一transaction。履歴は原snapshot・理由・actor・時刻をbounded pageで参照する。

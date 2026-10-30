@@ -20,9 +20,8 @@ public class PaymentController implements PaymentsApi {
     @Override
     public ResponseEntity<PaymentsPage> listPayments(LocalDate dateFrom, LocalDate dateTo, String cursor, Integer limit) {
         var page = payments.list(current.require().tenantId(), dateFrom, dateTo, cursor, limit);
-        // No allocation ledger exists yet. Replace this derivation before enabling reconciliation.
         var items = page.items().stream().map(row -> new PaymentResponse(row.id(), row.transactionId(), row.transferDate(),
-                row.payerName(), row.amount(), row.amount(), row.sourceBatchId(), row.createdByUserId(), row.createdAt().atOffset(ZoneOffset.UTC))).toList();
+                row.payerName(), row.amount(), row.unallocated(), row.sourceBatchId(), row.createdByUserId(), row.createdAt().atOffset(ZoneOffset.UTC))).toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new PaymentsPage(items, page.nextCursor()));
     }
 }

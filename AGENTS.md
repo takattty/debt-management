@@ -77,3 +77,5 @@ repository内scriptの実行にもcatalog確認を適用する。新しいscript
 - Issue に「実施済み」「検証済み」「未実施」「阻害要因」を分けて記録し、コマンド、結果、証拠リンク、次の操作を残す。
 - サブエージェント、別タスク委譲、停止後再起動、`/goal`、常時稼働 Coordinator を同一視しない。使っていないモデルや未対応機能を検証済みと報告しない。
 - 実行上限や権限不足で停止するときは、未コミット変更を含む保存場所、再開コマンド、依存する回答を Issue に記録する。
+
+Markdown文書・package JSONは `read-source.py` の対象外です。helperを選ぶ前にpath種別を確認し、catalog済み `.md`/`.json` は [実行可能な非source読取recipe](docs/learning/json-envelope-metadata-validation.md#markdownpackage-jsonはsource専用helperへ渡さない) を絶対ownerで使います。拒否時にsource queryを反復しません。

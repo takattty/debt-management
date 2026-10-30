@@ -1360,6 +1360,12 @@
           "summary": "別のpackage読込試行でfrontend/package.jsonをsource helperへ渡しsuffix除外exit1(43fa14)。後で実SUFFIXESを読みmd/json対象外を確認した",
           "evidence": "docs/learning/json-envelope-metadata-validation.md",
           "recorded_at": "2026-10-30T15:51:11+00:00"
+        },
+        {
+          "event": "publisher-markdown-passed-to-source-only-helper-20261030",
+          "summary": "Catalogued Markdown was passed to source-only read-source, exit1 with candidates; no document read. Changed to bounded explicit-owner UTF8 text reader without same-helper retry.",
+          "evidence": "work/publisher-doc-helper-scope-observation.json",
+          "recorded_at": "2026-10-30T17:23:59+00:00"
         }
       ],
       "resolutions": [
@@ -1370,6 +1376,14 @@
           "guard": "docs/learning/json-envelope-metadata-validation.md",
           "event_count": 2,
           "resolved_at": "2026-10-30T15:52:03+00:00"
+        },
+        {
+          "cause": "catalog済みMarkdownをsource専用helperへ渡し、既存の入力種別guardを入口で適用しなかった再発",
+          "prevention": "AGENTS入口でpath種別を先に選び、Markdown/package JSONはGittracked/path-suffixを検査する実行可能な非source recipeだけへ渡す。source/ignored workは専用helperへ分け、拒否後に同helper queryを反復しない",
+          "verification": "実1件を先に追加しopen3/check1保存。Markdown/JSON成功2fixtureとsource/過大拒否2fixtureをnetwork0で検証。実catalog済Markdownは2670byte/exit0/原本SHA不変。3500UTF8byteにはheader/末尾改行含む。privatewrapperとrepo内実行recipeコードbyte同一。work/publisher-text-route-proof.json",
+          "guard": "docs/learning/json-envelope-metadata-validation.md",
+          "event_count": 3,
+          "resolved_at": "2026-10-30T17:26:50+00:00"
         }
       ]
     },
